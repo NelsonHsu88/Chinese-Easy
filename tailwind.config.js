@@ -1,7 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   darkMode: 'class',
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  content: ['./src/**/*.{js,ts,jsx,tsx}'],
+  presets: [require('nativewind/preset')],
   theme: {
     extend: {
       colors: {
@@ -44,25 +45,11 @@ export default {
         },
       },
       fontFamily: {
-        hanzi: ['"Noto Sans SC"', '"Noto Sans TC"', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
-        sans: ['Inter', 'system-ui', 'sans-serif'],
+        hanzi: ['NotoSansSC', 'NotoSansTC', 'sans-serif'],
+        sans: ['Inter', 'sans-serif'],
       },
       boxShadow: {
         card: '0 2px 10px -2px rgba(0,0,0,0.08), 0 1px 3px -1px rgba(0,0,0,0.06)',
-      },
-      keyframes: {
-        popIn: {
-          '0%': { transform: 'scale(0.9)', opacity: '0' },
-          '100%': { transform: 'scale(1)', opacity: '1' },
-        },
-        flipIn: {
-          '0%': { transform: 'rotateY(90deg)', opacity: '0' },
-          '100%': { transform: 'rotateY(0deg)', opacity: '1' },
-        },
-      },
-      animation: {
-        popIn: 'popIn 0.2s ease-out',
-        flipIn: 'flipIn 0.25s ease-out',
       },
     },
   },

@@ -3,3 +3,9 @@ dist
 dist-ssr
 *.local
 .DS_Store
+
+# Expo
+.expo/
+web-build/
+expo-env.d.ts
+*.orig.*

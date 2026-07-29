@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Chinese Easy",
+    "slug": "chinese-easy",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "chineseeasy",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#1fb96d",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.chineseeasy.app"
+    },
+    "android": {
+      "package": "com.chineseeasy.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#1fb96d",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1fb96d",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 160
+        }
+      ],
+      "expo-status-bar",
+      "expo-audio",
+      "@react-native-community/datetimepicker"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
