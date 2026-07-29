@@ -1,6 +1,9 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Flame, ChevronRight, BookMarked, CalendarRange, List, Zap, CalendarCheck } from 'lucide-react'
+import { View, Text, Pressable, ScrollView } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
+import { LinearGradient } from 'expo-linear-gradient'
+import { Flame, ChevronRight, BookMarked, CalendarRange, List, Zap, CalendarCheck } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { WeeklyChart } from '../components/WeeklyChart'
 import { Heatmap } from '../components/Heatmap'
@@ -11,7 +14,6 @@ import { lastNDays } from '../lib/date'
 
 export function Dashboard() {
   const { wordsLearnedToday, dailyProgress, streak, deck, settings } = useApp()
-  const navigate = useNavigate()
 
   const dueCount = dueCountFor(deck)
   const heatmap = useMemo(() => buildHeatmapFromProgress(dailyProgress, 98), [dailyProgress])
@@ -28,94 +30,96 @@ export function Dashboard() {
   }, [dailyProgress])
 
   return (
-    <div className="flex flex-col gap-6 px-4 pt-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-400 dark:text-slate-500">Hi, {settings.username || 'Learner'}</p>
-          <h1 className="text-lg font-bold">Dashboard</h1>
-        </div>
-        <div className="flex items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-          <Flame size={18} className="fill-amber-500 text-amber-500" />
-          <span className="text-sm font-bold">{streak}</span>
-          <span className="text-xs font-medium">day streak</span>
-        </div>
-      </header>
+    <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
+      <ScrollView contentContainerStyle={{ gap: 24, padding: 16, paddingTop: 8 }}>
+        <View className="flex-row items-center justify-between">
+          <View>
+            <Text className="text-sm font-medium text-slate-400 dark:text-slate-500">Hi, {settings.username || 'Learner'}</Text>
+            <Text className="text-lg font-bold text-slate-900 dark:text-white">Dashboard</Text>
+          </View>
+          <View className="flex-row items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 dark:bg-amber-900/40">
+            <Flame size={18} color="#f59e0b" fill="#f59e0b" />
+            <Text className="text-sm font-bold text-amber-700 dark:text-amber-300">{streak}</Text>
+            <Text className="text-xs font-medium text-amber-700 dark:text-amber-300">day streak</Text>
+          </View>
+        </View>
 
-      <section className="rounded-3xl bg-gradient-to-br from-brand-500 to-brand-600 p-6 text-white shadow-card">
-        <p className="text-sm font-medium text-brand-100">Words learned today</p>
-        <p className="mt-1 text-6xl font-extrabold leading-none tabular-nums">{wordsLearnedToday}</p>
-      </section>
-
-      <div className="flex flex-col gap-2">
-        <button
-          onClick={() => navigate('/review')}
-          className="flex w-full items-center justify-between rounded-2xl bg-coral-500 px-5 py-4 text-left text-white shadow-card transition-transform active:scale-[0.98]"
+        <LinearGradient
+          colors={['#1fb96d', '#149457']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ borderRadius: 24, padding: 24 }}
         >
-          <span className="flex items-center gap-2 text-lg font-bold">
-            Start Review
-            {dueCount > 0 && (
-              <span className="rounded-full bg-white/25 px-2.5 py-0.5 text-sm font-bold">{dueCount} due</span>
-            )}
-          </span>
-          <ChevronRight size={24} />
-        </button>
-        {dueCount > 0 && (
-          <button
-            onClick={() => navigate('/due-words')}
-            className="flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-semibold text-slate-500 dark:text-slate-400"
+          <Text className="text-sm font-medium text-brand-100">Words learned today</Text>
+          <Text className="mt-1 text-6xl font-extrabold leading-none tabular-nums text-white">{wordsLearnedToday}</Text>
+        </LinearGradient>
+
+        <View className="gap-2">
+          <Pressable
+            onPress={() => router.push('/review')}
+            className="w-full flex-row items-center justify-between rounded-2xl bg-coral-500 px-5 py-4 shadow-card"
           >
-            <List size={15} /> View words due
-          </button>
-        )}
-      </div>
+            <View className="flex-row items-center gap-2">
+              <Text className="text-lg font-bold text-white">Start Review</Text>
+              {dueCount > 0 && (
+                <Text className="rounded-full bg-white/25 px-2.5 py-0.5 text-sm font-bold text-white">{dueCount} due</Text>
+              )}
+            </View>
+            <ChevronRight size={24} color="white" />
+          </Pressable>
+          {dueCount > 0 && (
+            <Pressable onPress={() => router.push('/due-words')} className="w-full flex-row items-center justify-center gap-1.5 rounded-xl py-2">
+              <List size={15} color="#64748b" />
+              <Text className="text-sm font-semibold text-slate-500 dark:text-slate-400">View words due</Text>
+            </Pressable>
+          )}
+        </View>
 
-      <section className="grid grid-cols-2 gap-3">
-        <StatCard
-          label="This week"
-          value={weekTotal}
-          icon={<CalendarRange size={14} />}
-          accent="brand"
-        />
-        <StatCard
-          label="Words due"
-          value={dueCount}
-          icon={<BookMarked size={14} />}
-          accent={dueCount > 0 ? 'coral' : 'slate'}
-        />
-      </section>
+        <View className="flex-row gap-3">
+          <StatCard label="This week" value={weekTotal} icon={<CalendarRange size={14} color="#149457" />} accent="brand" />
+          <StatCard
+            label="Words due"
+            value={dueCount}
+            icon={<BookMarked size={14} color={dueCount > 0 ? '#e3280f' : '#64748b'} />}
+            accent={dueCount > 0 ? 'coral' : 'slate'}
+          />
+        </View>
 
-      <section className="rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-        <h2 className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">Last 7 days</h2>
-        <p className="mb-1 text-xs text-slate-400">New words learned + reviews completed, per day</p>
-        <WeeklyChart data={weeklyChartData} />
-      </section>
+        <View className="rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
+          <Text className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">Last 7 days</Text>
+          <Text className="mb-1 text-xs text-slate-400">New words learned + reviews completed, per day</Text>
+          <WeeklyChart data={weeklyChartData} />
+        </View>
 
-      <section className="rounded-2xl bg-white p-4 pb-5 shadow-card dark:bg-slate-900">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400">Consistency</h2>
-          <span className="text-xs text-slate-400">Last {heatmapSummary.totalDays} days</span>
-        </div>
+        <View className="rounded-2xl bg-white p-4 pb-5 shadow-card dark:bg-slate-900">
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="text-sm font-semibold text-slate-500 dark:text-slate-400">Consistency</Text>
+            <Text className="text-xs text-slate-400">Last {heatmapSummary.totalDays} days</Text>
+          </View>
 
-        <div className="mb-4 grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800">
-            <CalendarCheck size={14} className="mx-auto mb-1 text-brand-500" />
-            <p className="text-lg font-bold leading-none">{heatmapSummary.activeDays}</p>
-            <p className="mt-0.5 text-[10px] text-slate-400">active days</p>
-          </div>
-          <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800">
-            <Zap size={14} className="mx-auto mb-1 text-amber-500" />
-            <p className="text-lg font-bold leading-none">{heatmapSummary.longestStreak}</p>
-            <p className="mt-0.5 text-[10px] text-slate-400">best streak</p>
-          </div>
-          <div className="rounded-xl bg-slate-50 p-2.5 text-center dark:bg-slate-800">
-            <BookMarked size={14} className="mx-auto mb-1 text-coral-500" />
-            <p className="text-lg font-bold leading-none">{heatmapSummary.totalWordsLearned + heatmapSummary.totalReviewsCompleted}</p>
-            <p className="mt-0.5 text-[10px] text-slate-400">total activity</p>
-          </div>
-        </div>
+          <View className="mb-4 flex-row gap-2">
+            <View className="flex-1 items-center rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800">
+              <CalendarCheck size={14} color="#1fb96d" />
+              <Text className="mt-1 text-lg font-bold leading-none text-slate-900 dark:text-white">{heatmapSummary.activeDays}</Text>
+              <Text className="mt-0.5 text-[10px] text-slate-400">active days</Text>
+            </View>
+            <View className="flex-1 items-center rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800">
+              <Zap size={14} color="#f59e0b" />
+              <Text className="mt-1 text-lg font-bold leading-none text-slate-900 dark:text-white">{heatmapSummary.longestStreak}</Text>
+              <Text className="mt-0.5 text-[10px] text-slate-400">best streak</Text>
+            </View>
+            <View className="flex-1 items-center rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800">
+              <BookMarked size={14} color="#f6432c" />
+              <Text className="mt-1 text-lg font-bold leading-none text-slate-900 dark:text-white">
+                {heatmapSummary.totalWordsLearned + heatmapSummary.totalReviewsCompleted}
+              </Text>
+              <Text className="mt-0.5 text-[10px] text-slate-400">total activity</Text>
+            </View>
+          </View>
 
-        <Heatmap data={heatmap} />
-      </section>
-    </div>
+          <Heatmap data={heatmap} />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   )
 }

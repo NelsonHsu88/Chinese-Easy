@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check } from 'lucide-react'
+import { View, Text, TextInput, Pressable } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
+import { ArrowLeft, Check } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 
 export function Profile() {
   const { settings, updateSettings } = useApp()
-  const navigate = useNavigate()
   const [name, setName] = useState(settings.username)
 
   const trimmed = name.trim()
@@ -14,47 +15,49 @@ export function Profile() {
   const handleSave = () => {
     if (!canSave) return
     updateSettings({ username: trimmed })
-    navigate('/settings')
+    router.push('/settings')
   }
 
   return (
-    <div className="flex min-h-dvh flex-col px-4 pt-6">
-      <header className="mb-6 flex items-center gap-3">
-        <button
-          onClick={() => navigate('/settings')}
-          className="rounded-full bg-white p-2 text-slate-500 shadow-card dark:bg-slate-900 dark:text-slate-400"
-          aria-label="Back to Settings"
+    <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 px-4 pt-2 dark:bg-slate-950">
+      <View className="mb-6 flex-row items-center gap-3">
+        <Pressable
+          onPress={() => router.push('/settings')}
+          accessibilityRole="button"
+          accessibilityLabel="Back to Settings"
+          className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900"
         >
-          <ArrowLeft size={20} />
-        </button>
-        <h1 className="text-lg font-bold">Edit Profile</h1>
-      </header>
+          <ArrowLeft size={20} color="#64748b" />
+        </Pressable>
+        <Text className="text-lg font-bold text-slate-900 dark:text-white">Edit Profile</Text>
+      </View>
 
-      <div className="flex flex-col items-center gap-3 py-4">
-        <div className="flex h-24 w-24 items-center justify-center rounded-full bg-brand-500 text-4xl font-bold text-white">
-          {trimmed ? trimmed[0].toUpperCase() : '?'}
-        </div>
-      </div>
+      <View className="items-center gap-3 py-4">
+        <View className="h-24 w-24 items-center justify-center rounded-full bg-brand-500">
+          <Text className="text-4xl font-bold text-white">{trimmed ? trimmed[0].toUpperCase() : '?'}</Text>
+        </View>
+      </View>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Display name</span>
-        <input
+      <View className="gap-1.5">
+        <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">Display name</Text>
+        <TextInput
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChangeText={setName}
           maxLength={24}
           placeholder="Your name"
-          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-lg outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-900"
+          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-lg text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
         />
-      </label>
-      <p className="mt-1.5 text-xs text-slate-400">Shown on your Dashboard. Up to 24 characters.</p>
+      </View>
+      <Text className="mt-1.5 text-xs text-slate-400">Shown on your Dashboard. Up to 24 characters.</Text>
 
-      <button
-        onClick={handleSave}
+      <Pressable
+        onPress={handleSave}
         disabled={!canSave}
-        className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 text-lg font-bold text-white shadow-card active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+        className={`mt-6 w-full flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 shadow-card ${!canSave ? 'opacity-40' : ''}`}
       >
-        <Check size={20} /> Save
-      </button>
-    </div>
+        <Check size={20} color="white" />
+        <Text className="text-lg font-bold text-white">Save</Text>
+      </Pressable>
+    </SafeAreaView>
   )
 }

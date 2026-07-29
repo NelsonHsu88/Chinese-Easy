@@ -1,5 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { BookText, PenLine } from 'lucide-react'
+import { View, Text, Pressable, ScrollView } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { BookText, PenLine } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, displayExample } from '../lib/hanzi'
 import { Modal } from '../components/Modal'
@@ -53,123 +55,120 @@ export function Dictionary() {
   }, [filtered])
 
   return (
-    <div className="flex min-h-dvh flex-col px-4 pt-6">
-      <header className="mb-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-400 dark:text-slate-500">Chinese Easy</p>
-          <h1 className="text-lg font-bold">Dictionary</h1>
-        </div>
-        <span className="flex items-center gap-1.5 rounded-full bg-brand-100 px-3 py-1 text-xs font-bold text-brand-700 dark:bg-brand-900/40 dark:text-brand-300">
-          <BookText size={14} /> {filtered.length} words
-        </span>
-      </header>
+    <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
+      <View className="px-4 pt-2">
+        <View className="mb-4 flex-row items-center justify-between">
+          <View>
+            <Text className="text-sm font-medium text-slate-400 dark:text-slate-500">Chinese Easy</Text>
+            <Text className="text-lg font-bold text-slate-900 dark:text-white">Dictionary</Text>
+          </View>
+          <View className="flex-row items-center gap-1.5 rounded-full bg-brand-100 px-3 py-1 dark:bg-brand-900/40">
+            <BookText size={14} color="#137548" />
+            <Text className="text-xs font-bold text-brand-700 dark:text-brand-300">{filtered.length} words</Text>
+          </View>
+        </View>
 
-      <div className="no-scrollbar mb-2.5 flex gap-2 overflow-x-auto pb-1">
-        <FilterChip active={levelFilter === 'all'} onClick={() => setLevelFilter('all')}>
-          All levels
-        </FilterChip>
-        {[1, 2, 3, 4, 5, 6].map((lvl) => (
-          <FilterChip key={lvl} active={levelFilter === lvl} onClick={() => setLevelFilter(lvl)}>
-            HSK {lvl}
-          </FilterChip>
-        ))}
-      </div>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
+          <FilterChip active={levelFilter === 'all'} onPress={() => setLevelFilter('all')} label="All levels" />
+          {[1, 2, 3, 4, 5, 6].map((lvl) => (
+            <FilterChip key={lvl} active={levelFilter === lvl} onPress={() => setLevelFilter(lvl)} label={`HSK ${lvl}`} />
+          ))}
+        </ScrollView>
 
-      <div className="no-scrollbar mb-4 flex gap-2 overflow-x-auto pb-1">
-        <FilterChip active={categoryFilter === 'all'} onClick={() => setCategoryFilter('all')}>
-          All categories
-        </FilterChip>
-        {CATEGORY_ORDER.map((cat) => {
-          const meta = CATEGORY_META[cat]
-          const Icon = meta.icon
-          return (
-            <FilterChip key={cat} active={categoryFilter === cat} onClick={() => setCategoryFilter(cat)}>
-              <Icon size={13} /> {meta.label}
-            </FilterChip>
-          )
-        })}
-      </div>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 16 }}>
+          <FilterChip active={categoryFilter === 'all'} onPress={() => setCategoryFilter('all')} label="All categories" />
+          {CATEGORY_ORDER.map((cat) => {
+            const meta = CATEGORY_META[cat]
+            const Icon = meta.icon
+            return (
+              <FilterChip
+                key={cat}
+                active={categoryFilter === cat}
+                onPress={() => setCategoryFilter(cat)}
+                label={meta.label}
+                icon={<Icon size={13} color={categoryFilter === cat ? 'white' : '#64748b'} />}
+              />
+            )
+          })}
+        </ScrollView>
+      </View>
 
-      <div className="flex flex-col gap-6 pb-8">
-        {groups.length === 0 && (
-          <p className="py-12 text-center text-sm text-slate-400">No words match these filters.</p>
-        )}
+      <ScrollView contentContainerStyle={{ gap: 24, paddingHorizontal: 16, paddingBottom: 32 }}>
+        {groups.length === 0 && <Text className="py-12 text-center text-sm text-slate-400">No words match these filters.</Text>}
         {groups.map((group) => (
-          <section key={group.label}>
-            <h2 className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">{group.label}</h2>
-            <div className="grid grid-cols-3 gap-2.5">
+          <View key={group.label}>
+            <Text className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">{group.label}</Text>
+            <View className="flex-row flex-wrap gap-2.5">
               {group.words.map((word) => (
-                <button
+                <Pressable
                   key={word.id}
-                  onClick={() => setSelected(word)}
-                  className="flex flex-col items-center justify-center gap-1 rounded-2xl bg-white py-3.5 shadow-card active:scale-95 dark:bg-slate-900"
+                  onPress={() => setSelected(word)}
+                  className="w-[31.5%] items-center justify-center gap-1 rounded-2xl bg-white py-3.5 shadow-card dark:bg-slate-900"
                 >
-                  <span className="hanzi text-2xl font-bold">{displayWord(word, settings.script)}</span>
-                  <span className="text-[11px] text-slate-400">{displayPinyin(word, settings.phoneticScript)}</span>
-                </button>
+                  <Text className="font-hanzi text-2xl font-bold text-slate-900 dark:text-white">{displayWord(word, settings.script)}</Text>
+                  <Text className="text-[11px] text-slate-400">{displayPinyin(word, settings.phoneticScript)}</Text>
+                </Pressable>
               ))}
-            </div>
-          </section>
+            </View>
+          </View>
         ))}
-      </div>
+      </ScrollView>
 
       {selected && (
         <Modal title={displayWord(selected, settings.script)} onClose={() => setSelected(null)}>
-          <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex items-center gap-2">
-              <p className="hanzi text-6xl font-bold">{displayWord(selected, settings.script)}</p>
+          <View className="items-center gap-3">
+            <View className="flex-row items-center gap-2">
+              <Text className="font-hanzi text-6xl font-bold text-slate-900 dark:text-white">{displayWord(selected, settings.script)}</Text>
               <SpeakButton text={displayWord(selected, settings.script)} />
-            </div>
-            <p className="text-lg font-medium text-slate-400">{displayPinyin(selected, settings.phoneticScript)}</p>
-            <p className="text-xl font-semibold">{selected.definition}</p>
+            </View>
+            <Text className="text-lg font-medium text-slate-400">{displayPinyin(selected, settings.phoneticScript)}</Text>
+            <Text className="text-xl font-semibold text-slate-900 dark:text-white">{selected.definition}</Text>
 
-            {displayExample(selected, settings.script) && (
-              <div className="w-full border-t border-slate-100 pt-3 dark:border-slate-800">
-                <p className="hanzi text-base text-slate-700 dark:text-slate-300">{displayExample(selected, settings.script)}</p>
-                <p className="text-sm text-slate-400">{selected.example.pinyin}</p>
-                <p className="text-sm italic text-slate-400">{selected.example.translation}</p>
-              </div>
+            {selected.example && displayExample(selected, settings.script) && (
+              <View className="w-full border-t border-slate-100 pt-3 dark:border-slate-800">
+                <Text className="font-hanzi text-base text-slate-700 dark:text-slate-300">{displayExample(selected, settings.script)}</Text>
+                <Text className="text-sm text-slate-400">{selected.example.pinyin}</Text>
+                <Text className="text-sm italic text-slate-400">{selected.example.translation}</Text>
+              </View>
             )}
 
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400 dark:bg-slate-800">
+            <View className="flex-row flex-wrap items-center justify-center gap-2">
+              <Text className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400 dark:bg-slate-800">
                 {selected.custom ? 'Custom word' : `HSK ${selected.hskLevel}`}
-              </span>
-              <span className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400 dark:bg-slate-800">
+              </Text>
+              <View className="flex-row items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 dark:bg-slate-800">
                 {(() => {
                   const Icon = CATEGORY_META[selected.category].icon
-                  return <Icon size={12} />
+                  return <Icon size={12} color="#94a3b8" />
                 })()}
-                {CATEGORY_META[selected.category].label}
-              </span>
-            </div>
+                <Text className="text-xs font-bold text-slate-400">{CATEGORY_META[selected.category].label}</Text>
+              </View>
+            </View>
 
-            <button
-              onClick={() => setPracticeWord(selected)}
-              className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 text-lg font-bold text-white shadow-card active:scale-[0.98]"
+            <Pressable
+              onPress={() => setPracticeWord(selected)}
+              className="mt-1 w-full flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 shadow-card"
             >
-              <PenLine size={18} /> Practice Writing
-            </button>
-          </div>
+              <PenLine size={18} color="white" />
+              <Text className="text-lg font-bold text-white">Practice Writing</Text>
+            </Pressable>
+          </View>
         </Modal>
       )}
 
       {practiceWord && <WritingPracticeModal word={practiceWord} onClose={() => setPracticeWord(null)} />}
-    </div>
+    </SafeAreaView>
   )
 }
 
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function FilterChip({ active, onPress, label, icon }: { active: boolean; onPress: () => void; label: string; icon?: ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      className={`flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-2 text-xs font-semibold transition-colors ${
-        active
-          ? 'bg-brand-500 text-white'
-          : 'bg-white text-slate-500 shadow-card dark:bg-slate-900 dark:text-slate-400'
-      }`}
+    <Pressable
+      onPress={onPress}
+      className={`flex-row items-center gap-1.5 rounded-full px-3.5 py-2 ${active ? 'bg-brand-500' : 'bg-white shadow-card dark:bg-slate-900'}`}
     >
-      {children}
-    </button>
+      {icon}
+      <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>{label}</Text>
+    </Pressable>
   )
 }

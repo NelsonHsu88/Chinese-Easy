@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ThumbsUp, Eye, HelpCircle, GraduationCap, Sparkles } from 'lucide-react'
+import { View, Text, Pressable } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
+import { router } from 'expo-router'
+import { ThumbsUp, Eye, HelpCircle, GraduationCap, Sparkles, type LucideIcon } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { placementItems } from '../data/placementTest'
 import { computeEstimatedHsk } from '../lib/placement'
@@ -10,15 +13,14 @@ import type { PlacementAnswer } from '../types'
 
 type Step = 'intro' | 'test' | 'result'
 
-const RATING_OPTIONS: { rating: PlacementAnswer['rating']; label: string; icon: typeof ThumbsUp; classes: string }[] = [
-  { rating: 'know', label: 'I know this', icon: ThumbsUp, classes: 'bg-brand-500 hover:bg-brand-600' },
-  { rating: 'recognize', label: 'I recognize it', icon: Eye, classes: 'bg-amber-500 hover:bg-amber-600' },
-  { rating: 'unknown', label: "I don't know this", icon: HelpCircle, classes: 'bg-slate-400 hover:bg-slate-500' },
+const RATING_OPTIONS: { rating: PlacementAnswer['rating']; label: string; icon: LucideIcon; className: string }[] = [
+  { rating: 'know', label: 'I know this', icon: ThumbsUp, className: 'bg-brand-500' },
+  { rating: 'recognize', label: 'I recognize it', icon: Eye, className: 'bg-amber-500' },
+  { rating: 'unknown', label: "I don't know this", icon: HelpCircle, className: 'bg-slate-400' },
 ]
 
 export function Onboarding() {
   const { completeOnboarding, onboardingComplete } = useApp()
-  const navigate = useNavigate()
 
   const [step, setStep] = useState<Step>('intro')
   const [testIndex, setTestIndex] = useState(0)
@@ -46,88 +48,77 @@ export function Onboarding() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-gradient-to-b from-brand-50 to-white px-6 py-8 dark:from-slate-950 dark:to-slate-950">
-      {step === 'intro' && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
-          <div className="hanzi text-6xl font-bold text-brand-500">{'你好'}</div>
-          <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white">Welcome to Chinese Easy</h1>
-            <p className="mt-2 max-w-sm text-slate-500 dark:text-slate-400">
-              A quick placement test helps us find your starting level so we can pick the right words for you.
-            </p>
-          </div>
-          <button
-            onClick={() => setStep('test')}
-            className="w-full max-w-xs rounded-2xl bg-brand-500 py-4 text-lg font-bold text-white shadow-card active:scale-[0.98]"
-          >
-            Get Started
-          </button>
-        </div>
-      )}
+    <LinearGradient colors={['#eefdf4', '#ffffff']} style={{ flex: 1 }}>
+      <SafeAreaView className="flex-1 px-6 py-8">
+        {step === 'intro' && (
+          <View className="flex-1 items-center justify-center gap-6">
+            <Text className="font-hanzi text-6xl font-bold text-brand-500">{'你好'}</Text>
+            <View className="items-center">
+              <Text className="text-center text-3xl font-extrabold text-slate-900">Welcome to Chinese Easy</Text>
+              <Text className="mt-2 max-w-sm text-center text-slate-500">
+                A quick placement test helps us find your starting level so we can pick the right words for you.
+              </Text>
+            </View>
+            <Pressable onPress={() => setStep('test')} className="w-full max-w-xs items-center rounded-2xl bg-brand-500 py-4 shadow-card">
+              <Text className="text-lg font-bold text-white">Get Started</Text>
+            </Pressable>
+          </View>
+        )}
 
-      {step === 'test' && currentItem && (
-        <div className="flex flex-1 flex-col">
-          <div className="mb-2">
-            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-              <div
-                className="h-full rounded-full bg-brand-500 transition-all"
-                style={{ width: `${(testIndex / placementItems.length) * 100}%` }}
-              />
-            </div>
-            <p className="mt-2 text-center text-xs font-medium text-slate-400">
-              {testIndex + 1} of {placementItems.length}
-            </p>
-          </div>
+        {step === 'test' && currentItem && (
+          <View className="flex-1">
+            <View className="mb-2">
+              <View className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+                <View className="h-full rounded-full bg-brand-500" style={{ width: `${(testIndex / placementItems.length) * 100}%` }} />
+              </View>
+              <Text className="mt-2 text-center text-xs font-medium text-slate-400">
+                {testIndex + 1} of {placementItems.length}
+              </Text>
+            </View>
 
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
-            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400 dark:bg-slate-800">
-              HSK {currentItem.hskLevel}
-            </span>
-            <p className="hanzi text-7xl font-bold">{displayWord(currentItem, 'traditional')}</p>
-          </div>
+            <View className="flex-1 items-center justify-center gap-2">
+              <Text className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400">HSK {currentItem.hskLevel}</Text>
+              <Text className="font-hanzi text-7xl font-bold text-slate-900">{displayWord(currentItem, 'traditional')}</Text>
+            </View>
 
-          <div className="flex flex-col gap-2.5 pb-4">
-            {RATING_OPTIONS.map(({ rating, label, icon: Icon, classes }) => (
-              <button
-                key={rating}
-                onClick={() => handleRate(rating)}
-                className={`flex items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold text-white shadow-card active:scale-[0.98] ${classes}`}
-              >
-                <Icon size={18} /> {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+            <View className="gap-2.5 pb-4">
+              {RATING_OPTIONS.map(({ rating, label, icon: Icon, className }) => (
+                <Pressable
+                  key={rating}
+                  onPress={() => handleRate(rating)}
+                  className={`flex-row items-center justify-center gap-2 rounded-2xl py-4 shadow-card ${className}`}
+                >
+                  <Icon size={18} color="white" />
+                  <Text className="text-base font-bold text-white">{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
 
-      {step === 'result' && (
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
-          <GraduationCap size={56} className="text-brand-500" />
-          <div>
-            <p className="text-sm font-medium text-slate-400">Your estimated level</p>
-            <p className="text-6xl font-extrabold text-brand-600 dark:text-brand-400">HSK {estimatedHsk}</p>
-          </div>
-          <p className="max-w-xs text-sm text-slate-500 dark:text-slate-400">
-            We'll start you off with words around this level and adjust as you go. You can retake this test anytime
-            from Settings.
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="flex w-full max-w-xs items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 text-lg font-bold text-white shadow-card active:scale-[0.98]"
-          >
-            <Sparkles size={20} /> Start Learning
-          </button>
-        </div>
-      )}
+        {step === 'result' && (
+          <View className="flex-1 items-center justify-center gap-6">
+            <GraduationCap size={56} color="#1fb96d" />
+            <View className="items-center">
+              <Text className="text-sm font-medium text-slate-400">Your estimated level</Text>
+              <Text className="text-6xl font-extrabold text-brand-600">HSK {estimatedHsk}</Text>
+            </View>
+            <Text className="max-w-xs text-center text-sm text-slate-500">
+              We'll start you off with words around this level and adjust as you go. You can retake this test anytime from Settings.
+            </Text>
+            <Pressable onPress={() => router.replace('/')} className="w-full max-w-xs flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 shadow-card">
+              <Sparkles size={20} color="white" />
+              <Text className="text-lg font-bold text-white">Start Learning</Text>
+            </Pressable>
+          </View>
+        )}
 
-      {onboardingComplete && step !== 'result' && (
-        <button
-          onClick={() => navigate('/')}
-          className="mt-4 text-center text-sm font-medium text-slate-400 underline-offset-2 hover:underline"
-        >
-          Cancel and return to app
-        </button>
-      )}
-    </div>
+        {onboardingComplete && step !== 'result' && (
+          <Pressable onPress={() => router.replace('/')} className="mt-4 items-center">
+            <Text className="text-center text-sm font-medium text-slate-400">Cancel and return to app</Text>
+          </Pressable>
+        )}
+      </SafeAreaView>
+    </LinearGradient>
   )
 }
