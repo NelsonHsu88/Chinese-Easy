@@ -1,44 +1,10 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppSettings, DailyProgress, Grade, PlacementResult, SrsCard, VocabWord } from '../types'
 import { hskFrequency, wordById as wordByIdInBank } from '../data/hskFrequency'
 import { mockDeck } from '../data/mockDeck'
 import { loadStored, saveStored } from '../lib/storage'
 import { addDays, todayISO } from '../lib/date'
 import { createNewCard, gradeCard as gradeCardSrs } from '../lib/srs'
-
-// Earlier builds seeded fake weekly/streak history into localStorage so the
-// Dashboard had something to show before real usage. That mock data is now
-// gone from the code, but anyone who already opened the app still has it
-// sitting in their browser's storage. This runs once (at module load, before
-// any state is read) to clear just those two keys so real users don't keep
-// seeing leftover fake numbers.
-const DATA_VERSION = '4-review-activity-tracking'
-function migrateStaleMockData() {
-  if (typeof window === 'undefined') return
-  const versionKey = 'chinese-easy:dataVersion'
-  if (window.localStorage.getItem(versionKey) === DATA_VERSION) return
-
-  window.localStorage.removeItem('chinese-easy:dailyProgress')
-  window.localStorage.removeItem('chinese-easy:streak')
-
-  // Review now defaults to production (English prompt, write from memory) —
-  // carry that forward for anyone whose stored settings still have the old default.
-  try {
-    const rawSettings = window.localStorage.getItem('chinese-easy:settings')
-    if (rawSettings) {
-      const parsed = JSON.parse(rawSettings)
-      if (parsed.reviewDirection === 'recognition') {
-        parsed.reviewDirection = 'production'
-        window.localStorage.setItem('chinese-easy:settings', JSON.stringify(parsed))
-      }
-    }
-  } catch {
-    // malformed stored settings — leave as-is, normal load/merge logic will handle it
-  }
-
-  window.localStorage.setItem(versionKey, DATA_VERSION)
-}
-migrateStaleMockData()
 
 export const DEFAULT_SETTINGS: AppSettings = {
   username: 'Learner',
@@ -75,6 +41,9 @@ export interface CustomWordInput {
 }
 
 interface AppContextValue {
+  /** False until all persisted state has been read from AsyncStorage. */
+  ready: boolean
+
   settings: AppSettings
   updateSettings: (partial: Partial<AppSettings>) => void
 
@@ -100,41 +69,75 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(() => ({
-    ...DEFAULT_SETTINGS,
-    ...loadStored('settings', DEFAULT_SETTINGS),
-    // Traditional-only for now — overrides any simplified preference from earlier sessions.
-    script: 'traditional',
-  }))
-  const [deck, setDeck] = useState<SrsCard[]>(() => loadStored('deck', mockDeck))
-  const [customWords, setCustomWords] = useState<VocabWord[]>(() => loadStored('customWords', [] as VocabWord[]))
-  // Real activity only — no seeded mock history. Numbers on the Dashboard
-  // grow only from what the user actually does.
-  const [dailyProgress, setDailyProgress] = useState<DailyProgress[]>(() =>
-    loadStored('dailyProgress', [] as DailyProgress[]),
-  )
-  const [streakState, setStreakState] = useState<StreakState>(() =>
-    loadStored('streak', { streak: 0, lastActiveDate: null } as StreakState),
-  )
-  const [onboarding, setOnboarding] = useState<OnboardingState>(() =>
-    loadStored('onboarding', { complete: false } as OnboardingState),
-  )
-
-  useEffect(() => saveStored('settings', settings), [settings])
-  useEffect(() => saveStored('deck', deck), [deck])
-  useEffect(() => saveStored('customWords', customWords), [customWords])
-  useEffect(() => saveStored('dailyProgress', dailyProgress), [dailyProgress])
-  useEffect(() => saveStored('streak', streakState), [streakState])
-  useEffect(() => saveStored('onboarding', onboarding), [onboarding])
+  const [ready, setReady] = useState(false)
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [deck, setDeck] = useState<SrsCard[]>(mockDeck)
+  const [customWords, setCustomWords] = useState<VocabWord[]>([])
+  const [dailyProgress, setDailyProgress] = useState<DailyProgress[]>([])
+  const [streakState, setStreakState] = useState<StreakState>({ streak: 0, lastActiveDate: null })
+  const [onboarding, setOnboarding] = useState<OnboardingState>({ complete: false })
 
   useEffect(() => {
-    const root = document.documentElement
-    const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = () => root.classList.toggle('dark', mql.matches)
-    apply()
-    mql.addEventListener('change', apply)
-    return () => mql.removeEventListener('change', apply)
+    let cancelled = false
+    async function hydrate() {
+      const [loadedSettings, loadedDeck, loadedCustomWords, loadedDailyProgress, loadedStreak, loadedOnboarding] =
+        await Promise.all([
+          loadStored('settings', DEFAULT_SETTINGS),
+          loadStored('deck', mockDeck),
+          loadStored('customWords', [] as VocabWord[]),
+          loadStored('dailyProgress', [] as DailyProgress[]),
+          loadStored('streak', { streak: 0, lastActiveDate: null } as StreakState),
+          loadStored('onboarding', { complete: false } as OnboardingState),
+        ])
+      if (cancelled) return
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        ...loadedSettings,
+        // Traditional-only for now — overrides any simplified preference from earlier sessions.
+        script: 'traditional',
+      })
+      setDeck(loadedDeck)
+      setCustomWords(loadedCustomWords)
+      setDailyProgress(loadedDailyProgress)
+      setStreakState(loadedStreak)
+      setOnboarding(loadedOnboarding)
+      setReady(true)
+    }
+    void hydrate()
+    return () => {
+      cancelled = true
+    }
   }, [])
+
+  // Skip persisting on the very first render of each piece of state — that
+  // value is just a placeholder default until hydrate() above overwrites it,
+  // and saving it would clobber whatever was already in AsyncStorage.
+  const skipNextSave = useRef({ settings: true, deck: true, customWords: true, dailyProgress: true, streak: true, onboarding: true })
+
+  useEffect(() => {
+    if (skipNextSave.current.settings) { skipNextSave.current.settings = false; return }
+    void saveStored('settings', settings)
+  }, [settings])
+  useEffect(() => {
+    if (skipNextSave.current.deck) { skipNextSave.current.deck = false; return }
+    void saveStored('deck', deck)
+  }, [deck])
+  useEffect(() => {
+    if (skipNextSave.current.customWords) { skipNextSave.current.customWords = false; return }
+    void saveStored('customWords', customWords)
+  }, [customWords])
+  useEffect(() => {
+    if (skipNextSave.current.dailyProgress) { skipNextSave.current.dailyProgress = false; return }
+    void saveStored('dailyProgress', dailyProgress)
+  }, [dailyProgress])
+  useEffect(() => {
+    if (skipNextSave.current.streak) { skipNextSave.current.streak = false; return }
+    void saveStored('streak', streakState)
+  }, [streakState])
+  useEffect(() => {
+    if (skipNextSave.current.onboarding) { skipNextSave.current.onboarding = false; return }
+    void saveStored('onboarding', onboarding)
+  }, [onboarding])
 
   const wordBank = useMemo(() => [...hskFrequency, ...customWords], [customWords])
 
@@ -243,6 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [dailyProgress])
 
   const value: AppContextValue = {
+    ready,
     settings,
     updateSettings,
     deck,
