@@ -36,7 +36,6 @@
           "imageWidth": 160
         }
       ],
-      "expo-status-bar",
       "expo-audio",
       "@react-native-community/datetimepicker",
       "expo-asset"
