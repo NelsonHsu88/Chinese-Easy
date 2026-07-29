@@ -1,9 +1,8 @@
-/** Short celebratory vibration pattern, where the device/browser supports it. */
+import * as Haptics from 'expo-haptics'
+
+/** Short celebratory haptic feedback, mirroring the app's old [20, 40, 60]ms vibration pattern. */
 export function celebrateHaptic(): void {
-  if (typeof navigator === 'undefined' || !('vibrate' in navigator)) return
-  try {
-    navigator.vibrate([20, 40, 60])
-  } catch {
-    // vibration not permitted/supported — silently ignore
-  }
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {
+    // haptics unsupported on this device — silently ignore
+  })
 }

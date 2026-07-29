@@ -1,8 +1,10 @@
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
 const PREFIX = 'chinese-easy:'
 
-export function loadStored<T>(key: string, fallback: T): T {
+export async function loadStored<T>(key: string, fallback: T): Promise<T> {
   try {
-    const raw = localStorage.getItem(PREFIX + key)
+    const raw = await AsyncStorage.getItem(PREFIX + key)
     if (!raw) return fallback
     return JSON.parse(raw) as T
   } catch {
@@ -10,10 +12,10 @@ export function loadStored<T>(key: string, fallback: T): T {
   }
 }
 
-export function saveStored<T>(key: string, value: T): void {
+export async function saveStored<T>(key: string, value: T): Promise<void> {
   try {
-    localStorage.setItem(PREFIX + key, JSON.stringify(value))
+    await AsyncStorage.setItem(PREFIX + key, JSON.stringify(value))
   } catch {
-    // storage unavailable (private mode, quota) — fail silently, state stays in-memory
+    // storage unavailable (quota, corrupted store) — fail silently, state stays in-memory
   }
 }

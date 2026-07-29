@@ -1,4 +1,4 @@
-import { UtensilsCrossed, Plane, Users, Briefcase, FlaskConical, Sun, type LucideIcon } from 'lucide-react'
+import { UtensilsCrossed, Plane, Users, Briefcase, FlaskConical, Sun, type LucideIcon } from 'lucide-react-native'
 import type { WordCategory } from '../types'
 
 export const CATEGORY_META: Record<WordCategory, { label: string; icon: LucideIcon }> = {
