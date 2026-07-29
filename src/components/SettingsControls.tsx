@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react'
-import { Minus, Plus } from 'lucide-react'
+import { View, Text, Pressable } from 'react-native'
+import Slider from '@react-native-community/slider'
+import { Minus, Plus } from 'lucide-react-native'
 
 export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-      <h2 className="mb-3 text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</h2>
+    <View className="rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
+      <Text className="mb-3 text-sm font-semibold text-slate-500 dark:text-slate-400">{title}</Text>
       {children}
-    </section>
+    </View>
   )
 }
 
@@ -20,21 +22,25 @@ export function SegmentedControl<T extends string>({
   options: { value: T; label: string }[]
 }) {
   return (
-    <div className="flex rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
+    <View className="flex-row rounded-xl bg-slate-100 p-1 dark:bg-slate-800">
       {options.map((opt) => (
-        <button
+        <Pressable
           key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={`flex-1 rounded-lg py-2 text-sm font-semibold transition-colors ${
-            value === opt.value
-              ? 'bg-white text-brand-600 shadow dark:bg-slate-700 dark:text-brand-400'
-              : 'text-slate-500 dark:text-slate-400'
+          onPress={() => onChange(opt.value)}
+          className={`flex-1 items-center rounded-lg py-2 ${
+            value === opt.value ? 'bg-white shadow dark:bg-slate-700' : ''
           }`}
         >
-          {opt.label}
-        </button>
+          <Text
+            className={`text-sm font-semibold ${
+              value === opt.value ? 'text-brand-600 dark:text-brand-400' : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            {opt.label}
+          </Text>
+        </Pressable>
       ))}
-    </div>
+    </View>
   )
 }
 
@@ -52,25 +58,27 @@ export function Stepper({
   step?: number
 }) {
   return (
-    <div className="flex items-center gap-3">
-      <button
-        onClick={() => onChange(Math.max(min, value - step))}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600 disabled:opacity-30 dark:bg-slate-800 dark:text-slate-300"
+    <View className="flex-row items-center gap-3">
+      <Pressable
+        onPress={() => onChange(Math.max(min, value - step))}
         disabled={value <= min}
-        aria-label="Decrease"
+        accessibilityRole="button"
+        accessibilityLabel="Decrease"
+        className={`h-9 w-9 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 ${value <= min ? 'opacity-30' : ''}`}
       >
-        <Minus size={16} />
-      </button>
-      <span className="w-8 text-center text-lg font-bold tabular-nums">{value}</span>
-      <button
-        onClick={() => onChange(Math.min(max, value + step))}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-600 disabled:opacity-30 dark:bg-slate-800 dark:text-slate-300"
+        <Minus size={16} color="#475569" />
+      </Pressable>
+      <Text className="w-8 text-center text-lg font-bold tabular-nums text-slate-900 dark:text-white">{value}</Text>
+      <Pressable
+        onPress={() => onChange(Math.min(max, value + step))}
         disabled={value >= max}
-        aria-label="Increase"
+        accessibilityRole="button"
+        accessibilityLabel="Increase"
+        className={`h-9 w-9 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 ${value >= max ? 'opacity-30' : ''}`}
       >
-        <Plus size={16} />
-      </button>
-    </div>
+        <Plus size={16} color="#475569" />
+      </Pressable>
+    </View>
   )
 }
 
@@ -90,32 +98,33 @@ export function SliderRow({
   step?: number
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-600 dark:text-slate-300">{label}</span>
-        <span className="text-sm font-bold tabular-nums text-brand-600 dark:text-brand-400">{value}</span>
-      </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
+    <View className="gap-2">
+      <View className="flex-row items-center justify-between">
+        <Text className="text-sm text-slate-600 dark:text-slate-300">{label}</Text>
+        <Text className="text-sm font-bold tabular-nums text-brand-600 dark:text-brand-400">{value}</Text>
+      </View>
+      <Slider
+        minimumValue={min}
+        maximumValue={max}
         step={step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-brand-500 dark:bg-slate-700"
+        onValueChange={onChange}
+        minimumTrackTintColor="#1fb96d"
+        maximumTrackTintColor="#e2e8f0"
+        thumbTintColor="#1fb96d"
       />
-    </div>
+    </View>
   )
 }
 
 export function Row({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1">
-      <div>
-        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</p>
-        {hint && <p className="text-xs text-slate-400">{hint}</p>}
-      </div>
+    <View className="flex-row items-center justify-between gap-3 py-1">
+      <View>
+        <Text className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</Text>
+        {hint && <Text className="text-xs text-slate-400">{hint}</Text>}
+      </View>
       {children}
-    </div>
+    </View>
   )
 }

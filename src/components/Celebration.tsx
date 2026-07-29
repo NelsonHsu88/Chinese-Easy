@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { View } from 'react-native'
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing } from 'react-native-reanimated'
 
 const COLORS = ['#1fb96d', '#f6432c', '#f99b04', '#3b82f6', '#a855f7', '#ec4899', '#43d488']
 const PARTICLE_COUNT = 28
@@ -48,22 +50,41 @@ export function Celebration({ trigger }: Props) {
   if (!active) return null
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
+    <View
+      pointerEvents="none"
+      className="absolute inset-0 z-50 items-center justify-center overflow-hidden"
+    >
       {particles.map((p) => (
-        <span
-          key={p.id}
-          className="confetti-particle"
-          style={
-            {
-              '--tx': `${p.tx}px`,
-              '--ty': `${p.ty}px`,
-              '--rot': `${p.rot}deg`,
-              backgroundColor: p.color,
-              animationDelay: `${p.delay}ms`,
-            } as CSSProperties
-          }
-        />
+        <ConfettiDot key={`${trigger}-${p.id}`} particle={p} />
       ))}
-    </div>
+    </View>
+  )
+}
+
+function ConfettiDot({ particle }: { particle: Particle }) {
+  const progress = useSharedValue(0)
+
+  useEffect(() => {
+    progress.value = withDelay(
+      particle.delay,
+      withTiming(1, { duration: DURATION_MS - particle.delay, easing: Easing.out(Easing.quad) }),
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const style = useAnimatedStyle(() => ({
+    opacity: 1 - progress.value,
+    transform: [
+      { translateX: progress.value * particle.tx },
+      { translateY: progress.value * particle.ty },
+      { rotate: `${progress.value * particle.rot}deg` },
+      { scale: 1 - progress.value * 0.4 },
+    ],
+  }))
+
+  return (
+    <Animated.View
+      style={[{ position: 'absolute', width: 8, height: 8, borderRadius: 2, backgroundColor: particle.color }, style]}
+    />
   )
 }

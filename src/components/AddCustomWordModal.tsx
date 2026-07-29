@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { View, Text, TextInput, Pressable } from 'react-native'
 import { Modal } from './Modal'
 import { useApp } from '../context/AppContext'
 
@@ -7,7 +8,7 @@ interface Props {
 }
 
 const inputClasses =
-  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:border-slate-700 dark:bg-slate-800'
+  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white'
 
 export function AddCustomWordModal({ onClose }: Props) {
   const { addCustomWord } = useApp()
@@ -36,40 +37,45 @@ export function AddCustomWordModal({ onClose }: Props) {
 
   return (
     <Modal title="Add Custom Word" onClose={onClose}>
-      <div className="flex flex-col gap-3">
+      <View className="gap-3">
         <Field label="Chinese word (Traditional)">
-          <input className={`${inputClasses} hanzi text-xl`} value={word} onChange={(e) => setWord(e.target.value)} placeholder="你好" />
+          <TextInput className={`${inputClasses} font-hanzi text-xl`} value={word} onChangeText={setWord} placeholder="你好" />
         </Field>
         <Field label="Pinyin">
-          <input className={inputClasses} value={pinyin} onChange={(e) => setPinyin(e.target.value)} placeholder="nǐ hǎo" />
+          <TextInput className={inputClasses} value={pinyin} onChangeText={setPinyin} placeholder="nǐ hǎo" />
         </Field>
         <Field label="Definition">
-          <input className={inputClasses} value={definition} onChange={(e) => setDefinition(e.target.value)} placeholder="hello" />
+          <TextInput className={inputClasses} value={definition} onChangeText={setDefinition} placeholder="hello" />
         </Field>
         <Field label="Example sentence (optional)">
-          <input className={`${inputClasses} hanzi`} value={exampleSimplified} onChange={(e) => setExampleSimplified(e.target.value)} placeholder="你好吗？" />
+          <TextInput
+            className={`${inputClasses} font-hanzi`}
+            value={exampleSimplified}
+            onChangeText={setExampleSimplified}
+            placeholder="你好吗？"
+          />
         </Field>
         <Field label="Example translation (optional)">
-          <input className={inputClasses} value={exampleTranslation} onChange={(e) => setExampleTranslation(e.target.value)} placeholder="How are you?" />
+          <TextInput className={inputClasses} value={exampleTranslation} onChangeText={setExampleTranslation} placeholder="How are you?" />
         </Field>
 
-        <button
-          onClick={handleSubmit}
+        <Pressable
+          onPress={handleSubmit}
           disabled={!canSubmit}
-          className="mt-2 w-full rounded-2xl bg-brand-500 py-3.5 text-lg font-bold text-white shadow-card disabled:cursor-not-allowed disabled:opacity-40"
+          className={`mt-2 w-full items-center rounded-2xl bg-brand-500 py-3.5 shadow-card ${!canSubmit ? 'opacity-40' : ''}`}
         >
-          Add to Review Deck
-        </button>
-      </div>
+          <Text className="text-lg font-bold text-white">Add to Review Deck</Text>
+        </Pressable>
+      </View>
     </Modal>
   )
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</span>
+    <View className="gap-1">
+      <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">{label}</Text>
       {children}
-    </label>
+    </View>
   )
 }

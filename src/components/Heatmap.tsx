@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { View, Text, Pressable, ScrollView } from 'react-native'
 import type { HeatmapDay } from '../lib/progress'
 
 interface Props {
@@ -25,6 +27,8 @@ function tooltipFor(day: HeatmapDay): string {
 }
 
 export function Heatmap({ data }: Props) {
+  const [selected, setSelected] = useState<HeatmapDay | null>(null)
+
   // group into columns of 7 (weeks), oldest first
   const weeks: HeatmapDay[][] = []
   for (let i = 0; i < data.length; i += 7) {
@@ -32,23 +36,28 @@ export function Heatmap({ data }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="no-scrollbar flex gap-1 overflow-x-auto pb-1">
+    <View className="gap-2">
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 4, paddingBottom: 4 }}>
         {weeks.map((week, wi) => (
-          <div key={wi} className="flex flex-col gap-1">
+          <View key={wi} className="gap-1">
             {week.map((day) => (
-              <div key={day.date} title={tooltipFor(day)} className={`h-3 w-3 rounded-sm ${colorFor(day.total)}`} />
+              <Pressable key={day.date} onPress={() => setSelected(day)}>
+                <View className={`h-3 w-3 rounded-sm ${colorFor(day.total)}`} />
+              </Pressable>
             ))}
-          </div>
+          </View>
         ))}
-      </div>
-      <div className="flex items-center justify-end gap-1.5 text-[10px] text-slate-400">
-        <span>Less</span>
-        {LEVELS.map((l, i) => (
-          <span key={i} className={`h-2.5 w-2.5 rounded-sm ${l.cls}`} />
-        ))}
-        <span>More</span>
-      </div>
-    </div>
+      </ScrollView>
+      <View className="flex-row items-center justify-between">
+        <Text className="text-[10px] text-slate-400">{selected ? tooltipFor(selected) : ' '}</Text>
+        <View className="flex-row items-center gap-1.5">
+          <Text className="text-[10px] text-slate-400">Less</Text>
+          {LEVELS.map((l, i) => (
+            <View key={i} className={`h-2.5 w-2.5 rounded-sm ${l.cls}`} />
+          ))}
+          <Text className="text-[10px] text-slate-400">More</Text>
+        </View>
+      </View>
+    </View>
   )
 }

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { View, Text } from 'react-native'
 
 interface Props {
   label: string
@@ -16,12 +17,12 @@ const ACCENTS: Record<NonNullable<Props['accent']>, string> = {
 
 export function StatCard({ label, value, icon, accent = 'slate' }: Props) {
   return (
-    <div className="flex flex-1 flex-col gap-1 rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+    <View className="flex-1 gap-1 rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
+      <View className="flex-row items-center gap-1.5">
         {icon}
-        {label}
-      </div>
-      <div className={`text-2xl font-bold ${ACCENTS[accent]}`}>{value}</div>
-    </div>
+        <Text className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</Text>
+      </View>
+      <Text className={`text-2xl font-bold ${ACCENTS[accent]}`}>{value}</Text>
+    </View>
   )
 }

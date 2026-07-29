@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { X, RotateCw, PenLine, Check } from 'lucide-react'
+import { View, Text, Pressable, Modal as RNModal } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { X, RotateCw, PenLine, Check } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin } from '../lib/hanzi'
 import { HanziStage } from './HanziStage'
@@ -38,89 +40,89 @@ export function WritingPracticeModal({ word, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-50 dark:bg-slate-950">
-      <div className="flex items-center gap-3 px-4 pt-4">
-        <button
-          onClick={onClose}
-          className="rounded-full bg-white p-2 text-slate-500 shadow-card dark:bg-slate-900 dark:text-slate-400"
-          aria-label="Close practice"
-        >
-          <X size={20} />
-        </button>
-        <div className="flex flex-1 items-center justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Writing Practice</p>
-            <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-              {text} <span className="font-normal text-slate-400">{displayPinyin(word, settings.phoneticScript)}</span>
-            </p>
-          </div>
-          <SpeakButton text={text} />
-        </div>
-      </div>
+    <RNModal animationType="slide" onRequestClose={onClose}>
+      <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
+        <View className="flex-row items-center gap-3 px-4 pt-4">
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close practice"
+            className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900"
+          >
+            <X size={20} color="#64748b" />
+          </Pressable>
+          <View className="flex-1 flex-row items-center justify-between">
+            <View>
+              <Text className="text-xs font-medium uppercase tracking-wide text-slate-400">Writing Practice</Text>
+              <Text className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                {text} <Text className="font-normal text-slate-400">{displayPinyin(word, settings.phoneticScript)}</Text>
+              </Text>
+            </View>
+            <SpeakButton text={text} />
+          </View>
+        </View>
 
-      {phase === 'demo' ? (
-        <>
-          <div className="flex flex-col items-center gap-1 px-4 pb-2 pt-3 text-center">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Watch how it&apos;s written</p>
-          </div>
-          <div className="relative flex-1 mx-4 mb-4">
-            <HanziStage character={text} mode="demo" resetKey={attempt} showOutline />
-          </div>
-          <div className="flex gap-3 px-4 pb-6 pt-4">
-            <button
-              onClick={replayDemo}
-              className="flex items-center justify-center gap-2 rounded-2xl border border-slate-300 px-4 py-4 font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400"
-            >
-              <RotateCw size={18} /> Replay
-            </button>
-            <button
-              onClick={goWrite}
-              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 text-lg font-bold text-white shadow-card active:scale-[0.98]"
-            >
-              <PenLine size={20} /> Let me try
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="flex flex-col items-center gap-1 px-4 pb-2 pt-3 text-center">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-              {result ? `Nice! ${result.mistakes === 0 ? 'Perfect strokes' : `${result.mistakes} mistake${result.mistakes === 1 ? '' : 's'}`}` : 'Trace each stroke'}
-            </p>
-          </div>
-          <div className="relative flex-1 mx-4 mb-4">
-            <HanziStage
-              character={text}
-              mode="quiz"
-              showOutline
-              resetKey={attempt}
-              onQuizComplete={(mistakes) => setResult({ mistakes })}
-            />
-          </div>
-          <div className="flex flex-col gap-2 px-4 pb-6">
-            <div className="flex gap-2">
-              <button
-                onClick={tryAgain}
-                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-300 py-3.5 font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400"
+        {phase === 'demo' ? (
+          <>
+            <View className="items-center gap-1 px-4 pb-2 pt-3">
+              <Text className="text-xs font-medium uppercase tracking-wide text-slate-400">Watch how it's written</Text>
+            </View>
+            <View className="relative mx-4 mb-4 flex-1">
+              <HanziStage character={text} mode="demo" resetKey={attempt} showOutline />
+            </View>
+            <View className="flex-row gap-3 px-4 pb-6 pt-4">
+              <Pressable
+                onPress={replayDemo}
+                className="flex-row items-center justify-center gap-2 rounded-2xl border border-slate-300 px-4 py-4 dark:border-slate-700"
               >
-                <RotateCw size={18} /> Try again
-              </button>
-              <button
-                onClick={replayDemo}
-                className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-slate-300 py-3.5 font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400"
+                <RotateCw size={18} color="#64748b" />
+                <Text className="font-semibold text-slate-500 dark:text-slate-400">Replay</Text>
+              </Pressable>
+              <Pressable
+                onPress={goWrite}
+                className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 shadow-card"
               >
-                Watch demo again
-              </button>
-            </div>
-            <button
-              onClick={onClose}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 text-lg font-bold text-white shadow-card active:scale-[0.98]"
-            >
-              <Check size={20} /> Done
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+                <PenLine size={20} color="white" />
+                <Text className="text-lg font-bold text-white">Let me try</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <>
+            <View className="items-center gap-1 px-4 pb-2 pt-3">
+              <Text className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                {result
+                  ? `Nice! ${result.mistakes === 0 ? 'Perfect strokes' : `${result.mistakes} mistake${result.mistakes === 1 ? '' : 's'}`}`
+                  : 'Trace each stroke'}
+              </Text>
+            </View>
+            <View className="relative mx-4 mb-4 flex-1">
+              <HanziStage character={text} mode="quiz" showOutline resetKey={attempt} onQuizComplete={(mistakes) => setResult({ mistakes })} />
+            </View>
+            <View className="gap-2 px-4 pb-6">
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={tryAgain}
+                  className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-slate-300 py-3.5 dark:border-slate-700"
+                >
+                  <RotateCw size={18} color="#64748b" />
+                  <Text className="font-semibold text-slate-500 dark:text-slate-400">Try again</Text>
+                </Pressable>
+                <Pressable
+                  onPress={replayDemo}
+                  className="flex-1 items-center justify-center rounded-2xl border border-slate-300 py-3.5 dark:border-slate-700"
+                >
+                  <Text className="font-semibold text-slate-500 dark:text-slate-400">Watch demo again</Text>
+                </Pressable>
+              </View>
+              <Pressable onPress={onClose} className="w-full flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 shadow-card">
+                <Check size={20} color="white" />
+                <Text className="text-lg font-bold text-white">Done</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+      </SafeAreaView>
+    </RNModal>
   )
 }

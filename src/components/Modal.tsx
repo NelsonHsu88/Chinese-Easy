@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { Modal as RNModal, View, Text, Pressable, ScrollView } from 'react-native'
+import { X } from 'lucide-react-native'
 
 interface Props {
   title: string
@@ -9,23 +10,18 @@ interface Props {
 
 export function Modal({ title, onClose, children }: Props) {
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
-      <div
-        className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-5 shadow-card animate-popIn dark:bg-slate-900 sm:rounded-3xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold">{title}</h2>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-            aria-label="Close"
-          >
-            <X size={20} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
+    <RNModal transparent animationType="slide" visible onRequestClose={onClose}>
+      <Pressable className="flex-1 justify-end bg-black/40" onPress={onClose}>
+        <Pressable onPress={() => {}} className="max-h-[88%] w-full rounded-t-3xl bg-white p-5 shadow-card dark:bg-slate-900">
+          <View className="mb-4 flex-row items-center justify-between">
+            <Text className="text-lg font-bold text-slate-900 dark:text-white">{title}</Text>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" className="rounded-full p-1.5">
+              <X size={20} color="#94a3b8" />
+            </Pressable>
+          </View>
+          <ScrollView>{children}</ScrollView>
+        </Pressable>
+      </Pressable>
+    </RNModal>
   )
 }
