@@ -127,6 +127,56 @@ function renderRetryTone() {
   return out
 }
 
+// --- 4. Tap: short, soft click for general button presses --------------------
+function renderTapSound() {
+  const duration = 0.045
+  const out = samplesFor(duration)
+  const f0 = 1600
+  const f1 = 900
+
+  let phase = 0
+  for (let i = 0; i < out.length; i++) {
+    const t = i / SAMPLE_RATE
+    const freq = f0 * Math.pow(f1 / f0, t / duration)
+    phase += (2 * Math.PI * freq) / SAMPLE_RATE
+    const gain = t < 0.004 ? expEnvelope(t, 0, 0.0001, 0.004, 0.14) : expEnvelope(t, 0.004, 0.14, duration, 0.0001)
+    out[i] = Math.sin(phase) * gain
+  }
+  return out
+}
+
+// --- 5. Fanfare: a bigger "ta-da!" for finishing a whole lesson --------------
+// A four-note major arpeggio (root/third/fifth/octave) where the last note
+// is held and layered with the fifth underneath, giving it a small "chord"
+// richness that the plain three-note chime doesn't have.
+function renderFanfareSound() {
+  const notes = [523.25, 659.25, 783.99, 1046.5] // C5, E5, G5, C6
+  const noteGap = 0.1
+  const lastNoteLen = 0.5
+  const noteLen = 0.22
+  const totalDuration = (notes.length - 1) * noteGap + lastNoteLen
+  const out = samplesFor(totalDuration)
+
+  notes.forEach((freq, i) => {
+    const isLast = i === notes.length - 1
+    const len = isLast ? lastNoteLen : noteLen
+    const start = i * noteGap
+    const startSample = Math.floor(start * SAMPLE_RATE)
+    const noteSamples = Math.floor(len * SAMPLE_RATE)
+    for (let s = 0; s < noteSamples; s++) {
+      const t = s / SAMPLE_RATE
+      const gain = t < 0.015 ? expEnvelope(t, 0, 0.0001, 0.015, 0.24) : expEnvelope(t, 0.015, 0.24, len, 0.0001)
+      let sample = Math.sin(2 * Math.PI * freq * t) * gain
+      if (isLast) sample += Math.sin(2 * Math.PI * 783.99 * t) * gain * 0.6 // layer the fifth under the held final note
+      const idx = startSample + s
+      if (idx < out.length) out[idx] += sample
+    }
+  })
+  return out
+}
+
 writeWav('stroke.wav', renderStrokeSound())
 writeWav('chime.wav', renderPositiveChime())
 writeWav('retry.wav', renderRetryTone())
+writeWav('tap.wav', renderTapSound())
+writeWav('fanfare.wav', renderFanfareSound())

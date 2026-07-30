@@ -5,17 +5,21 @@ import { mockDeck } from '../data/mockDeck'
 import { loadStored, saveStored } from '../lib/storage'
 import { addDays, todayISO } from '../lib/date'
 import { createNewCard, gradeCard as gradeCardSrs } from '../lib/srs'
+import { xpForGrade, XP_PER_LESSON } from '../lib/townEconomy'
+import { setDevClockOverride } from '../lib/devClock'
 
 export const DEFAULT_SETTINGS: AppSettings = {
   username: 'Learner',
+  email: '',
   script: 'traditional',
   phoneticScript: 'pinyin',
   reviewDirection: 'production',
   dailyReviewLimit: 30,
-  dailyNewWordLimit: 10,
+  dailyNewWordLimit: 5,
   wrongAnswerReps: 3,
   reviewOrder: 'due',
   reminderTime: '19:00',
+  notificationsEnabled: false,
   hskLevel: 1,
 }
 
@@ -64,6 +68,28 @@ interface AppContextValue {
   placementResult?: PlacementResult
   completeOnboarding: (result: PlacementResult) => void
   retakePlacementTest: () => void
+
+  /** My Town economy. */
+  xp: number
+  unlockedBuildingIds: string[]
+  unlockBuilding: (buildingId: string, cost: number) => void
+
+  /** Lessons progress. */
+  completedLessonIds: string[]
+  completeLesson: (lessonId: string) => void
+
+  /** Words added from the Books reader that haven't been seen in My Words yet. */
+  newlyAddedWordIds: string[]
+  addWordFromBook: (wordId: string) => void
+  clearNewWordFlags: () => void
+
+  /** Dev-only frozen "now" override (Settings → Developer) — null means real time. */
+  devClockOverride: string | null
+  updateDevClockOverride: (iso: string | null) => void
+
+  /** Daily/milestone challenges. */
+  claimedChallengeIds: string[]
+  claimChallenge: (challengeId: string, xpReward: number) => void
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -76,19 +102,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dailyProgress, setDailyProgress] = useState<DailyProgress[]>([])
   const [streakState, setStreakState] = useState<StreakState>({ streak: 0, lastActiveDate: null })
   const [onboarding, setOnboarding] = useState<OnboardingState>({ complete: false })
+  const [xp, setXp] = useState(0)
+  const [unlockedBuildingIds, setUnlockedBuildingIds] = useState<string[]>([])
+  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([])
+  const [newlyAddedWordIds, setNewlyAddedWordIds] = useState<string[]>([])
+  const [devClockOverride, setDevClockOverrideState] = useState<string | null>(null)
+  const [claimedChallengeIds, setClaimedChallengeIds] = useState<string[]>([])
 
   useEffect(() => {
     let cancelled = false
     async function hydrate() {
-      const [loadedSettings, loadedDeck, loadedCustomWords, loadedDailyProgress, loadedStreak, loadedOnboarding] =
-        await Promise.all([
-          loadStored('settings', DEFAULT_SETTINGS),
-          loadStored('deck', mockDeck),
-          loadStored('customWords', [] as VocabWord[]),
-          loadStored('dailyProgress', [] as DailyProgress[]),
-          loadStored('streak', { streak: 0, lastActiveDate: null } as StreakState),
-          loadStored('onboarding', { complete: false } as OnboardingState),
-        ])
+      const [
+        loadedSettings,
+        loadedDeck,
+        loadedCustomWords,
+        loadedDailyProgress,
+        loadedStreak,
+        loadedOnboarding,
+        loadedXp,
+        loadedUnlockedBuildingIds,
+        loadedCompletedLessonIds,
+        loadedNewlyAddedWordIds,
+        loadedDevClockOverride,
+        loadedClaimedChallengeIds,
+      ] = await Promise.all([
+        loadStored('settings', DEFAULT_SETTINGS),
+        loadStored('deck', mockDeck),
+        loadStored('customWords', [] as VocabWord[]),
+        loadStored('dailyProgress', [] as DailyProgress[]),
+        loadStored('streak', { streak: 0, lastActiveDate: null } as StreakState),
+        loadStored('onboarding', { complete: false } as OnboardingState),
+        loadStored('xp', 0),
+        loadStored('unlockedBuildingIds', [] as string[]),
+        loadStored('completedLessonIds', [] as string[]),
+        loadStored('newlyAddedWordIds', [] as string[]),
+        loadStored('devClockOverride', null as string | null),
+        loadStored('claimedChallengeIds', [] as string[]),
+      ])
       if (cancelled) return
       setSettings({
         ...DEFAULT_SETTINGS,
@@ -101,6 +151,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDailyProgress(loadedDailyProgress)
       setStreakState(loadedStreak)
       setOnboarding(loadedOnboarding)
+      setXp(loadedXp)
+      setUnlockedBuildingIds(loadedUnlockedBuildingIds)
+      setCompletedLessonIds(loadedCompletedLessonIds)
+      setNewlyAddedWordIds(loadedNewlyAddedWordIds)
+      setDevClockOverrideState(loadedDevClockOverride)
+      setDevClockOverride(loadedDevClockOverride)
+      setClaimedChallengeIds(loadedClaimedChallengeIds)
       setReady(true)
     }
     void hydrate()
@@ -112,7 +169,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Skip persisting on the very first render of each piece of state — that
   // value is just a placeholder default until hydrate() above overwrites it,
   // and saving it would clobber whatever was already in AsyncStorage.
-  const skipNextSave = useRef({ settings: true, deck: true, customWords: true, dailyProgress: true, streak: true, onboarding: true })
+  const skipNextSave = useRef({
+    settings: true,
+    deck: true,
+    customWords: true,
+    dailyProgress: true,
+    streak: true,
+    onboarding: true,
+    xp: true,
+    unlockedBuildingIds: true,
+    completedLessonIds: true,
+    newlyAddedWordIds: true,
+    devClockOverride: true,
+    claimedChallengeIds: true,
+  })
 
   useEffect(() => {
     if (skipNextSave.current.settings) { skipNextSave.current.settings = false; return }
@@ -138,6 +208,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (skipNextSave.current.onboarding) { skipNextSave.current.onboarding = false; return }
     void saveStored('onboarding', onboarding)
   }, [onboarding])
+  useEffect(() => {
+    if (skipNextSave.current.xp) { skipNextSave.current.xp = false; return }
+    void saveStored('xp', xp)
+  }, [xp])
+  useEffect(() => {
+    if (skipNextSave.current.unlockedBuildingIds) { skipNextSave.current.unlockedBuildingIds = false; return }
+    void saveStored('unlockedBuildingIds', unlockedBuildingIds)
+  }, [unlockedBuildingIds])
+  useEffect(() => {
+    if (skipNextSave.current.completedLessonIds) { skipNextSave.current.completedLessonIds = false; return }
+    void saveStored('completedLessonIds', completedLessonIds)
+  }, [completedLessonIds])
+  useEffect(() => {
+    if (skipNextSave.current.newlyAddedWordIds) { skipNextSave.current.newlyAddedWordIds = false; return }
+    void saveStored('newlyAddedWordIds', newlyAddedWordIds)
+  }, [newlyAddedWordIds])
+  useEffect(() => {
+    if (skipNextSave.current.devClockOverride) { skipNextSave.current.devClockOverride = false; return }
+    void saveStored('devClockOverride', devClockOverride)
+  }, [devClockOverride])
+  useEffect(() => {
+    if (skipNextSave.current.claimedChallengeIds) { skipNextSave.current.claimedChallengeIds = false; return }
+    void saveStored('claimedChallengeIds', claimedChallengeIds)
+  }, [claimedChallengeIds])
 
   const wordBank = useMemo(() => [...hskFrequency, ...customWords], [customWords])
 
@@ -217,8 +311,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
       )
       bumpTodayActivity('reviewsCompleted', 1)
       registerActivity()
+      setXp((prev) => prev + xpForGrade(grade))
     },
     [settings.wrongAnswerReps, bumpTodayActivity, registerActivity],
+  )
+
+  const unlockBuilding = useCallback(
+    (buildingId: string, cost: number) => {
+      if (unlockedBuildingIds.includes(buildingId) || xp < cost) return
+      setXp((prev) => prev - cost)
+      setUnlockedBuildingIds((prev) => [...prev, buildingId])
+    },
+    [xp, unlockedBuildingIds],
+  )
+
+  const completeLesson = useCallback((lessonId: string) => {
+    setCompletedLessonIds((prev) => {
+      if (prev.includes(lessonId)) return prev
+      return [...prev, lessonId]
+    })
+    setXp((prev) => prev + XP_PER_LESSON)
+  }, [])
+
+  const addWordFromBook = useCallback(
+    (wordId: string) => {
+      addToReviewDeck(wordId)
+      setNewlyAddedWordIds((prev) => (prev.includes(wordId) ? prev : [...prev, wordId]))
+    },
+    [addToReviewDeck],
+  )
+
+  const clearNewWordFlags = useCallback(() => {
+    setNewlyAddedWordIds([])
+  }, [])
+
+  const updateDevClockOverride = useCallback((iso: string | null) => {
+    setDevClockOverride(iso)
+    setDevClockOverrideState(iso)
+  }, [])
+
+  const claimChallenge = useCallback(
+    (challengeId: string, xpReward: number) => {
+      if (claimedChallengeIds.includes(challengeId)) return
+      setClaimedChallengeIds((prev) => [...prev, challengeId])
+      setXp((prev) => prev + xpReward)
+    },
+    [claimedChallengeIds],
   )
 
   const completePracticeRep = useCallback((wordId: string) => {
@@ -263,6 +401,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     placementResult: onboarding.result,
     completeOnboarding,
     retakePlacementTest,
+    xp,
+    unlockedBuildingIds,
+    unlockBuilding,
+    completedLessonIds,
+    completeLesson,
+    newlyAddedWordIds,
+    addWordFromBook,
+    clearNewWordFlags,
+    devClockOverride,
+    updateDevClockOverride,
+    claimedChallengeIds,
+    claimChallenge,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

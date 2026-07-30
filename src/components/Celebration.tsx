@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing } from 'react-native-reanimated'
 
-const COLORS = ['#1fb96d', '#f6432c', '#f99b04', '#3b82f6', '#a855f7', '#ec4899', '#43d488']
+const COLORS = ['#22c55e', '#ff6b6b', '#f5b93d', '#3b82f6', '#a855f7', '#ec4899', '#43d488']
 const PARTICLE_COUNT = 28
 const DURATION_MS = 950
 

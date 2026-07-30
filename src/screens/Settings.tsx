@@ -19,6 +19,65 @@ function dateToTimeString(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
+function DevClockSection() {
+  const { devClockOverride, updateDevClockOverride } = useApp()
+  const enabled = devClockOverride !== null
+  const base = devClockOverride ? new Date(devClockOverride) : new Date()
+
+  const realTodayStart = new Date()
+  realTodayStart.setHours(0, 0, 0, 0)
+  const baseDayStart = new Date(base)
+  baseDayStart.setHours(0, 0, 0, 0)
+  const dayOffset = Math.round((baseDayStart.getTime() - realTodayStart.getTime()) / 86400000)
+  const hour = base.getHours()
+
+  const applyOffset = (newDayOffset: number, newHour: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() + newDayOffset)
+    d.setHours(newHour, 0, 0, 0)
+    updateDevClockOverride(d.toISOString())
+  }
+
+  return (
+    <SettingsSection title="Developer">
+      <Row label="Simulate a different date/time" hint="Freezes the app's clock so you can test streaks, daily resets, and challenges without waiting">
+        <Pressable
+          onPress={() => (enabled ? updateDevClockOverride(null) : applyOffset(0, new Date().getHours()))}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: enabled }}
+          className={`h-7 w-12 justify-center rounded-full px-0.5 ${enabled ? 'bg-brand-500' : 'bg-slate-200 dark:bg-slate-700'}`}
+        >
+          <View className={`h-6 w-6 rounded-full bg-white shadow-card ${enabled ? 'ml-5' : 'ml-0'}`} />
+        </Pressable>
+      </Row>
+
+      {enabled && (
+        <View className="mt-3 gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <Row label="Days from today">
+            <Stepper value={dayOffset} min={-90} max={90} onChange={(v) => applyOffset(v, hour)} />
+          </Row>
+          <Row label="Hour of day">
+            <Stepper value={hour} min={0} max={23} onChange={(v) => applyOffset(dayOffset, v)} />
+          </Row>
+          <View className="rounded-xl bg-brand-50 px-3 py-2.5 dark:bg-brand-900/20">
+            <Text className="text-center text-sm font-bold text-brand-700 dark:text-brand-300">
+              {base.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              {' · '}
+              {base.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => updateDevClockOverride(null)}
+            className="items-center rounded-xl border border-slate-300 py-2 dark:border-slate-700"
+          >
+            <Text className="text-sm font-semibold text-slate-600 dark:text-slate-300">Reset to real time</Text>
+          </Pressable>
+        </View>
+      )}
+    </SettingsSection>
+  )
+}
+
 export function Settings() {
   const { settings, updateSettings, retakePlacementTest } = useApp()
   const [showTimePicker, setShowTimePicker] = useState(false)
@@ -57,7 +116,7 @@ export function Settings() {
         <SettingsSection title="Skill level">
           <Row label="Estimated HSK level" hint="From your placement test">
             <View className="flex-row items-center gap-1.5 rounded-full bg-brand-100 px-3 py-1 dark:bg-brand-900/40">
-              <GraduationCap size={16} color="#137548" />
+              <GraduationCap size={16} color="#15803d" />
               <Text className="text-sm font-bold text-brand-700 dark:text-brand-300">HSK {settings.hskLevel}</Text>
             </View>
           </Row>
@@ -134,6 +193,16 @@ export function Settings() {
         </SettingsSection>
 
         <SettingsSection title="Reminders">
+          <Row label="Practice reminders" hint="Enabled during onboarding">
+            <Pressable
+              onPress={() => updateSettings({ notificationsEnabled: !settings.notificationsEnabled })}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: settings.notificationsEnabled }}
+              className={`h-7 w-12 justify-center rounded-full px-0.5 ${settings.notificationsEnabled ? 'bg-brand-500' : 'bg-slate-200 dark:bg-slate-700'}`}
+            >
+              <View className={`h-6 w-6 rounded-full bg-white shadow-card ${settings.notificationsEnabled ? 'ml-5' : 'ml-0'}`} />
+            </Pressable>
+          </Row>
           <Row label="Daily reminder time" hint="UI only for now">
             <Pressable
               onPress={() => setShowTimePicker(true)}
@@ -152,6 +221,8 @@ export function Settings() {
             />
           )}
         </SettingsSection>
+
+        <DevClockSection />
       </ScrollView>
     </SafeAreaView>
   )

@@ -51,6 +51,7 @@ export type ReviewOrder = 'due' | 'shuffled' | 'hardest-first'
 
 export interface AppSettings {
   username: string
+  email: string
   script: ScriptMode
   phoneticScript: PhoneticScript
   reviewDirection: ReviewDirection
@@ -59,6 +60,7 @@ export interface AppSettings {
   wrongAnswerReps: number
   reviewOrder: ReviewOrder
   reminderTime: string // HH:MM
+  notificationsEnabled: boolean
   hskLevel: number
 }
 
@@ -70,4 +72,89 @@ export interface PlacementAnswer {
 export interface PlacementResult {
   estimatedHsk: number
   completedAt: string
+}
+
+export interface TownBuilding {
+  id: string
+  name: string
+  description: string
+  xpCost: number
+}
+
+export interface Unit {
+  id: string
+  title: string
+  description: string
+  order: number
+  hanzi: string
+  pinyin: string
+}
+
+export interface MatchPair {
+  hanzi: string
+  pinyin: string
+  english: string
+}
+
+export interface MatchExercise {
+  type: 'match'
+  prompt: string
+  pairs: MatchPair[]
+}
+
+export interface ScrambleExercise {
+  type: 'scramble'
+  instruction: string
+  chinese: string
+  tokens: string[]
+  pinyin: string
+  english: string
+}
+
+export interface DialogueLine {
+  speaker: string
+  line: string
+}
+
+export interface FillBlankExercise {
+  type: 'fill-blank'
+  dialogue: DialogueLine[]
+  options: string[]
+  answer: string
+  english: string
+}
+
+export type LessonExercise = MatchExercise | ScrambleExercise | FillBlankExercise
+
+export interface Lesson {
+  id: string
+  unitId: string
+  title: string
+  exercises: LessonExercise[]
+}
+
+export interface StoryPage {
+  chinese: string
+  pinyin: string
+  translation: string
+}
+
+export type StoryDifficulty = 'easy' | 'hard'
+
+export interface Story {
+  id: string
+  title: string
+  hskLevel: number
+  difficulty: StoryDifficulty
+  /** Empty until the story is authored — Books.tsx shows these as "coming soon". */
+  pages: StoryPage[]
+}
+
+/** A Kangxi radical — not a vocabulary word, so it's never addable to My Words. */
+export interface Radical {
+  id: string
+  character: string
+  pinyin: string
+  meaning: string
+  strokeCount: number
 }

@@ -1,13 +1,14 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { View, Text, Pressable, ScrollView } from 'react-native'
+import { View, Text, TextInput, Pressable, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { BookText, PenLine } from 'lucide-react-native'
+import { BookText, PenLine, Search, Mic, Sparkles } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, displayExample } from '../lib/hanzi'
 import { Modal } from '../components/Modal'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
 import { SpeakButton } from '../components/SpeakButton'
 import { CATEGORY_META, CATEGORY_ORDER } from '../lib/categories'
+import { todayISO } from '../lib/date'
 import type { VocabWord, WordCategory } from '../types'
 
 interface Group {
@@ -24,14 +25,28 @@ export function Dictionary() {
   const [practiceWord, setPracticeWord] = useState<VocabWord | null>(null)
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all')
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all')
+  const [query, setQuery] = useState('')
 
-  const filtered = useMemo(
-    () =>
-      wordBank.filter(
-        (w) => (levelFilter === 'all' || w.hskLevel === levelFilter) && (categoryFilter === 'all' || w.category === categoryFilter),
-      ),
-    [wordBank, levelFilter, categoryFilter],
-  )
+  const wordOfTheDay = useMemo(() => {
+    if (wordBank.length === 0) return undefined
+    const dayIndex = todayISO().split('-').reduce((sum, part) => sum + Number(part), 0)
+    return wordBank[dayIndex % wordBank.length]
+  }, [wordBank])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return wordBank.filter((w) => {
+      if (levelFilter !== 'all' && w.hskLevel !== levelFilter) return false
+      if (categoryFilter !== 'all' && w.category !== categoryFilter) return false
+      if (!q) return true
+      return (
+        w.simplified.includes(q) ||
+        w.traditional.includes(q) ||
+        w.pinyin.toLowerCase().includes(q) ||
+        w.definition.toLowerCase().includes(q)
+      )
+    })
+  }, [wordBank, levelFilter, categoryFilter, query])
 
   const groups = useMemo<Group[]>(() => {
     const byLevel = new Map<number | 'custom', VocabWord[]>()
@@ -63,9 +78,21 @@ export function Dictionary() {
             <Text className="text-lg font-bold text-slate-900 dark:text-white">Dictionary</Text>
           </View>
           <View className="flex-row items-center gap-1.5 rounded-full bg-brand-100 px-3 py-1 dark:bg-brand-900/40">
-            <BookText size={14} color="#137548" />
+            <BookText size={14} color="#15803d" />
             <Text className="text-xs font-bold text-brand-700 dark:text-brand-300">{filtered.length} words</Text>
           </View>
+        </View>
+
+        <View className="mb-3 flex-row items-center gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-card dark:bg-slate-900">
+          <Search size={16} color="#94a3b8" />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search characters, pinyin, or meaning..."
+            placeholderTextColor="#94a3b8"
+            className="flex-1 text-sm text-slate-900 dark:text-white"
+          />
+          <Mic size={16} color="#cbd5e1" />
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
@@ -94,6 +121,27 @@ export function Dictionary() {
       </View>
 
       <ScrollView contentContainerStyle={{ gap: 24, paddingHorizontal: 16, paddingBottom: 32 }}>
+        {!query && wordOfTheDay && (
+          <Pressable
+            onPress={() => setSelected(wordOfTheDay)}
+            className="flex-row items-center gap-3 rounded-2xl bg-brand-50 p-4 shadow-card dark:bg-brand-950/40"
+          >
+            <View className="h-10 w-10 items-center justify-center rounded-full bg-brand-500">
+              <Sparkles size={18} color="white" />
+            </View>
+            <View className="flex-1">
+              <Text className="text-xs font-semibold text-brand-600 dark:text-brand-400">Word of the Day</Text>
+              <View className="mt-0.5 flex-row items-baseline gap-2">
+                <Text className="font-hanzi text-lg font-bold text-slate-900 dark:text-white">
+                  {displayWord(wordOfTheDay, settings.script)}
+                </Text>
+                <Text className="text-xs text-slate-400">{displayPinyin(wordOfTheDay, settings.phoneticScript)}</Text>
+                <Text className="text-xs text-slate-500 dark:text-slate-400">{wordOfTheDay.definition}</Text>
+              </View>
+            </View>
+          </Pressable>
+        )}
+
         {groups.length === 0 && <Text className="py-12 text-center text-sm text-slate-400">No words match these filters.</Text>}
         {groups.map((group) => (
           <View key={group.label}>

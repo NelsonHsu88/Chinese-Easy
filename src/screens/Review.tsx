@@ -53,7 +53,6 @@ export function Review() {
   const direction = currentWordId ? directionFor(currentWordId, settings.reviewDirection) : 'recognition'
 
   const total = sessionQueue.length
-  const remainingCount = Math.max(0, total - index)
 
   const advance = () => {
     setRevealed(false)
@@ -136,7 +135,7 @@ export function Review() {
     const doneCount = practice.total - practice.remaining + 1
     return (
       <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
-        <ReviewHeader onClose={() => router.push('/')} label={`Practice ${doneCount} of ${practice.total}`} progress={doneCount / practice.total} tint="amber" />
+        <ReviewHeader onClose={() => router.push('/')} step={doneCount} total={practice.total} progress={doneCount / practice.total} tint="amber" />
         <View className="items-center justify-center gap-3 px-4 pb-4 pt-6">
           <Text className="font-hanzi text-3xl font-semibold text-slate-900 dark:text-white">{displayWord(word, settings.script)}</Text>
           <Text className="text-sm text-slate-400">Rewrite it to lock it in</Text>
@@ -156,7 +155,7 @@ export function Review() {
   return (
     <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
       <Celebration trigger={celebrateKey} />
-      <ReviewHeader onClose={() => router.push('/')} label={`${remainingCount} of ${total} remaining`} progress={index / total} />
+      <ReviewHeader onClose={() => router.push('/')} step={index + 1} total={total} progress={(index + 1) / total} />
 
       <View className="items-center gap-1 px-4 pb-2 pt-3">
         {direction === 'recognition' ? (
@@ -204,30 +203,30 @@ export function Review() {
 
       <View className="px-4 pb-6">
         {!revealed ? (
-          <View className="flex-row gap-2">
-            <Pressable
-              onPress={() => setAttempt((a) => a + 1)}
-              accessibilityLabel="Restart writing attempt"
-              className="items-center justify-center rounded-2xl border border-slate-300 px-3.5 py-4 dark:border-slate-700"
-            >
-              <RotateCw size={18} color="#64748b" />
-            </Pressable>
-            {!hintShown && direction === 'production' && (
-              <Pressable
-                onPress={() => setHintShown(true)}
-                className="flex-row items-center justify-center gap-2 rounded-2xl border border-amber-300 px-3.5 py-4 dark:border-amber-800"
-              >
-                <Lightbulb size={18} color="#dd7302" />
-                <Text className="font-semibold text-amber-600 dark:text-amber-400">View Strokes</Text>
-              </Pressable>
-            )}
+          <View className="gap-3">
             <Pressable
               onPress={() => setRevealed(true)}
-              className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-slate-900 py-4 shadow-card dark:bg-white"
+              className="flex-row items-center justify-center gap-2 rounded-2xl bg-slate-900 py-4 shadow-card dark:bg-white"
             >
               <Eye size={20} color="white" />
               <Text className="text-lg font-bold text-white dark:text-slate-900">Show Answer</Text>
             </Pressable>
+            <View className="flex-row items-center justify-between px-1">
+              <Pressable
+                onPress={() => setAttempt((a) => a + 1)}
+                accessibilityLabel="Restart writing attempt"
+                className="flex-row items-center gap-1.5"
+              >
+                <RotateCw size={16} color="#64748b" />
+                <Text className="text-sm font-semibold text-slate-500 dark:text-slate-400">Reset</Text>
+              </Pressable>
+              {!hintShown && direction === 'production' && (
+                <Pressable onPress={() => setHintShown(true)} className="flex-row items-center gap-1.5">
+                  <Lightbulb size={16} color="#db9f2e" />
+                  <Text className="text-sm font-semibold text-amber-600 dark:text-amber-400">Hint</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
         ) : (
           <View className="flex-row gap-2">
@@ -246,12 +245,14 @@ export function Review() {
 
 function ReviewHeader({
   onClose,
-  label,
+  step,
+  total,
   progress,
   tint = 'brand',
 }: {
   onClose: () => void
-  label: string
+  step: number
+  total: number
   progress: number
   tint?: 'brand' | 'amber'
 }) {
@@ -265,8 +266,10 @@ function ReviewHeader({
         <View className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
           <View className={`h-full rounded-full ${tint === 'amber' ? 'bg-amber-500' : 'bg-brand-500'}`} style={{ width: `${pct}%` }} />
         </View>
+        <Text className="w-12 text-right text-xs font-semibold text-slate-400">
+          {step} / {total}
+        </Text>
       </View>
-      <Text className="mt-2 text-center text-xs font-medium text-slate-400">{label}</Text>
     </View>
   )
 }

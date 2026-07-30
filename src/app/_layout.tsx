@@ -6,9 +6,9 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import * as SplashScreen from 'expo-splash-screen'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
-import { Inter_400Regular } from '@expo-google-fonts/inter'
-import { NotoSansSC_400Regular } from '@expo-google-fonts/noto-sans-sc'
-import { NotoSansTC_400Regular } from '@expo-google-fonts/noto-sans-tc'
+import { Nunito_400Regular } from '@expo-google-fonts/nunito'
+import { NotoSerifSC_400Regular } from '@expo-google-fonts/noto-serif-sc'
+import { NotoSerifTC_400Regular } from '@expo-google-fonts/noto-serif-tc'
 import { AppProvider, useApp } from '../context/AppContext'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
@@ -17,9 +17,9 @@ function RootNavigator() {
   const { ready, onboardingComplete } = useApp()
   const pathname = usePathname()
   const [fontsLoaded] = useFonts({
-    Inter: Inter_400Regular,
-    NotoSansSC: NotoSansSC_400Regular,
-    NotoSansTC: NotoSansTC_400Regular,
+    Nunito: Nunito_400Regular,
+    NotoSerifSC: NotoSerifSC_400Regular,
+    NotoSerifTC: NotoSerifTC_400Regular,
   })
 
   useEffect(() => {

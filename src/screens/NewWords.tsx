@@ -119,7 +119,7 @@ export function NewWords() {
                 onPress={() => setShowPractice(true)}
                 className="w-full flex-row items-center justify-center gap-2 rounded-2xl border border-dashed border-brand-300 py-3.5 dark:border-brand-800"
               >
-                <PenLine size={18} color="#149457" />
+                <PenLine size={18} color="#16a34a" />
                 <Text className="font-semibold text-brand-600 dark:text-brand-400">Practice writing this word</Text>
               </Pressable>
             </View>

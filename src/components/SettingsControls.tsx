@@ -109,9 +109,9 @@ export function SliderRow({
         step={step}
         value={value}
         onValueChange={onChange}
-        minimumTrackTintColor="#1fb96d"
+        minimumTrackTintColor="#22c55e"
         maximumTrackTintColor="#e2e8f0"
-        thumbTintColor="#1fb96d"
+        thumbTintColor="#22c55e"
       />
     </View>
   )

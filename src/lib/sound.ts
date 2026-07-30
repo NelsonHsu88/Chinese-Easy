@@ -10,6 +10,8 @@ const sources = {
   stroke: require('../assets/sounds/stroke.wav'),
   chime: require('../assets/sounds/chime.wav'),
   retry: require('../assets/sounds/retry.wav'),
+  tap: require('../assets/sounds/tap.wav'),
+  fanfare: require('../assets/sounds/fanfare.wav'),
 } as const
 
 const players: Partial<Record<keyof typeof sources, AudioPlayer>> = {}
@@ -37,4 +39,14 @@ export function playPositiveChime(): void {
 /** Soft, low downward tone — grading a card Again or Hard. Not punishing, just distinct. */
 export function playRetryTone(): void {
   play('retry')
+}
+
+/** A short, soft click — general button-press feedback. */
+export function playTapSound(): void {
+  play('tap')
+}
+
+/** A bigger four-note "ta-da!" — plays once, when a whole lesson is finished. */
+export function playFanfare(): void {
+  play('fanfare')
 }

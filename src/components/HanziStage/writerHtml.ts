@@ -21,7 +21,7 @@ export const WRITER_HTML = `<!doctype html>
 </head>
 <body>
 <div id="target"></div>
-<svg id="hint" style="display:none"><path id="hint-path" fill="#1fb96d" fill-opacity="0.32" /></svg>
+<svg id="hint" style="display:none"><path id="hint-path" fill="#22c55e" fill-opacity="0.32" /></svg>
 <script>${HANZI_WRITER_ENGINE_JS}</script>
 <script>
 (function () {
@@ -30,8 +30,13 @@ export const WRITER_HTML = `<!doctype html>
   var hintShown = false;
 
   function post(payload) {
+    var json = JSON.stringify(payload);
     if (window.ReactNativeWebView) {
-      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      window.ReactNativeWebView.postMessage(json);
+    } else if (window.parent && window.parent !== window) {
+      // Web fallback: this HTML is running inside a plain <iframe> (no react-native-webview
+      // bridge exists there), so post straight to the parent window instead.
+      window.parent.postMessage(json, '*');
     }
   }
 
@@ -79,10 +84,10 @@ export const WRITER_HTML = `<!doctype html>
         strokeAnimationSpeed: mode === 'demo' ? 3.5 : 1,
         strokeFadeDuration: 200,
         delayBetweenStrokes: mode === 'demo' ? 60 : 250,
-        strokeColor: '#1fb96d',
-        radicalColor: '#149457',
+        strokeColor: '#22c55e',
+        radicalColor: '#16a34a',
         outlineColor: '#cbd5e1',
-        highlightColor: '#f6432c',
+        highlightColor: '#ff6b6b',
         drawingColor: '#0f172a',
         drawingWidth: msg.drawingWidth,
         strokeWidth: msg.strokeWidth,

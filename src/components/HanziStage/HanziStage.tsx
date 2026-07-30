@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, ActivityIndicator, type LayoutChangeEvent } from 'react-native'
+import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Platform, View, Text, ActivityIndicator, type LayoutChangeEvent } from 'react-native'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import type { CharacterJson } from 'hanzi-writer'
 import { playStrokeSound } from '../../lib/sound'
@@ -153,6 +153,7 @@ interface GlyphProps {
 
 function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
   const webviewRef = useRef<WebView>(null)
+  const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const startedRef = useRef(false)
   const webviewReadyRef = useRef(false)
   const initSentRef = useRef(false)
@@ -178,23 +179,31 @@ function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgres
     }
   }, [char])
 
+  /** Sends a message into this glyph's writer — a real WebView on native, a plain <iframe> on web (see render below). */
+  const postToGlyph = (payload: object) => {
+    const json = JSON.stringify(payload)
+    if (Platform.OS === 'web') {
+      iframeRef.current?.contentWindow?.postMessage(json, '*')
+    } else {
+      webviewRef.current?.postMessage(json)
+    }
+  }
+
   const sendInit = () => {
     if (initSentRef.current || !strokeData || !webviewReadyRef.current) return
     initSentRef.current = true
-    webviewRef.current?.postMessage(
-      JSON.stringify({
-        type: 'init',
-        char,
-        mode,
-        showOutline,
-        showStartHint,
-        size,
-        padding,
-        drawingWidth,
-        strokeWidth,
-        strokeData,
-      }),
-    )
+    postToGlyph({
+      type: 'init',
+      char,
+      mode,
+      showOutline,
+      showStartHint,
+      size,
+      padding,
+      drawingWidth,
+      strokeWidth,
+      strokeData,
+    })
   }
 
   useEffect(() => {
@@ -202,10 +211,10 @@ function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgres
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokeData])
 
-  const handleMessage = (event: WebViewMessageEvent) => {
+  const processMessage = (data: string) => {
     let msg: { type: string; strokesRemaining?: number; totalMistakes?: number }
     try {
-      msg = JSON.parse(event.nativeEvent.data)
+      msg = JSON.parse(data)
     } catch {
       return
     }
@@ -227,6 +236,26 @@ function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgres
     }
   }
 
+  const handleMessage = (event: WebViewMessageEvent) => processMessage(event.nativeEvent.data)
+
+  // On web there's no react-native-webview bridge — the glyph's <iframe> posts straight
+  // to window instead (see writerHtml.ts's post()). Every glyph's iframe shares the same
+  // top-level window, so filter by source to route each message to the right instance.
+  // This must be a layout effect, not a plain effect: the iframe starts parsing and
+  // running its script (which posts "ready" once, with no retry) as soon as it's
+  // inserted into the DOM, and a passive effect can run late enough to miss that
+  // first message, leaving the glyph stuck on its loading spinner forever.
+  useLayoutEffect(() => {
+    if (Platform.OS !== 'web') return
+    const listener = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return
+      processMessage(event.data)
+    }
+    window.addEventListener('message', listener)
+    return () => window.removeEventListener('message', listener)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Only start animating/quizzing once this glyph has settled (loaded or errored)
   // and it's its turn. A char with no stroke data still counts as "done" so it
   // doesn't permanently block the characters after it in the same word.
@@ -239,7 +268,7 @@ function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgres
       else onQuizComplete(0)
       return
     }
-    webviewRef.current?.postMessage(JSON.stringify({ type: 'start' }))
+    postToGlyph({ type: 'start' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, status])
 
@@ -249,21 +278,39 @@ function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgres
       style={{ width: size, height: size }}
       pointerEvents={active ? 'auto' : 'none'}
     >
-      {status !== 'error' && (
-        <WebView
-          ref={webviewRef}
-          source={{ html: WRITER_HTML }}
-          onMessage={handleMessage}
-          originWhitelist={['*']}
-          scrollEnabled={false}
-          bounces={false}
-          style={{ width: size, height: size, backgroundColor: 'transparent' }}
-          containerStyle={{ backgroundColor: 'transparent' }}
-        />
-      )}
+      {status !== 'error' &&
+        (Platform.OS === 'web'
+          ? createElement('iframe', {
+              ref: iframeRef,
+              srcDoc: WRITER_HTML,
+              style: { width: size, height: size, border: 'none', background: 'transparent' },
+              title: `hanzi-writer-${char}`,
+              // The iframe's own script posts a one-off "ready" message with no retry,
+              // which is easy to miss (a background/inactive screen kept alive by the
+              // navigator, or any other timing hiccup) and then never recovers. The
+              // native onLoad event is a reliable guarantee the document already
+              // finished executing, so use it as the primary readiness signal on web —
+              // the "ready" message becomes a harmless backup if it does arrive.
+              onLoad: () => {
+                webviewReadyRef.current = true
+                sendInit()
+              },
+            })
+          : (
+            <WebView
+              ref={webviewRef}
+              source={{ html: WRITER_HTML }}
+              onMessage={handleMessage}
+              originWhitelist={['*']}
+              scrollEnabled={false}
+              bounces={false}
+              style={{ width: size, height: size, backgroundColor: 'transparent' }}
+              containerStyle={{ backgroundColor: 'transparent' }}
+            />
+          ))}
       {status === 'loading' && (
         <View className="absolute inset-0 items-center justify-center">
-          <ActivityIndicator color="#1fb96d" />
+          <ActivityIndicator color="#22c55e" />
         </View>
       )}
       {status === 'error' && (

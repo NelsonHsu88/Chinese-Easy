@@ -1,3 +1,5 @@
+import { devNow } from './devClock'
+
 export function toISODate(d: Date): string {
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
@@ -6,7 +8,7 @@ export function toISODate(d: Date): string {
 }
 
 export function todayISO(): string {
-  return toISODate(new Date())
+  return toISODate(devNow())
 }
 
 export function addDays(iso: string, days: number): string {
