@@ -4,26 +4,30 @@ import { View, Text, Pressable } from 'react-native'
 type CardColor = 'coral' | 'brand' | 'amber' | 'violet'
 
 /** Pastel card + dark text + a large colored icon on the edge — matches the "Training Game" cards in the reference mockups. */
-const PALETTE: Record<CardColor, { card: string; pillBg: string; pillText: string }> = {
+const PALETTE: Record<CardColor, { card: string; pillBg: string; pillText: string; statPanel: string }> = {
   coral: {
-    card: 'bg-coral-50 dark:bg-coral-950/40',
-    pillBg: 'bg-coral-100 dark:bg-coral-900/50',
+    card: 'bg-coral-100/70 dark:bg-coral-950/40',
+    pillBg: 'bg-coral-200/80 dark:bg-coral-900/50',
     pillText: 'text-coral-700 dark:text-coral-300',
+    statPanel: 'bg-coral-50/80 dark:bg-black/20',
   },
   brand: {
-    card: 'bg-brand-50 dark:bg-brand-950/40',
-    pillBg: 'bg-brand-100 dark:bg-brand-900/50',
+    card: 'bg-brand-100/70 dark:bg-brand-950/40',
+    pillBg: 'bg-brand-200/80 dark:bg-brand-900/50',
     pillText: 'text-brand-700 dark:text-brand-300',
+    statPanel: 'bg-brand-50/80 dark:bg-black/20',
   },
   amber: {
-    card: 'bg-amber-50 dark:bg-amber-950/40',
-    pillBg: 'bg-amber-100 dark:bg-amber-900/50',
+    card: 'bg-amber-100/70 dark:bg-amber-950/40',
+    pillBg: 'bg-amber-200/80 dark:bg-amber-900/50',
     pillText: 'text-amber-700 dark:text-amber-300',
+    statPanel: 'bg-amber-50/80 dark:bg-black/20',
   },
   violet: {
-    card: 'bg-violet-50 dark:bg-violet-950/40',
-    pillBg: 'bg-violet-100 dark:bg-violet-900/50',
+    card: 'bg-violet-100/70 dark:bg-violet-950/40',
+    pillBg: 'bg-violet-200/80 dark:bg-violet-900/50',
     pillText: 'text-violet-700 dark:text-violet-300',
+    statPanel: 'bg-violet-50/80 dark:bg-black/20',
   },
 }
 
@@ -56,11 +60,16 @@ export function IllustratedCard({ tag, title, subtitle, icon, color, stats, onPr
         </View>
         <Text className="mt-3 text-xl font-extrabold text-slate-900 dark:text-white">{title}</Text>
         <Text className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{subtitle}</Text>
-        <View className="mt-4 flex-row items-center gap-6">
-          {stats.map((s) => (
-            <View key={s.label}>
-              <Text className="text-lg font-bold leading-none text-slate-900 dark:text-white">{s.value}</Text>
-              <Text className="mt-1 text-[11px] text-slate-400">{s.label}</Text>
+        {/* The reference mockups seat the stats in their own inset panel, a shade
+            lighter than the card, rather than letting them sit on the card ground. */}
+        <View className={`mt-4 flex-row items-center rounded-2xl px-4 py-3 ${palette.statPanel}`}>
+          {stats.map((s, i) => (
+            <View key={s.label} className="flex-1 flex-row items-center">
+              {i > 0 && <View className="mr-4 h-9 w-px bg-black/10 dark:bg-white/15" />}
+              <View>
+                <Text className="text-xl font-extrabold leading-none text-slate-900 dark:text-white">{s.value}</Text>
+                <Text className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{s.label}</Text>
+              </View>
             </View>
           ))}
         </View>

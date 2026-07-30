@@ -20,29 +20,41 @@ When bumping dependencies, prefer `npx expo install <package>` (or `npx expo ins
 
 ## Architecture
 
-This is a React Native + Expo app (not a website) — a spaced-repetition Chinese vocabulary trainer with stroke-order writing practice. It runs on iOS, Android, and (via react-native-web) in a browser.
+This is a React Native + Expo app (not a website) — a Duolingo-style Chinese learning app combining spaced-repetition vocabulary review, stroke-order writing practice, structured lessons, a reading library, and a light gamification layer (XP, streaks, daily/milestone challenges, an unlockable "My Town"). It runs on iOS, Android, and (via react-native-web) in a browser. Script is traditional-only (`settings.script` is forced to `'traditional'` on hydrate regardless of what was persisted).
 
 ### Routing vs. screen implementation
 
-Expo Router is file-based, rooted at `src/app/` (not a top-level `app/` — Expo Router auto-detects `src/app` when there's no root-level `app/` dir). Files under `src/app/` are intentionally thin: each just re-exports the actual screen component from `src/screens/`, e.g. `src/app/(tabs)/index.tsx` is `export { Dashboard as default } from '../../screens/Dashboard'`. When changing a screen's UI/logic, edit the file in `src/screens/`, not the route file.
+Expo Router is file-based, rooted at `src/app/` (not a top-level `app/` — Expo Router auto-detects `src/app` when there's no root-level `app/` dir). Files under `src/app/` are intentionally thin: each just re-exports the actual screen component from `src/screens/`, e.g. `src/app/dictionary.tsx` is `export { Dictionary as default } from '../screens/Dictionary'`. When changing a screen's UI/logic, edit the file in `src/screens/`, not the route file.
 
-- `src/app/_layout.tsx` — root layout. Wraps everything in `AppProvider` (see below), loads fonts, and gates rendering: nothing renders (splash screen stays up) until `AppContext`'s `ready` flag and fonts are both true, then it redirects to `/onboarding` if onboarding isn't complete, mirroring the old web app's route-guard logic.
-- `src/app/(tabs)/` — the four tab screens (Dashboard, New Words, Dictionary, Settings) via Expo Router's `Tabs`. The "Review" tab is a special case: its `tabPress` listener always calls `e.preventDefault()` and pushes the standalone `/review` route instead of switching tabs — Review is a distraction-free full-screen flow that lives outside the tab chrome, not actual tab content. `src/app/(tabs)/review.tsx` only exists as a redirect fallback for that route slot.
-- `src/app/review.tsx`, `due-words.tsx`, `onboarding.tsx`, `profile.tsx` — standalone routes pushed on top of the tabs, not nested in them.
+- `src/app/_layout.tsx` — root layout. Wraps everything in `AppProvider` (see below), loads fonts, and gates rendering: nothing renders (splash screen stays up) until `AppContext`'s `ready` flag and fonts are both true, then it redirects to `/onboarding` if onboarding isn't complete.
+- `src/app/(tabs)/` — five `Tabs.Screen` slots (Dashboard, Lessons, Review, Dictionary, Settings), but only **Dashboard** (`index`) and **Settings** actually switch tab content. The other three intercept `tabPress` with `e.preventDefault()` in `(tabs)/_layout.tsx` and either push a standalone route or open a `TabPickerSheet` bottom sheet instead:
+  - **Review** always pushes `/review` (the standalone route) — Review is a distraction-free full-screen flow that lives outside the tab chrome, not actual tab content.
+  - **Lessons** and **Dictionary** open a `TabPickerSheet` letting the user choose between multiple standalone routes (Lessons → `/lessons`, `/new-words`, `/books`; Dictionary → `/my-words`, `/dictionary`, `/radicals`).
+  - `(tabs)/review-tab.tsx` and `(tabs)/dictionary-tab.tsx` are redirect-only fallback screens that exist purely so `Tabs.Screen` has a route to point at. **Do not** name these `review.tsx` / `dictionary.tsx` — that would collide with the real standalone routes at `src/app/review.tsx` / `src/app/dictionary.tsx` (same URL path) and expo-router's navigator loops indefinitely instead of reaching the real screen.
+- Standalone routes pushed on top of the tabs (not nested in them): `/review`, `/due-words`, `/onboarding`, `/profile`, `/dictionary`, `/new-words`, `/my-words`, `/my-town`, `/lessons`, `/lesson/[lessonId]`, `/books`, `/story/[storyId]`, `/challenges`, `/radicals`.
 
 ### State and persistence
 
-`src/context/AppContext.tsx` is the single global store (settings, SRS deck, custom words, daily progress, streak, onboarding state), exposed via `useApp()`. All persisted state loads from AsyncStorage once on mount (`src/lib/storage.ts`); until that finishes, `ready` is `false` and the root layout keeps the splash screen up. Don't add new persisted fields without also adding them to the `hydrate()` `Promise.all` and a guarded save `useEffect` (the guard skips saving the placeholder default on first render, before hydration has overwritten it).
+`src/context/AppContext.tsx` is the single global store (settings, SRS deck, custom words, daily progress, streak, XP/unlocked buildings, completed lessons, newly-added-word flags, dev clock override, claimed challenges, dictionary recent-search history, onboarding state), exposed via `useApp()`. All persisted state loads from AsyncStorage once on mount (`src/lib/storage.ts`); until that finishes, `ready` is `false` and the root layout keeps the splash screen up. Don't add new persisted fields without also adding them to the `hydrate()` `Promise.all`, the `skipNextSave` ref, and a guarded save `useEffect` (the guard skips saving the placeholder default on first render, before hydration has overwritten it) — follow the existing fields (e.g. `xp`, `completedLessonIds`) as the template.
 
 ### Business logic vs. platform bridges in `src/lib/`
 
 Split the module by whether it touches a platform API:
-- Pure logic, safe to unit-test or reuse anywhere: `srs.ts` (SM-2-style scheduler), `selectors.ts` (deck queries — due cards, new-word pool), `date.ts`, `hanzi.ts` (simplified/traditional + pinyin/zhuyin display resolution), `zhuyin.ts`, `placement.ts`, `progress.ts` (heatmap/streak stats), `categories.ts`.
+- Pure logic, safe to unit-test or reuse anywhere: `srs.ts` (SM-2-style scheduler), `selectors.ts` (deck queries — due cards, new-word pool), `date.ts`, `hanzi.ts` (simplified/traditional + pinyin/zhuyin display resolution), `zhuyin.ts`, `placement.ts`, `progress.ts` (heatmap/streak stats), `categories.ts`, `townEconomy.ts` (XP-per-grade/lesson, level curve, `canAfford` for My Town purchases), `challenges.ts` (daily/milestone challenge definitions + progress calculation), `textSegmentation.ts` (greedy longest-match word segmentation of story text against the word bank, for tap-to-add-word in the reader).
 - Platform bridges, each a thin wrapper you'd swap if the underlying Expo API changed: `storage.ts` (AsyncStorage), `speech.ts` (expo-speech), `haptics.ts` (expo-haptics), `sound.ts` (expo-audio, playing pre-rendered WAV files — see below).
+- `devClock.ts` — a module-level override for "now" (set via Settings → Developer), used everywhere the app would otherwise call `new Date()` for streak/daily-progress logic, so streaks/challenges can be tested without waiting for real days to pass.
 
 ### Word data
 
 `src/data/hskFrequency.ts` merges a small hand-curated word list (with example sentences) with a large bulk-imported dictionary (`src/data/importedWords.json`, no examples) into the full word bank. `src/data/mockDeck.ts` seeds a demo SRS deck; `src/data/placementTest.ts` is the fixed onboarding placement-test word list.
+
+### Lessons, gamification, and My Town
+
+- `src/data/units.ts` defines the Duolingo-style unit path (`UNITS`, 8 units). All 8 have authored lessons in `src/data/lessons.ts` (`LESSONS`, 25 total — 4 for `the-basics`, 3 each for the rest) mixing `match`/`scramble`/`fill-blank` exercise types. A unit unlocks once every lesson in the preceding unit is complete (`the-basics` is always unlocked), so `lessonsForUnit(id).length === 0` would silently make a unit permanently unreachable. Each unit also carries a `glyph` (hanzi character or emoji) shown in its path node. `src/screens/Lessons.tsx` renders the path, `src/screens/LessonPlayer.tsx` (route `/lesson/[lessonId]`) runs a single lesson's exercises.
+- XP is earned from grading review cards (`xpForGrade`) and completing lessons (`XP_PER_LESSON`), and spent unlocking `src/data/townBuildings.ts` (`TOWN_BUILDINGS`, ordered, increasing `xpCost`) one at a time in `src/screens/MyTown.tsx` via `unlockBuilding`/`canAfford`. `levelForXp` (in `townEconomy.ts`) drives the shared level progress bar shown on both the Lessons path and My Town.
+- `src/lib/challenges.ts` (`CHALLENGE_DEFS`) declares daily (reset-for-free via a date-suffixed claim id — see `challengeInstanceId`) and milestone (permanent claim id) challenges; `src/screens/Challenges.tsx` (route `/challenges`) shows progress and lets the user claim XP via `claimChallenge`.
+- `src/data/stories.ts` (`STORIES`) is a hand-authored reading library, 2 stories per HSK level. `src/screens/StoryReader.tsx` (route `/story/[storyId]`) segments each page's Chinese text with `segmentText` (`textSegmentation.ts`) so known/unknown words are tappable; tapping an unrecognized word adds it to the deck via `addWordFromBook`, which also flags it in `newlyAddedWordIds` (surfaced as a badge dot on the Dictionary tab icon until `clearNewWordFlags` runs).
+- `src/data/radicals.ts` (`RADICALS`) is a curated ~50-radical subset of the 214 Kangxi radicals, shown read-only in `src/screens/Radicals.tsx` (route `/radicals`) — these are not vocabulary words and are never addable to My Words.
 
 ### HanziStage — the stroke-order writer
 
@@ -56,7 +68,7 @@ Split the module by whether it touches a platform API:
 
 ### Sound
 
-`src/lib/sound.ts` plays three short effects (stroke-scratch, positive chime, retry tone) via `expo-audio`, from WAV files pre-rendered by `scripts/generateSounds.mjs` (there's no Web Audio API / oscillator synthesis available in React Native, so these are baked offline instead of generated at runtime). `AudioPlayer` instances are created lazily on first play, not at module scope — creating them eagerly crashes during Expo Router's static web render pass, where no audio backend exists yet.
+`src/lib/sound.ts` plays short effects (stroke-scratch, positive chime, retry tone, tap, fanfare) via `expo-audio`, from WAV files pre-rendered by `scripts/generateSounds.mjs` (there's no Web Audio API / oscillator synthesis available in React Native, so these are baked offline instead of generated at runtime). `AudioPlayer` instances are created lazily on first play, not at module scope — creating them eagerly crashes during Expo Router's static web render pass, where no audio backend exists yet.
 
 ### Styling
 

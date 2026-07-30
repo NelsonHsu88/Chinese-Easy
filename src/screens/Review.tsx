@@ -140,8 +140,17 @@ export function Review() {
           <Text className="font-hanzi text-3xl font-semibold text-slate-900 dark:text-white">{displayWord(word, settings.script)}</Text>
           <Text className="text-sm text-slate-400">Rewrite it to lock it in</Text>
         </View>
-        <View className="relative mx-4 mb-4 flex-1">
-          <HanziStage character={displayWord(word, settings.script)} mode="quiz" showOutline resetKey={practice.remaining} />
+        <View
+          style={{ minHeight: 200 }}
+          className="relative mx-4 mb-4 flex-1 rounded-2xl border border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40"
+        >
+          <HanziStage
+            character={displayWord(word, settings.script)}
+            mode="quiz"
+            showOutline
+            showGuides
+            resetKey={practice.remaining}
+          />
         </View>
         <View className="px-4 pb-6">
           <Pressable onPress={handlePracticeNext} className="w-full items-center rounded-2xl bg-amber-500 py-4 shadow-card">
@@ -174,11 +183,15 @@ export function Review() {
         )}
       </View>
 
-      <View className="relative mx-4 mb-4 flex-1">
+      <View
+        style={{ minHeight: 200 }}
+        className="relative mx-4 mb-4 flex-1 rounded-2xl border border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40"
+      >
         <HanziStage
           character={displayWord(word, settings.script)}
           mode={revealed ? 'demo' : 'quiz'}
           showOutline={revealed || direction === 'recognition' || hintShown}
+          showGuides
           resetKey={`${currentWordId}-${attempt}-${revealed}`}
         />
       </View>

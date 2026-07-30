@@ -6,6 +6,9 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // The warm ivory page background the reference mockups sit on — a shade lighter
+        // than the visual system's "Soft Cream" (#FFF5E6), which is used for panels.
+        canvas: '#fdfaf4',
         // "Jade Green" from the app's visual-system reference — matches Tailwind's
         // stock green-500 (#22c55e) almost exactly, so the scale below is that palette.
         brand: {

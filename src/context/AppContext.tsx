@@ -90,7 +90,14 @@ interface AppContextValue {
   /** Daily/milestone challenges. */
   claimedChallengeIds: string[]
   claimChallenge: (challengeId: string, xpReward: number) => void
+
+  /** Dictionary search history, most recent first, capped at RECENT_SEARCH_LIMIT. */
+  recentSearchIds: string[]
+  pushRecentSearch: (wordId: string) => void
+  clearRecentSearches: () => void
 }
+
+const RECENT_SEARCH_LIMIT = 8
 
 const AppContext = createContext<AppContextValue | null>(null)
 
@@ -108,6 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [newlyAddedWordIds, setNewlyAddedWordIds] = useState<string[]>([])
   const [devClockOverride, setDevClockOverrideState] = useState<string | null>(null)
   const [claimedChallengeIds, setClaimedChallengeIds] = useState<string[]>([])
+  const [recentSearchIds, setRecentSearchIds] = useState<string[]>([])
 
   useEffect(() => {
     let cancelled = false
@@ -125,6 +133,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadedNewlyAddedWordIds,
         loadedDevClockOverride,
         loadedClaimedChallengeIds,
+        loadedRecentSearchIds,
       ] = await Promise.all([
         loadStored('settings', DEFAULT_SETTINGS),
         loadStored('deck', mockDeck),
@@ -138,6 +147,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadStored('newlyAddedWordIds', [] as string[]),
         loadStored('devClockOverride', null as string | null),
         loadStored('claimedChallengeIds', [] as string[]),
+        loadStored('recentSearchIds', [] as string[]),
       ])
       if (cancelled) return
       setSettings({
@@ -158,6 +168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDevClockOverrideState(loadedDevClockOverride)
       setDevClockOverride(loadedDevClockOverride)
       setClaimedChallengeIds(loadedClaimedChallengeIds)
+      setRecentSearchIds(loadedRecentSearchIds)
       setReady(true)
     }
     void hydrate()
@@ -182,6 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     newlyAddedWordIds: true,
     devClockOverride: true,
     claimedChallengeIds: true,
+    recentSearchIds: true,
   })
 
   useEffect(() => {
@@ -232,6 +244,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (skipNextSave.current.claimedChallengeIds) { skipNextSave.current.claimedChallengeIds = false; return }
     void saveStored('claimedChallengeIds', claimedChallengeIds)
   }, [claimedChallengeIds])
+  useEffect(() => {
+    if (skipNextSave.current.recentSearchIds) { skipNextSave.current.recentSearchIds = false; return }
+    void saveStored('recentSearchIds', recentSearchIds)
+  }, [recentSearchIds])
 
   const wordBank = useMemo(() => [...hskFrequency, ...customWords], [customWords])
 
@@ -359,6 +375,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [claimedChallengeIds],
   )
 
+  /** Moves a word to the front of the search history, de-duplicating and trimming the tail. */
+  const pushRecentSearch = useCallback((wordId: string) => {
+    setRecentSearchIds((prev) => [wordId, ...prev.filter((id) => id !== wordId)].slice(0, RECENT_SEARCH_LIMIT))
+  }, [])
+
+  const clearRecentSearches = useCallback(() => {
+    setRecentSearchIds([])
+  }, [])
+
   const completePracticeRep = useCallback((wordId: string) => {
     setDeck((prev) =>
       prev.map((c) => (c.wordId === wordId ? { ...c, practiceQueue: Math.max(0, c.practiceQueue - 1) } : c)),
@@ -413,6 +438,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateDevClockOverride,
     claimedChallengeIds,
     claimChallenge,
+    recentSearchIds,
+    pushRecentSearch,
+    clearRecentSearches,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

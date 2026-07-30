@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
-import { View, Text, Pressable, ScrollView } from 'react-native'
+import { View, Text, Pressable, ScrollView, Image } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { Flame, BookMarked, CalendarCheck, Zap, GraduationCap, Building2, List, Trophy } from 'lucide-react-native'
+import { Flame, BookMarked, CalendarCheck, Zap, GraduationCap, Building2, List, Trophy, Menu } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { IllustratedCard } from '../components/IllustratedCard'
 import { WordsLineChart } from '../components/WordsLineChart'
@@ -14,6 +14,7 @@ import { lastNDays, weekdayLabel } from '../lib/date'
 import { devNow } from '../lib/devClock'
 import { CHALLENGE_DEFS, challengeInstanceId } from '../lib/challenges'
 import { LESSONS } from '../data/lessons'
+import { TOWN_BUILDINGS } from '../data/townBuildings'
 
 function greeting(): string {
   const hour = devNow().getHours()
@@ -63,6 +64,10 @@ export function Dashboard() {
   }, [dailyProgress])
   const dayLabels = useMemo(() => weeklyChartData.map((d) => weekdayLabel(d.date)), [weeklyChartData])
 
+  // The reference mockup breaks the greeting over two lines ("Good" / "Morning,").
+  const [greetingLead, ...greetingRest] = greeting().split(' ')
+  const greetingTail = greetingRest.join(' ')
+
   const lessonsCompletedCount = completedLessonIds.length
   const lessonSubtitle =
     lessonsCompletedCount === 0 ? 'Begin Unit 1: The Basics' : `${lessonsCompletedCount}/${LESSONS.length} lessons complete`
@@ -72,33 +77,48 @@ export function Dashboard() {
   )
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
+    <SafeAreaView edges={['top']} className="flex-1 bg-canvas dark:bg-slate-950">
       <ScrollView contentContainerStyle={{ gap: 20, padding: 16, paddingTop: 8 }}>
         <View className="flex-row items-center justify-between">
-          <Text className="text-sm font-medium text-slate-400 dark:text-slate-500">Home</Text>
-          <View className="flex-row items-center gap-1 rounded-full bg-coral-100 px-3 py-1.5 dark:bg-coral-900/40">
-            <Flame size={16} color="#ff6b6b" fill="#ff6b6b" />
-            <Text className="text-sm font-extrabold text-coral-600 dark:text-coral-300">{streak}</Text>
+          <Pressable
+            onPress={() => router.push('/settings')}
+            accessibilityRole="button"
+            accessibilityLabel="Open settings"
+            className="-ml-1 rounded-full p-1 active:bg-slate-200/60 dark:active:bg-slate-800"
+          >
+            <Menu size={26} color="#334155" strokeWidth={2.5} />
+          </Pressable>
+          <View className="flex-row items-center gap-1.5 rounded-full border border-black/5 bg-white px-3.5 py-2 shadow-card dark:border-white/10 dark:bg-slate-900">
+            <Flame size={18} color="#ff6b6b" fill="#f5b93d" />
+            <Text className="text-base font-extrabold text-slate-800 dark:text-slate-100">{streak}</Text>
           </View>
         </View>
 
-        <Text className="text-3xl font-extrabold leading-tight text-slate-900 dark:text-white">
-          {greeting()}
-          {'\n'}
-          <Text className="rounded bg-amber-200 px-1 dark:bg-amber-500/30">{settings.username || 'Learner'}</Text>
-        </Text>
+        <View className="-mt-2">
+          <Text className="text-[38px] font-extrabold leading-[1.08] text-slate-900 dark:text-white">
+            {greetingLead}
+          </Text>
+          <Text className="text-[38px] font-extrabold leading-[1.08] text-slate-900 dark:text-white">
+            {greetingTail},
+          </Text>
+          <View className="mt-1 self-start rounded-lg bg-amber-300 px-2.5 py-0.5 dark:bg-amber-500/40">
+            <Text className="text-[38px] font-extrabold italic leading-[1.15] text-slate-900 dark:text-white">
+              {settings.username || 'Learner'}!
+            </Text>
+          </View>
+        </View>
 
         <MascotPrompt message={mascotMessage} />
 
         <IllustratedCard
           tag="Review"
           title="Start Review"
-          subtitle={dueCount > 0 ? `${dueCount} word${dueCount === 1 ? '' : 's'} due today` : "You're all caught up"}
+          subtitle={dueCount > 0 ? 'Keep your streak alive!' : "You're all caught up"}
           icon={<Flame size={56} color="#ff6b6b" fill="#ff6b6b" fillOpacity={0.25} strokeWidth={1.75} />}
           color="coral"
           stats={[
-            { label: 'Due today', value: dueCount },
-            { label: 'This week', value: weekTotal },
+            { label: 'Words due', value: dueCount },
+            { label: 'Day streak', value: streak },
           ]}
           onPress={() => router.push('/review')}
         />
@@ -116,8 +136,8 @@ export function Dashboard() {
           icon={<GraduationCap size={56} color="#22c55e" strokeWidth={1.75} />}
           color="brand"
           stats={[
-            { label: 'Completed', value: lessonsCompletedCount },
-            { label: 'Total lessons', value: LESSONS.length },
+            { label: 'Lessons completed', value: lessonsCompletedCount },
+            { label: 'XP earned', value: xp },
           ]}
           onPress={() => router.push('/lessons')}
         />
@@ -125,12 +145,12 @@ export function Dashboard() {
         <IllustratedCard
           tag="Build"
           title="Build your town"
-          subtitle="Spend XP from reviews and lessons on new buildings"
-          icon={<Building2 size={56} color="#f5b93d" strokeWidth={1.75} />}
+          subtitle="Grow your Chinese village!"
+          icon={<Image source={TOWN_BUILDINGS[6].image} style={{ width: 84, height: 84 }} resizeMode="contain" />}
           color="amber"
           stats={[
-            { label: 'XP earned', value: xp },
-            { label: 'Built', value: unlockedBuildingIds.length },
+            { label: 'Buildings', value: unlockedBuildingIds.length },
+            { label: 'XP to spend', value: xp },
           ]}
           onPress={() => router.push('/my-town')}
         />

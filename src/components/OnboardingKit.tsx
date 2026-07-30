@@ -56,9 +56,11 @@ function TalkingShifu() {
   }))
 
   return (
-    <View className="h-14 w-14 overflow-hidden rounded-full border-2 border-coral-500 bg-coral-50 shadow-card dark:bg-coral-900/30">
+    <View style={{ width: 116, height: 116 }} className="items-center justify-center">
+      {/* Soft blob behind Shifu, as in the reference — not a hard avatar ring. */}
+      <View className="absolute h-[92px] w-[86px] rounded-[46px] bg-black/[0.04] dark:bg-white/5" />
       <Animated.View style={[{ width: '100%', height: '100%' }, animatedStyle]}>
-        <Image source={shifu} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+        <Image source={shifu} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
       </Animated.View>
     </View>
   )
@@ -79,13 +81,13 @@ export function ShifuAvatar({ size = 112 }: { size?: number }) {
 /** The mascot-and-speech-bubble question prompt every Duolingo onboarding step opens with — styled like Shifu is being quoted. */
 export function MascotPrompt({ message }: { message: string }) {
   return (
-    <View className="mb-6 flex-row items-end gap-3">
+    <View className="mb-6 flex-row items-center gap-1">
       <TalkingShifu key={message} />
-      <View className="relative max-w-[78%] flex-1">
-        <View className="absolute -left-1.5 bottom-3 h-3.5 w-3.5 rotate-45 border-b border-l border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" />
-        <View className="relative rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-card dark:border-slate-700 dark:bg-slate-900">
-          <Text className="absolute -top-3 left-2 text-5xl font-black leading-none text-coral-100 dark:text-coral-900/40">"</Text>
-          <Text className="relative text-base font-semibold leading-snug text-slate-800 dark:text-slate-100">{message}</Text>
+      <View className="relative flex-1">
+        <View className="absolute -left-1.5 top-9 h-3.5 w-3.5 rotate-45 bg-white dark:bg-slate-900" />
+        <View className="relative rounded-3xl bg-white px-4 pb-4 pt-3 shadow-card dark:bg-slate-900">
+          <Text className="text-2xl font-black leading-none text-coral-500">&#8220;</Text>
+          <Text className="mt-1 text-base font-bold leading-snug text-slate-800 dark:text-slate-100">{message}</Text>
         </View>
       </View>
     </View>

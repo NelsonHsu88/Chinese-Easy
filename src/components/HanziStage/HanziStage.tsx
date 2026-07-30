@@ -46,6 +46,12 @@ interface Props {
   mode: HanziStageMode
   /** Shows a faint reference outline of the target character behind the drawing area. */
   showOutline?: boolean
+  /** Draws the 米字格 practice grid behind each glyph. */
+  showGuides?: boolean
+  /** Bump to flash the stroke the learner is currently expected to draw. */
+  hintKey?: number
+  /** Bump to reveal the finished character over the drawing area. */
+  revealKey?: number
   /** Bump to restart the demo animation or reset a quiz attempt for the same word. */
   resetKey?: number | string
   onQuizProgress?: (strokesRemaining: number, totalMistakes: number) => void
@@ -65,6 +71,9 @@ export function HanziStage({
   character,
   mode,
   showOutline = true,
+  showGuides = false,
+  hintKey = 0,
+  revealKey = 0,
   resetKey,
   onQuizProgress,
   onQuizComplete,
@@ -128,6 +137,9 @@ export function HanziStage({
             char={char}
             mode={mode}
             showOutline={showOutline}
+            showGuides={showGuides}
+            hintKey={hintKey}
+            revealKey={revealKey}
             size={perCharSize}
             active={idx === activeIndex}
             onQuizProgress={onQuizProgress}
@@ -143,6 +155,9 @@ interface GlyphProps {
   char: string
   mode: HanziStageMode
   showOutline: boolean
+  showGuides: boolean
+  hintKey: number
+  revealKey: number
   size: number
   /** Whether it's this character's turn — inactive glyphs wait, dimmed, until the ones before them finish. */
   active: boolean
@@ -151,7 +166,7 @@ interface GlyphProps {
   onDemoComplete: () => void
 }
 
-function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
+function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, revealKey, size, active, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
   const webviewRef = useRef<WebView>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const startedRef = useRef(false)
@@ -197,6 +212,7 @@ function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgres
       char,
       mode,
       showOutline,
+      showGuides,
       showStartHint,
       size,
       padding,
@@ -210,6 +226,21 @@ function SingleGlyphStage({ char, mode, showOutline, size, active, onQuizProgres
     sendInit()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokeData])
+
+  // Hint/reveal are fire-and-forget pulses driven by a bumped counter. Skip the
+  // initial value so mounting a glyph doesn't immediately hint or spoil it, and
+  // only act on the glyph whose turn it currently is.
+  useEffect(() => {
+    if (!hintKey || !active || status !== 'ready') return
+    postToGlyph({ type: 'hint' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hintKey])
+
+  useEffect(() => {
+    if (!revealKey || !active || status !== 'ready') return
+    postToGlyph({ type: 'reveal' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealKey])
 
   const processMessage = (data: string) => {
     let msg: { type: string; strokesRemaining?: number; totalMistakes?: number }
