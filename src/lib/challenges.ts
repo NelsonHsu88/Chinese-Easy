@@ -1,8 +1,37 @@
 import { BookMarked, Sparkles, Flame, GraduationCap, Trophy, Zap, type LucideIcon } from 'lucide-react-native'
+import type { ImageSourcePropType } from 'react-native'
 import type { DailyProgress } from '../types'
 import { todayISO } from './date'
 
 export type ChallengeCadence = 'daily' | 'milestone'
+
+/**
+ * The colour family a challenge's tile, progress bar and counter share. Giving
+ * each row its own tone is what stops a list of near-identical progress cards
+ * reading as a spreadsheet.
+ */
+export type ChallengeTone = 'coral' | 'mint' | 'amber' | 'ember' | 'sky' | 'violet'
+
+export interface ToneColors {
+  /** Tile wash and the pale end of the progress track. */
+  soft: string
+  /** Filled progress and the counter's current value. */
+  strong: string
+  /** Unfilled progress track. */
+  track: string
+}
+
+export const CHALLENGE_TONES: Record<ChallengeTone, ToneColors> = {
+  coral: { soft: '#fde4e1', strong: '#ef7a63', track: '#f6e6e1' },
+  mint: { soft: '#d9f2e0', strong: '#58be7c', track: '#e6efe7' },
+  amber: { soft: '#fbebcf', strong: '#f0b64a', track: '#f3ece0' },
+  ember: { soft: '#fce3d4', strong: '#ef7440', track: '#f5e8e0' },
+  sky: { soft: '#dfeff8', strong: '#6ea7cd', track: '#e6edf2' },
+  violet: { soft: '#e8e4f6', strong: '#8b7bd8', track: '#ece9f2' },
+}
+
+/** Green regardless of tone once a challenge is done — completion reads the same everywhere. */
+export const CHALLENGE_DONE: ToneColors = { soft: '#d9f2e0', strong: '#58be7c', track: '#e6efe7' }
 
 export interface ChallengeContext {
   dailyProgress: DailyProgress[]
@@ -19,6 +48,20 @@ export interface ChallengeDef {
   xpReward: number
   target: number
   icon: LucideIcon
+  tone: ChallengeTone
+  /**
+   * Illustration for the challenge's tile. Where no artwork fits, `glyph` is
+   * used instead and the tile paints a wash with that character on it — the
+   * same fallback language the story covers use.
+   */
+  art?: ImageSourcePropType
+  glyph?: string
+  /**
+   * Where to send someone who taps the challenge — the screen they'd have to be
+   * on to make progress on it. `description` says what to do; this is the way
+   * there, so a challenge is never a demand with no door next to it.
+   */
+  route: string
   progress: (ctx: ChallengeContext) => number
 }
 
@@ -42,6 +85,9 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     xpReward: 10,
     target: 5,
     icon: BookMarked,
+    tone: 'coral',
+    glyph: '學',
+    route: '/review',
     progress: (ctx) => todayEntry(ctx.dailyProgress)?.reviewsCompleted ?? 0,
   },
   {
@@ -52,6 +98,9 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     xpReward: 10,
     target: 3,
     icon: Sparkles,
+    tone: 'sky',
+    glyph: '新',
+    route: '/new-words',
     progress: (ctx) => todayEntry(ctx.dailyProgress)?.wordsLearned ?? 0,
   },
   {
@@ -62,6 +111,9 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     xpReward: 5,
     target: 1,
     icon: Flame,
+    tone: 'amber',
+    art: require('../assets/images/icons/fire.png'),
+    route: '/review',
     progress: (ctx) => {
       const e = todayEntry(ctx.dailyProgress)
       return e && (e.reviewsCompleted > 0 || e.wordsLearned > 0) ? 1 : 0
@@ -75,6 +127,9 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     xpReward: 30,
     target: 5,
     icon: GraduationCap,
+    tone: 'mint',
+    art: require('../assets/images/icons/cap.png'),
+    route: '/lessons',
     progress: (ctx) => ctx.completedLessonCount,
   },
   {
@@ -85,6 +140,9 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     xpReward: 40,
     target: 7,
     icon: Zap,
+    tone: 'ember',
+    art: require('../assets/images/buildings/mountain-pagoda.png'),
+    route: '/review',
     progress: (ctx) => ctx.streak,
   },
   {
@@ -95,6 +153,9 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     xpReward: 25,
     target: 200,
     icon: Trophy,
+    tone: 'violet',
+    art: require('../assets/images/buildings/grand-palace.png'),
+    route: '/lessons',
     progress: (ctx) => ctx.xp,
   },
 ]

@@ -13,6 +13,7 @@ export function createNewCard(wordId: string, dueDate: string = todayISO()): Srs
     dueDate,
     reps: 0,
     lapses: 0,
+    recentLapses: 0,
     practiceQueue: 0,
     practiceTotal: 0,
   }
@@ -30,6 +31,7 @@ export function gradeCard(card: SrsCard, grade: Grade, wrongAnswerReps: number):
       intervalDays: 0,
       easeFactor,
       lapses: card.lapses + 1,
+      recentLapses: (card.recentLapses ?? 0) + 1,
       reps: card.reps + 1,
       dueDate: today,
       lastReviewed: today,
@@ -58,6 +60,8 @@ export function gradeCard(card: SrsCard, grade: Grade, wrongAnswerReps: number):
     intervalDays,
     easeFactor,
     reps: card.reps + 1,
+    // One correct review pays off one recent mistake.
+    recentLapses: Math.max(0, (card.recentLapses ?? 0) - 1),
     dueDate: addDays(today, intervalDays),
     lastReviewed: today,
     practiceQueue: 0,

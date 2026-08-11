@@ -11,7 +11,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@expo-google-fonts/caveat": "^0.4.2",
     "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/lora": "^0.4.2",
     "@expo-google-fonts/noto-sans-sc": "^0.4.3",
     "@expo-google-fonts/noto-sans-tc": "^0.4.3",
     "@expo-google-fonts/noto-serif-sc": "^0.4.3",
@@ -52,6 +54,7 @@
   "devDependencies": {
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.12",
+    "sharp": "^0.35.3",
     "typescript": "~5.9.2"
   }
 }

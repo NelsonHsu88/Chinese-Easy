@@ -12,6 +12,7 @@ const sources = {
   retry: require('../assets/sounds/retry.wav'),
   tap: require('../assets/sounds/tap.wav'),
   fanfare: require('../assets/sounds/fanfare.wav'),
+  gong: require('../assets/sounds/gong.wav'),
 } as const
 
 const players: Partial<Record<keyof typeof sources, AudioPlayer>> = {}
@@ -49,4 +50,13 @@ export function playTapSound(): void {
 /** A bigger four-note "ta-da!" — plays once, when a whole lesson is finished. */
 export function playFanfare(): void {
   play('fanfare')
+}
+
+/**
+ * A struck gong — played when the writer gives up on a stroke and shows the
+ * learner where it goes. Weight rather than a buzzer: this marks a moment to
+ * stop and look, not a penalty.
+ */
+export function playGongSound(): void {
+  play('gong')
 }

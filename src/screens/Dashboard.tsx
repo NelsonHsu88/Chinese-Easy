@@ -2,8 +2,9 @@ import { useMemo } from 'react'
 import { View, Text, Pressable, ScrollView, Image } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { Flame, BookMarked, CalendarCheck, Zap, GraduationCap, Building2, List, Trophy, Menu } from 'lucide-react-native'
+import { Flame, BookMarked, CalendarCheck, Zap, Trophy, Menu } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
+import { BrushHighlight } from '../components/BrushHighlight'
 import { IllustratedCard } from '../components/IllustratedCard'
 import { WordsLineChart } from '../components/WordsLineChart'
 import { Heatmap } from '../components/Heatmap'
@@ -15,6 +16,9 @@ import { devNow } from '../lib/devClock'
 import { CHALLENGE_DEFS, challengeInstanceId } from '../lib/challenges'
 import { LESSONS } from '../data/lessons'
 import { TOWN_BUILDINGS } from '../data/townBuildings'
+
+const FIRE_ICON = require('../assets/images/icons/fire.png')
+const CAP_ICON = require('../assets/images/icons/cap.png')
 
 function greeting(): string {
   const hour = devNow().getHours()
@@ -101,11 +105,16 @@ export function Dashboard() {
           <Text className="text-[38px] font-extrabold leading-[1.08] text-slate-900 dark:text-white">
             {greetingTail},
           </Text>
-          <View className="mt-1 self-start rounded-lg bg-amber-300 px-2.5 py-0.5 dark:bg-amber-500/40">
-            <Text className="text-[38px] font-extrabold italic leading-[1.15] text-slate-900 dark:text-white">
+          {/*
+            Caveat sits on a much smaller x-height than Nunito, so it's set larger
+            than the 38px greeting above it to read at the same optical size.
+          */}
+          <BrushHighlight bleedX={16} bleedTop={12} bleedBottom={6}>
+            {/* Stays dark in both themes — it's read against the amber stroke, not the page. */}
+            <Text className="mt-1 px-1.5 font-handwriting text-[54px] leading-[62px] text-slate-900">
               {settings.username || 'Learner'}!
             </Text>
-          </View>
+          </BrushHighlight>
         </View>
 
         <MascotPrompt message={mascotMessage} />
@@ -114,7 +123,7 @@ export function Dashboard() {
           tag="Review"
           title="Start Review"
           subtitle={dueCount > 0 ? 'Keep your streak alive!' : "You're all caught up"}
-          icon={<Flame size={56} color="#ff6b6b" fill="#ff6b6b" fillOpacity={0.25} strokeWidth={1.75} />}
+          icon={<Image source={FIRE_ICON} style={{ width: 78, height: 78 }} resizeMode="contain" />}
           color="coral"
           stats={[
             { label: 'Words due', value: dueCount },
@@ -122,18 +131,11 @@ export function Dashboard() {
           ]}
           onPress={() => router.push('/review')}
         />
-        {dueCount > 0 && (
-          <Pressable onPress={() => router.push('/due-words')} className="-mt-3 flex-row items-center justify-center gap-1.5 rounded-xl py-1">
-            <List size={15} color="#64748b" />
-            <Text className="text-sm font-semibold text-slate-500 dark:text-slate-400">View words due</Text>
-          </Pressable>
-        )}
-
         <IllustratedCard
           tag="Learn"
           title="Ready to start a lesson?"
           subtitle={lessonSubtitle}
-          icon={<GraduationCap size={56} color="#22c55e" strokeWidth={1.75} />}
+          icon={<Image source={CAP_ICON} style={{ width: 84, height: 84 }} resizeMode="contain" />}
           color="brand"
           stats={[
             { label: 'Lessons completed', value: lessonsCompletedCount },

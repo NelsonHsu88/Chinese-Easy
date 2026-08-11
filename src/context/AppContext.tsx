@@ -95,6 +95,14 @@ interface AppContextValue {
   recentSearchIds: string[]
   pushRecentSearch: (wordId: string) => void
   clearRecentSearches: () => void
+
+  /**
+   * Reading progress per story: story id → furthest page index reached (0-based).
+   * Only ever moves forward, so paging back through a story you've finished
+   * doesn't wind its percentage down on the library card.
+   */
+  storyProgress: Record<string, number>
+  recordStoryPage: (storyId: string, pageIndex: number) => void
 }
 
 const RECENT_SEARCH_LIMIT = 8
@@ -116,6 +124,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [devClockOverride, setDevClockOverrideState] = useState<string | null>(null)
   const [claimedChallengeIds, setClaimedChallengeIds] = useState<string[]>([])
   const [recentSearchIds, setRecentSearchIds] = useState<string[]>([])
+  const [storyProgress, setStoryProgress] = useState<Record<string, number>>({})
 
   useEffect(() => {
     let cancelled = false
@@ -134,6 +143,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadedDevClockOverride,
         loadedClaimedChallengeIds,
         loadedRecentSearchIds,
+        loadedStoryProgress,
       ] = await Promise.all([
         loadStored('settings', DEFAULT_SETTINGS),
         loadStored('deck', mockDeck),
@@ -148,6 +158,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadStored('devClockOverride', null as string | null),
         loadStored('claimedChallengeIds', [] as string[]),
         loadStored('recentSearchIds', [] as string[]),
+        loadStored('storyProgress', {} as Record<string, number>),
       ])
       if (cancelled) return
       setSettings({
@@ -156,7 +167,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Traditional-only for now — overrides any simplified preference from earlier sessions.
         script: 'traditional',
       })
-      setDeck(loadedDeck)
+      // Drop cards whose word no longer exists. The bulk word bank was rebuilt
+      // from CC-CEDICT with content-derived ids ("cc-学习") replacing the old
+      // positional ones ("imp-1-0001"), so decks saved before that migration
+      // carry dangling references — and a dangling *current* card would leave
+      // Review rendering nothing with no way to advance.
+      const knownIds = new Set([...hskFrequency.map((w) => w.id), ...loadedCustomWords.map((w) => w.id)])
+      setDeck(loadedDeck.filter((card) => knownIds.has(card.wordId)))
       setCustomWords(loadedCustomWords)
       setDailyProgress(loadedDailyProgress)
       setStreakState(loadedStreak)
@@ -169,6 +186,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setDevClockOverride(loadedDevClockOverride)
       setClaimedChallengeIds(loadedClaimedChallengeIds)
       setRecentSearchIds(loadedRecentSearchIds)
+      setStoryProgress(loadedStoryProgress)
       setReady(true)
     }
     void hydrate()
@@ -194,6 +212,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     devClockOverride: true,
     claimedChallengeIds: true,
     recentSearchIds: true,
+    storyProgress: true,
   })
 
   useEffect(() => {
@@ -248,6 +267,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (skipNextSave.current.recentSearchIds) { skipNextSave.current.recentSearchIds = false; return }
     void saveStored('recentSearchIds', recentSearchIds)
   }, [recentSearchIds])
+  useEffect(() => {
+    if (skipNextSave.current.storyProgress) { skipNextSave.current.storyProgress = false; return }
+    void saveStored('storyProgress', storyProgress)
+  }, [storyProgress])
 
   const wordBank = useMemo(() => [...hskFrequency, ...customWords], [customWords])
 
@@ -384,6 +407,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRecentSearchIds([])
   }, [])
 
+  /** Records that a story page was reached. Monotonic — never rewinds a percentage. */
+  const recordStoryPage = useCallback((storyId: string, pageIndex: number) => {
+    setStoryProgress((prev) => {
+      if ((prev[storyId] ?? -1) >= pageIndex) return prev
+      return { ...prev, [storyId]: pageIndex }
+    })
+  }, [])
+
   const completePracticeRep = useCallback((wordId: string) => {
     setDeck((prev) =>
       prev.map((c) => (c.wordId === wordId ? { ...c, practiceQueue: Math.max(0, c.practiceQueue - 1) } : c)),
@@ -441,6 +472,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     recentSearchIds,
     pushRecentSearch,
     clearRecentSearches,
+    storyProgress,
+    recordStoryPage,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>

@@ -11,6 +11,7 @@ import { Modal } from '../components/Modal'
 import { SpeakButton } from '../components/SpeakButton'
 import { CATEGORY_META } from '../lib/categories'
 import type { VocabWord } from '../types'
+import { shortGloss } from '../lib/definitions'
 
 const STAGE_LABEL: Record<string, string> = {
   new: 'New',
@@ -65,7 +66,7 @@ export function DueWords() {
                     {displayPinyin(word, settings.phoneticScript)}
                   </Text>
                   <Text numberOfLines={1} className="text-sm text-slate-400">
-                    {word.definition}
+                    {shortGloss(word)}
                   </Text>
                 </View>
                 <Text className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-400 dark:bg-slate-800">
@@ -101,7 +102,7 @@ export function DueWords() {
               <SpeakButton text={displayWord(selected, settings.script)} />
             </View>
             <Text className="text-lg font-medium text-slate-400">{displayPinyin(selected, settings.phoneticScript)}</Text>
-            <Text className="text-xl font-semibold text-slate-900 dark:text-white">{selected.definition}</Text>
+            <Text className="text-xl font-semibold text-slate-900 dark:text-white">{shortGloss(selected)}</Text>
             {selected.example && displayExample(selected, settings.script) && (
               <View className="w-full border-t border-slate-100 pt-3 dark:border-slate-800">
                 <Text className="font-hanzi text-base text-slate-700 dark:text-slate-300">{displayExample(selected, settings.script)}</Text>

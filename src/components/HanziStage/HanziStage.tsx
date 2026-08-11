@@ -2,7 +2,7 @@ import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } 
 import { Platform, View, Text, ActivityIndicator, type LayoutChangeEvent } from 'react-native'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import type { CharacterJson } from 'hanzi-writer'
-import { playStrokeSound } from '../../lib/sound'
+import { playStrokeSound, playGongSound } from '../../lib/sound'
 import { WRITER_HTML } from './writerHtml'
 import hanziData from '../../assets/hanziData.json'
 
@@ -54,6 +54,12 @@ interface Props {
   revealKey?: number
   /** Bump to restart the demo animation or reset a quiz attempt for the same word. */
   resetKey?: number | string
+  /**
+   * Keeps the finished character painted in the stroke colour once a quiz is
+   * completed, instead of leaving the learner looking at the faint outline.
+   * For screens that stay on the completed character rather than moving on.
+   */
+  holdCharacterOnComplete?: boolean
   onQuizProgress?: (strokesRemaining: number, totalMistakes: number) => void
   onQuizComplete?: (totalMistakes: number) => void
   onDemoComplete?: () => void
@@ -75,6 +81,7 @@ export function HanziStage({
   hintKey = 0,
   revealKey = 0,
   resetKey,
+  holdCharacterOnComplete = false,
   onQuizProgress,
   onQuizComplete,
   onDemoComplete,
@@ -98,6 +105,13 @@ export function HanziStage({
   // Multi-character words play/quiz one character at a time, left to right —
   // the second character only becomes active once the first is done.
   const [activeIndex, setActiveIndex] = useState(0)
+  /*
+   * Set once every character in the word is written. Purely presentational: the
+   * turn-taking dim would otherwise leave a finished multi-character word with
+   * only its last glyph lit and the rest at 20%, which is the opposite of what
+   * you want at the moment you've just written the whole thing.
+   */
+  const [wordComplete, setWordComplete] = useState(false)
   const completedIndexes = useRef(new Set<number>())
   const demoCompletedIndexes = useRef(new Set<number>())
   const totalMistakes = useRef(0)
@@ -107,12 +121,14 @@ export function HanziStage({
     demoCompletedIndexes.current = new Set()
     totalMistakes.current = 0
     setActiveIndex(0)
+    setWordComplete(false)
   }, [character, mode, resetKey])
 
   const handleGlyphQuizComplete = (idx: number, mistakes: number) => {
     completedIndexes.current.add(idx)
     totalMistakes.current += mistakes
     if (completedIndexes.current.size === chars.length) {
+      setWordComplete(true)
       onQuizComplete?.(totalMistakes.current)
     } else if (idx === activeIndex) {
       setActiveIndex(idx + 1)
@@ -141,7 +157,9 @@ export function HanziStage({
             hintKey={hintKey}
             revealKey={revealKey}
             size={perCharSize}
+            holdCharacterOnComplete={holdCharacterOnComplete}
             active={idx === activeIndex}
+            dimmed={!wordComplete && idx !== activeIndex}
             onQuizProgress={onQuizProgress}
             onQuizComplete={(mistakes) => handleGlyphQuizComplete(idx, mistakes)}
             onDemoComplete={() => handleGlyphDemoComplete(idx)}
@@ -159,14 +177,21 @@ interface GlyphProps {
   hintKey: number
   revealKey: number
   size: number
-  /** Whether it's this character's turn — inactive glyphs wait, dimmed, until the ones before them finish. */
+  holdCharacterOnComplete: boolean
+  /** Whether it's this character's turn — only the active glyph takes input. */
   active: boolean
+  /**
+   * Faded back because another character has the turn. Separate from `active`
+   * so a finished word can show every glyph at full strength while the turn
+   * still nominally belongs to the last one.
+   */
+  dimmed: boolean
   onQuizProgress?: (strokesRemaining: number, totalMistakes: number) => void
   onQuizComplete: (mistakes: number) => void
   onDemoComplete: () => void
 }
 
-function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, revealKey, size, active, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
+function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, revealKey, size, holdCharacterOnComplete, active, dimmed, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
   const webviewRef = useRef<WebView>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const startedRef = useRef(false)
@@ -219,6 +244,7 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
       drawingWidth,
       strokeWidth,
       strokeData,
+      holdCharacterOnComplete,
     })
   }
 
@@ -260,6 +286,11 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
     } else if (msg.type === 'correctStroke') {
       playStrokeSound()
       onQuizProgress?.(msg.strokesRemaining ?? 0, msg.totalMistakes ?? 0)
+    } else if (msg.type === 'strokeHint') {
+      // The writer has given up on this stroke and highlighted it. Sounded here
+      // alongside the stroke sound rather than in each screen, so every place
+      // that shows a quiz gets the same feedback without repeating itself.
+      playGongSound()
     } else if (msg.type === 'demoComplete') {
       onDemoComplete()
     } else if (msg.type === 'quizComplete') {
@@ -305,7 +336,7 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
 
   return (
     <View
-      className={active ? 'relative rounded-2xl opacity-100' : 'relative rounded-2xl opacity-20'}
+      className={dimmed ? 'relative rounded-2xl opacity-20' : 'relative rounded-2xl opacity-100'}
       style={{ width: size, height: size }}
       pointerEvents={active ? 'auto' : 'none'}
     >

@@ -9,3 +9,10 @@ dist-ssr
 web-build/
 expo-env.d.ts
 *.orig.*
+
+# Source artwork and design references. Kept out of git deliberately: it's ~225MB
+# of full-resolution PNGs the app never loads — book covers are resized into
+# src/assets/images/covers by scripts/buildStoryCovers.mjs, and the decorative
+# pieces it uses are copied into src/assets/images/decor. Committing the
+# originals would bloat every clone permanently, since git keeps them forever.
+Photos for Reference/

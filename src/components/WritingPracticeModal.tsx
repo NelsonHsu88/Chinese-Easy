@@ -1,13 +1,15 @@
-import { useState } from 'react'
-import { View, Text, Pressable, Modal as RNModal } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import { View, Text, Pressable, Modal as RNModal, Animated, Platform } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { X, RotateCw, Eye, Lightbulb, Volume2 } from 'lucide-react-native'
+import { X, RotateCw, Lightbulb, Volume2, Check, ArrowRight } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin } from '../lib/hanzi'
 import { HanziStage } from './HanziStage'
 import { speak } from '../lib/speech'
-import { playTapSound } from '../lib/sound'
+import { playTapSound, playPositiveChime } from '../lib/sound'
+import { celebrateHaptic } from '../lib/haptics'
 import type { VocabWord } from '../types'
+import { shortGloss } from '../lib/definitions'
 
 interface Props {
   word: VocabWord
@@ -33,9 +35,29 @@ export function WritingPracticeModal({ word, onClose }: Props) {
   const { settings } = useApp()
   const [attempt, setAttempt] = useState(0)
   const [hintKey, setHintKey] = useState(0)
-  const [revealKey, setRevealKey] = useState(0)
   const [strokesDone, setStrokesDone] = useState(0)
   const [totalStrokes, setTotalStrokes] = useState(0)
+  const [finished, setFinished] = useState(false)
+
+  /*
+   * Finishing the character used to leave the learner facing a "Show Answer"
+   * button, which makes no sense once they've written the thing correctly —
+   * there's no answer left to show. Instead the card asks the only question that
+   * still matters: go again, or move on.
+   */
+  const finishRise = useRef(new Animated.Value(0)).current
+  const [finishHeight, setFinishHeight] = useState(180)
+
+  useEffect(() => {
+    if (!finished) return
+    Animated.spring(finishRise, {
+      toValue: 1,
+      damping: 21,
+      stiffness: 195,
+      mass: 0.9,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start()
+  }, [finished, finishRise])
 
   const text = displayWord(word, settings.script)
   const pinyin = displayPinyin(word, settings.phoneticScript)
@@ -58,10 +80,25 @@ export function WritingPracticeModal({ word, onClose }: Props) {
     })
   }
 
+  /*
+   * Finishing the character is the one genuine accomplishment in this screen, so
+   * it gets the same chime-and-buzz the app uses for a correct review answer
+   * rather than passing in silence. Guarded against firing twice: hanzi-writer
+   * can report completion again if the last stroke is re-evaluated.
+   */
+  const handleComplete = () => {
+    if (finished) return
+    setFinished(true)
+    playPositiveChime()
+    celebrateHaptic()
+  }
+
   const reset = () => {
     playTapSound()
     setStrokesDone(0)
     setTotalStrokes(0)
+    setFinished(false)
+    finishRise.setValue(0)
     setAttempt((n) => n + 1)
   }
 
@@ -105,15 +142,16 @@ export function WritingPracticeModal({ word, onClose }: Props) {
             showOutline
             showGuides
             hintKey={hintKey}
-            revealKey={revealKey}
             resetKey={attempt}
+            holdCharacterOnComplete
             onQuizProgress={handleProgress}
+            onQuizComplete={handleComplete}
           />
         </View>
 
         <View className="mt-4 flex-row items-baseline justify-center gap-2.5">
           <Text className="font-hanzi text-[26px] text-slate-900 dark:text-white">{text}</Text>
-          <Text className="text-[19px] text-slate-400">{word.definition}</Text>
+          <Text className="text-[19px] text-slate-400">{shortGloss(word)}</Text>
         </View>
 
         {exampleText ? (
@@ -128,33 +166,67 @@ export function WritingPracticeModal({ word, onClose }: Props) {
           </View>
         ) : null}
 
-        <Pressable
-          onPress={() => {
-            playTapSound()
-            setRevealKey((n) => n + 1)
-          }}
-          className="mx-5 flex-row items-center justify-center gap-2.5 rounded-full bg-slate-800 py-4 shadow-card active:opacity-90 dark:bg-slate-100"
-        >
-          <Eye size={22} color="#ffffff" />
-          <Text className="text-[19px] font-bold text-white">Show Answer</Text>
-        </Pressable>
-
-        <View className="flex-row items-center justify-between px-5 pb-4 pt-4">
-          <Pressable onPress={reset} className="flex-row items-center gap-2.5 p-1 active:opacity-60">
-            <RotateCw size={22} color="#94a3b8" strokeWidth={2.5} />
-            <Text className="text-[18px] font-semibold text-slate-400">Reset</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => {
-              playTapSound()
-              setHintKey((n) => n + 1)
+        {finished ? (
+          // NativeWind doesn't process `className` on an Animated.View, so the
+          // animated wrapper carries plain styles and the inner View keeps the
+          // Tailwind styling.
+          <Animated.View
+            onLayout={(e) => setFinishHeight(e.nativeEvent.layout.height)}
+            style={{
+              transform: [
+                { translateY: finishRise.interpolate({ inputRange: [0, 1], outputRange: [finishHeight, 0] }) },
+              ],
+              opacity: finishRise,
             }}
-            className="flex-row items-center gap-2 rounded-full bg-brand-100 px-5 py-2.5 active:opacity-80 dark:bg-brand-900/40"
           >
-            <Lightbulb size={20} color="#16a34a" />
-            <Text className="text-[18px] font-bold text-brand-700 dark:text-brand-300">Hint</Text>
-          </Pressable>
-        </View>
+            <View className="px-5 pb-4 pt-2">
+              <View className="mb-3 flex-row items-center justify-center gap-2">
+                <Check size={22} color="#16a34a" strokeWidth={3} />
+                <Text className="text-[19px] font-extrabold text-brand-600 dark:text-brand-400">
+                  Nicely written!
+                </Text>
+              </View>
+              <View className="flex-row gap-3">
+                <Pressable
+                  onPress={reset}
+                  accessibilityRole="button"
+                  className="flex-1 flex-row items-center justify-center gap-2 rounded-full border border-slate-200 bg-white py-4 shadow-card active:opacity-80 dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <RotateCw size={20} color="#64748b" strokeWidth={2.5} />
+                  <Text className="text-[17px] font-bold text-slate-600 dark:text-slate-300">Write it again</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    playTapSound()
+                    onClose()
+                  }}
+                  accessibilityRole="button"
+                  className="flex-1 flex-row items-center justify-center gap-2 rounded-full bg-brand-500 py-4 shadow-card active:opacity-80"
+                >
+                  <Text className="text-[17px] font-bold text-white">Done</Text>
+                  <ArrowRight size={20} color="#ffffff" strokeWidth={2.5} />
+                </Pressable>
+              </View>
+            </View>
+          </Animated.View>
+        ) : (
+          <View className="flex-row items-center justify-between px-5 pb-4 pt-4">
+            <Pressable onPress={reset} className="flex-row items-center gap-2.5 p-1 active:opacity-60">
+              <RotateCw size={22} color="#94a3b8" strokeWidth={2.5} />
+              <Text className="text-[18px] font-semibold text-slate-400">Reset</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                playTapSound()
+                setHintKey((n) => n + 1)
+              }}
+              className="flex-row items-center gap-2 rounded-full bg-brand-100 px-5 py-2.5 active:opacity-80 dark:bg-brand-900/40"
+            >
+              <Lightbulb size={20} color="#16a34a" />
+              <Text className="text-[18px] font-bold text-brand-700 dark:text-brand-300">Hint</Text>
+            </Pressable>
+          </View>
+        )}
       </SafeAreaView>
     </RNModal>
   )

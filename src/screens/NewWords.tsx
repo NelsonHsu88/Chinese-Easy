@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { View, Text, Pressable, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Animated, { FadeIn } from 'react-native-reanimated'
-import { Plus, SkipForward, BookPlus, PenLine } from 'lucide-react-native'
+import { router } from 'expo-router'
+import { ChevronLeft, Plus, SkipForward, BookPlus, PenLine } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { newWordsPool } from '../lib/selectors'
 import { displayWord, displayExample, displayPinyin } from '../lib/hanzi'
 import { AddCustomWordModal } from '../components/AddCustomWordModal'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
 import { SpeakButton } from '../components/SpeakButton'
+import { shortGloss } from '../lib/definitions'
 
 export function NewWords() {
   const { wordBank, deck, settings, addToReviewDeck, wordsLearnedToday } = useApp()
@@ -30,8 +32,18 @@ export function NewWords() {
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
       <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 16, paddingTop: 8 }}>
-        <View className="mb-4 flex-row items-center justify-between">
-          <View>
+        <View className="mb-4 flex-row items-center gap-1">
+          {/* Same back control the Lessons path and Review hub use — New Words is
+              pushed over the tabs, so this is the way out. */}
+          <Pressable
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            className="-ml-1 p-1"
+          >
+            <ChevronLeft size={28} color="#1e293b" strokeWidth={2.5} />
+          </Pressable>
+          <View className="flex-1">
             <Text className="text-sm font-medium text-slate-400 dark:text-slate-500">Chinese Easy</Text>
             <Text className="text-lg font-bold text-slate-900 dark:text-white">New Words</Text>
           </View>
@@ -66,12 +78,17 @@ export function NewWords() {
             )}
 
             <Pressable onPress={() => setFlipped((f) => !f)} className="min-h-[340px] flex-1">
-              <Animated.View
-                key={`${current.id}-${flipped}`}
-                entering={FadeIn.duration(180)}
-                className="flex-1 items-center justify-center gap-3 rounded-3xl bg-white p-8 dark:bg-slate-900"
-                style={{ elevation: 2 }}
-              >
+              {/*
+                Reanimated's Animated.View isn't registered with NativeWind, so a
+                `className` on it is silently dropped — which is what left the card
+                unstyled and its contents piled in the top-left corner. Keep it as a
+                bare animation wrapper and put the layout on a plain View inside.
+              */}
+              <Animated.View key={`${current.id}-${flipped}`} entering={FadeIn.duration(180)} style={{ flex: 1 }}>
+                <View
+                  className="flex-1 items-center justify-center gap-3 rounded-3xl bg-white p-8 shadow-card dark:bg-slate-900"
+                  style={{ elevation: 2 }}
+                >
                 {!flipped ? (
                   <>
                     <Text className="font-hanzi text-7xl font-bold text-slate-900 dark:text-white">{displayWord(current, settings.script)}</Text>
@@ -83,17 +100,19 @@ export function NewWords() {
                   </>
                 ) : (
                   <>
-                    <Text className="text-2xl font-bold text-slate-900 dark:text-white">{current.definition}</Text>
+                    <Text className="text-2xl font-bold text-slate-900 dark:text-white">{shortGloss(current)}</Text>
                     {current.example && displayExample(current, settings.script) && (
                       <View className="mt-3 items-center border-t border-slate-100 pt-3 dark:border-slate-800">
                         <Text className="font-hanzi text-lg text-slate-700 dark:text-slate-300">{displayExample(current, settings.script)}</Text>
-                        <Text className="text-sm text-slate-400">{current.example.pinyin}</Text>
+                        {/* Corpus sentences carry no pinyin; only the curated set does. */}
+                        {current.example.pinyin ? <Text className="text-sm text-slate-400">{current.example.pinyin}</Text> : null}
                         <Text className="text-sm italic text-slate-400">{current.example.translation}</Text>
                       </View>
                     )}
                     <Text className="mt-4 text-xs text-slate-300 dark:text-slate-600">tap to flip back</Text>
                   </>
                 )}
+                </View>
               </Animated.View>
             </Pressable>
 

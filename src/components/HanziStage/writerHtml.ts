@@ -36,6 +36,28 @@ export const WRITER_HTML = `<!doctype html>
     fill: url(#radicalGrad) !important;
     filter: drop-shadow(0 2px 2px rgba(6, 78, 59, 0.32));
   }
+
+  /*
+   * "Placing" a stroke, Skritter-style. The stroke the learner just drew drops
+   * the last few pixels into position with a slight overshoot, so it reads as
+   * being set down onto the character. Only that one path animates — the strokes
+   * already written stay put, which is what keeps this from looking like the
+   * whole glyph bouncing.
+   *
+   * --place-dy is written from JS: CSS transforms on an SVG path work in the
+   * character's own 1024-unit space, not CSS pixels, so a fixed value here would
+   * scale with the stage size and be nearly invisible at normal sizes.
+   */
+  @keyframes strokePlace {
+    0%   { transform: translateY(calc(var(--place-dy) * -1)) scale(1.03); opacity: 0.72; }
+    60%  { transform: translateY(calc(var(--place-dy) * 0.28)) scale(1.004); opacity: 1; }
+    100% { transform: translateY(0) scale(1); opacity: 1; }
+  }
+  #target path.stroke-place {
+    transform-box: fill-box;
+    transform-origin: 50% 50%;
+    animation: strokePlace 330ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
 </style>
 </head>
 <body>
@@ -66,6 +88,18 @@ export const WRITER_HTML = `<!doctype html>
   // hanzi-writer doesn't expose how far through a quiz you are, so we count
   // correct strokes ourselves to know which one a hint should highlight.
   var strokeIndex = 0;
+  // Stage size in CSS px, kept so the stroke-placement nudge can be expressed in
+  // the character's own coordinate space (see placeNewestStroke).
+  var stageSize = 0;
+
+  /*
+   * Misses on one stroke before hanzi-writer highlights it for the learner. It
+   * gives no callback for that moment, so the same threshold is used to count
+   * misses here and announce it — keep the two in step.
+   */
+  var HINT_AFTER_MISSES = 3;
+  // Whether to leave the finished character painted once a quiz completes.
+  var holdOnComplete = false;
 
   function post(payload) {
     var json = JSON.stringify(payload);
@@ -76,6 +110,32 @@ export const WRITER_HTML = `<!doctype html>
       // bridge exists there), so post straight to the parent window instead.
       window.parent.postMessage(json, '*');
     }
+  }
+
+  /*
+   * Animates the stroke that was just completed, and only that one.
+   *
+   * hanzi-writer paints finished strokes as <path> elements carrying the exact
+   * stroke/radical colours configured below, so the newest one is the last such
+   * path in the DOM. It's re-tagged on every correct stroke; earlier strokes keep
+   * no animation class, so they stay stationary.
+   *
+   * The displacement is converted from CSS pixels into the character's 1024-unit
+   * space, because CSS transforms on an SVG path are applied in user units.
+   */
+  function placeNewestStroke() {
+    var paths = document.querySelectorAll('#target path[fill="#22c55e"], #target path[fill="#16a34a"]');
+    if (!paths.length) return;
+    var newest = paths[paths.length - 1];
+
+    var NUDGE_PX = 5; // within the 3-6px the effect is legible at, without wobbling
+    var unitsPerPx = stageSize > 0 ? 1024 / stageSize : 5;
+    newest.style.setProperty('--place-dy', (NUDGE_PX * unitsPerPx).toFixed(2) + 'px');
+
+    // Restart the animation if this element somehow already carries the class.
+    newest.classList.remove('stroke-place');
+    void newest.getBoundingClientRect();
+    newest.classList.add('stroke-place');
   }
 
   function showHint(size, padding, firstStrokePath) {
@@ -130,6 +190,8 @@ export const WRITER_HTML = `<!doctype html>
 
     if (msg.type === 'init') {
       mode = msg.mode;
+      stageSize = msg.size;
+      holdOnComplete = !!msg.holdCharacterOnComplete;
       document.getElementById('target').innerHTML = '';
       hideHint();
       if (msg.showGuides) drawGuides(msg.size);
@@ -156,9 +218,15 @@ export const WRITER_HTML = `<!doctype html>
         drawingWidth: msg.drawingWidth,
         strokeWidth: msg.strokeWidth,
         outlineWidth: msg.strokeWidth,
-        showHintAfterMisses: 2,
-        highlightOnComplete: true,
-        leniency: 1.2,
+        showHintAfterMisses: HINT_AFTER_MISSES,
+        // Off deliberately: hanzi-writer flashes the finished character in
+        // highlightColor, which is the coral we use for errors — so completing a
+        // word looked like it had just been marked wrong.
+        highlightOnComplete: false,
+        // Grades on general stroke shape and direction rather than precision.
+        // hanzi-writer's default is 1; 1.2 was still rejecting strokes that were
+        // recognisably the right form.
+        leniency: 2.2,
         onLoadCharDataSuccess: function (data) {
           if (msg.showStartHint && data.strokes[0]) {
             showHint(msg.size, msg.padding, data.strokes[0]);
@@ -185,9 +253,24 @@ export const WRITER_HTML = `<!doctype html>
       } else {
         strokeIndex = 0;
         writer.quiz({
+          onMistake: function (strokeData) {
+            /*
+             * Announced on the miss that first trips hanzi-writer's own hint and
+             * on every miss after it, so the gong keeps sounding for as long as
+             * the learner keeps missing the same stroke. Resets naturally: the
+             * count is per-stroke, so moving on starts the tally again.
+             */
+            if (strokeData.mistakesOnStroke >= HINT_AFTER_MISSES) {
+              post({ type: 'strokeHint' });
+            }
+          },
           onCorrectStroke: function (strokeData) {
             hideHint();
             strokeIndex += 1;
+            // Deferred a frame: hanzi-writer appends the finished stroke's path
+            // during this callback, so querying synchronously can still find the
+            // previous stroke as the last one.
+            requestAnimationFrame(placeNewestStroke);
             post({
               type: 'correctStroke',
               strokesRemaining: strokeData.strokesRemaining,
@@ -195,6 +278,14 @@ export const WRITER_HTML = `<!doctype html>
             });
           },
           onComplete: function (summary) {
+            /*
+             * hanzi-writer fades the drawn strokes back out when a quiz ends,
+             * which leaves the learner staring at the faint grey outline the
+             * instant they finish — exactly when they want to see what they
+             * just wrote. Repainting the character puts it back in the stroke
+             * colour and keeps it there.
+             */
+            if (holdOnComplete) writer.showCharacter();
             post({ type: 'quizComplete', totalMistakes: summary.totalMistakes });
           },
         });

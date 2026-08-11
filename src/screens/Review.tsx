@@ -1,288 +1,227 @@
 import { useMemo, useState } from 'react'
-import { View, Text, Pressable } from 'react-native'
+import { View, Text, Pressable, ScrollView, Image, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { X, Eye, Check, RotateCw, Lightbulb } from 'lucide-react-native'
+import { ChevronLeft, ChevronRight, Volume2, RotateCcw, BookOpen, Timer, TriangleAlert, Flame, ClipboardList } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { dueCardsFor } from '../lib/selectors'
-import { displayWord, displayExample, displayPinyin } from '../lib/hanzi'
-import { HanziStage } from '../components/HanziStage'
-import { SpeakButton } from '../components/SpeakButton'
-import { Celebration } from '../components/Celebration'
-import { playPositiveChime, playRetryTone } from '../lib/sound'
-import { celebrateHaptic } from '../lib/haptics'
-import type { Grade } from '../types'
+import { MascotPrompt } from '../components/OnboardingKit'
+import { dueCardsFor, dueCountFor, listeningCardsFor, mistakeCardsFor, weakCardsFor } from '../lib/selectors'
+import { playTapSound } from '../lib/sound'
+import type { ReviewMode } from './ReviewSession'
 
-type Direction = 'recognition' | 'production'
+const FIRE_ICON = require('../assets/images/icons/fire.png')
+// The same misty band the Lessons path sits on. Cropped to its own content by
+// scripts/processCloudOverlay.mjs, so the aspect is fixed and the art meets the
+// bottom edge exactly.
+const CLOUDS = require('../assets/images/icons/lessons-clouds.png')
+const CLOUDS_ASPECT = 1080 / 239
 
-function directionFor(wordId: string, setting: 'recognition' | 'production' | 'mixed'): Direction {
-  if (setting !== 'mixed') return setting
-  let h = 0
-  for (const ch of wordId) h = (h * 31 + ch.charCodeAt(0)) % 2
-  return h === 0 ? 'recognition' : 'production'
+function openSession(mode: ReviewMode) {
+  playTapSound()
+  router.push(`/review-session?mode=${mode}`)
 }
 
-const GRADE_BUTTONS: { grade: Grade; label: string; className: string }[] = [
-  { grade: 'again', label: 'Again', className: 'bg-red-500' },
-  { grade: 'hard', label: 'Hard', className: 'bg-orange-500' },
-  { grade: 'good', label: 'Good', className: 'bg-brand-500' },
-  { grade: 'easy', label: 'Easy', className: 'bg-blue-500' },
-]
-
-interface PracticeState {
-  wordId: string
-  remaining: number
-  total: number
-}
-
-export function Review() {
-  const { deck, settings, getWord, gradeCard, completePracticeRep, streak } = useApp()
-
-  const [sessionQueue] = useState(() => dueCardsFor(deck, settings).map((c) => c.wordId))
-  const [index, setIndex] = useState(0)
-  const [revealed, setRevealed] = useState(false)
-  const [hintShown, setHintShown] = useState(false)
-  const [attempt, setAttempt] = useState(0)
-  const [practice, setPractice] = useState<PracticeState | null>(null)
-  const [stats, setStats] = useState({ reviewed: 0, correct: 0 })
-  const [finished, setFinished] = useState(sessionQueue.length === 0)
-  const [celebrateKey, setCelebrateKey] = useState(0)
-
-  const currentWordId = sessionQueue[index]
-  const word = currentWordId ? getWord(currentWordId) : undefined
-  const direction = currentWordId ? directionFor(currentWordId, settings.reviewDirection) : 'recognition'
-
-  const total = sessionQueue.length
-
-  const advance = () => {
-    setRevealed(false)
-    setHintShown(false)
-    setAttempt(0)
-    if (index + 1 >= total) {
-      setFinished(true)
-    } else {
-      setIndex((i) => i + 1)
-    }
-  }
-
-  const handleGrade = (grade: Grade) => {
-    if (!currentWordId) return
-    gradeCard(currentWordId, grade)
-    setStats((s) => ({ reviewed: s.reviewed + 1, correct: s.correct + (grade === 'again' ? 0 : 1) }))
-
-    if (grade === 'easy' || grade === 'good') {
-      playPositiveChime()
-      celebrateHaptic()
-      setCelebrateKey((k) => k + 1)
-    } else {
-      playRetryTone()
-    }
-
-    if (grade === 'again') {
-      setRevealed(false)
-      setPractice({ wordId: currentWordId, remaining: settings.wrongAnswerReps, total: settings.wrongAnswerReps })
-    } else {
-      advance()
-    }
-  }
-
-  const handlePracticeNext = () => {
-    if (!practice) return
-    completePracticeRep(practice.wordId)
-    if (practice.remaining - 1 <= 0) {
-      setPractice(null)
-      advance()
-    } else {
-      setPractice((p) => (p ? { ...p, remaining: p.remaining - 1 } : p))
-    }
-  }
-
-  const accuracy = useMemo(() => (stats.reviewed === 0 ? 0 : Math.round((stats.correct / stats.reviewed) * 100)), [stats])
-
-  if (finished) {
-    return (
-      <SafeAreaView className="flex-1 items-center justify-center gap-6 bg-slate-50 px-6 dark:bg-slate-950">
-        <Celebration trigger={celebrateKey} />
-        <Text className="text-6xl">{stats.reviewed === 0 ? '\u{1F4ED}' : accuracy >= 80 ? '\u{1F389}' : '\u{1F44D}'}</Text>
-        <Text className="text-2xl font-bold text-slate-900 dark:text-white">{stats.reviewed === 0 ? 'Nothing to review' : 'Session complete!'}</Text>
-        <Text className="text-center text-slate-500 dark:text-slate-400">
-          {stats.reviewed === 0 ? "You're all caught up. Check back later or add new words." : `You reviewed ${stats.reviewed} card${stats.reviewed === 1 ? '' : 's'}.`}
-        </Text>
-
-        {stats.reviewed > 0 && (
-          <View className="w-full max-w-xs flex-row gap-3">
-            <View className="flex-1 rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-              <Text className="text-xs font-medium uppercase text-slate-400">Accuracy</Text>
-              <Text className="text-2xl font-bold text-brand-600 dark:text-brand-400">{accuracy}%</Text>
-            </View>
-            <View className="flex-1 rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-              <Text className="text-xs font-medium uppercase text-slate-400">Streak</Text>
-              <Text className="text-2xl font-bold text-amber-500">{streak} days</Text>
-            </View>
-          </View>
-        )}
-
-        <Pressable onPress={() => router.push('/')} className="mt-2 w-full max-w-xs items-center rounded-2xl bg-brand-500 px-6 py-4 shadow-card">
-          <Text className="text-lg font-bold text-white">Back to Dashboard</Text>
-        </Pressable>
-      </SafeAreaView>
-    )
-  }
-
-  if (!word) return null
-
-  if (practice) {
-    const doneCount = practice.total - practice.remaining + 1
-    return (
-      <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
-        <ReviewHeader onClose={() => router.push('/')} step={doneCount} total={practice.total} progress={doneCount / practice.total} tint="amber" />
-        <View className="items-center justify-center gap-3 px-4 pb-4 pt-6">
-          <Text className="font-hanzi text-3xl font-semibold text-slate-900 dark:text-white">{displayWord(word, settings.script)}</Text>
-          <Text className="text-sm text-slate-400">Rewrite it to lock it in</Text>
-        </View>
-        <View
-          style={{ minHeight: 200 }}
-          className="relative mx-4 mb-4 flex-1 rounded-2xl border border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40"
-        >
-          <HanziStage
-            character={displayWord(word, settings.script)}
-            mode="quiz"
-            showOutline
-            showGuides
-            resetKey={practice.remaining}
-          />
-        </View>
-        <View className="px-4 pb-6">
-          <Pressable onPress={handlePracticeNext} className="w-full items-center rounded-2xl bg-amber-500 py-4 shadow-card">
-            <Text className="text-lg font-bold text-white">{practice.remaining <= 1 ? 'Done' : 'Next rep'}</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    )
-  }
-
+/** The stack-of-flashcards badge from the reference — two cards offset behind a front one. */
+function FlashcardsBadge() {
   return (
-    <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <Celebration trigger={celebrateKey} />
-      <ReviewHeader onClose={() => router.push('/')} step={index + 1} total={total} progress={(index + 1) / total} />
-
-      <View className="items-center gap-1 px-4 pb-2 pt-3">
-        {direction === 'recognition' ? (
-          <>
-            <Text className="text-xs font-medium uppercase tracking-wide text-slate-400">Recognize this</Text>
-            <View className="flex-row items-center gap-2">
-              <Text className="font-hanzi text-5xl font-bold text-slate-900 dark:text-white">{displayWord(word, settings.script)}</Text>
-              <SpeakButton text={displayWord(word, settings.script)} />
-            </View>
-          </>
-        ) : (
-          <>
-            <Text className="text-xs font-medium uppercase tracking-wide text-slate-400">Write in Chinese</Text>
-            <Text className="text-2xl font-bold text-slate-900 dark:text-white">{word.definition}</Text>
-          </>
-        )}
+    <View className="h-[68px] w-[68px] items-center justify-center rounded-full bg-coral-600">
+      <View className="absolute h-9 w-8 rotate-[-14deg] rounded-md bg-white/70" />
+      <View className="h-9 w-8 items-center justify-center rounded-md bg-white shadow-card">
+        <Text className="font-hanzi-bold text-[19px] leading-[24px] text-coral-600">學</Text>
       </View>
-
-      <View
-        style={{ minHeight: 200 }}
-        className="relative mx-4 mb-4 flex-1 rounded-2xl border border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40"
-      >
-        <HanziStage
-          character={displayWord(word, settings.script)}
-          mode={revealed ? 'demo' : 'quiz'}
-          showOutline={revealed || direction === 'recognition' || hintShown}
-          showGuides
-          resetKey={`${currentWordId}-${attempt}-${revealed}`}
-        />
-      </View>
-
-      {revealed && (
-        <View className="mx-4 mb-3 rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-          <View className="flex-row items-center gap-2">
-            <Text className="font-hanzi text-3xl font-bold text-slate-900 dark:text-white">{displayWord(word, settings.script)}</Text>
-            <Text className="text-sm font-medium text-slate-400">{displayPinyin(word, settings.phoneticScript)}</Text>
-            <SpeakButton text={displayWord(word, settings.script)} size={16} />
-          </View>
-          <Text className="mt-1 text-base font-medium text-slate-700 dark:text-slate-300">{word.definition}</Text>
-          {word.example && displayExample(word, settings.script) && (
-            <View className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
-              <Text className="font-hanzi text-sm text-slate-600 dark:text-slate-400">{displayExample(word, settings.script)}</Text>
-              <Text className="text-xs text-slate-400">{word.example.pinyin}</Text>
-              <Text className="text-xs italic text-slate-400">{word.example.translation}</Text>
-            </View>
-          )}
-        </View>
-      )}
-
-      <View className="px-4 pb-6">
-        {!revealed ? (
-          <View className="gap-3">
-            <Pressable
-              onPress={() => setRevealed(true)}
-              className="flex-row items-center justify-center gap-2 rounded-2xl bg-slate-900 py-4 shadow-card dark:bg-white"
-            >
-              <Eye size={20} color="white" />
-              <Text className="text-lg font-bold text-white dark:text-slate-900">Show Answer</Text>
-            </Pressable>
-            <View className="flex-row items-center justify-between px-1">
-              <Pressable
-                onPress={() => setAttempt((a) => a + 1)}
-                accessibilityLabel="Restart writing attempt"
-                className="flex-row items-center gap-1.5"
-              >
-                <RotateCw size={16} color="#64748b" />
-                <Text className="text-sm font-semibold text-slate-500 dark:text-slate-400">Reset</Text>
-              </Pressable>
-              {!hintShown && direction === 'production' && (
-                <Pressable onPress={() => setHintShown(true)} className="flex-row items-center gap-1.5">
-                  <Lightbulb size={16} color="#db9f2e" />
-                  <Text className="text-sm font-semibold text-amber-600 dark:text-amber-400">Hint</Text>
-                </Pressable>
-              )}
-            </View>
-          </View>
-        ) : (
-          <View className="flex-row gap-2">
-            {GRADE_BUTTONS.map(({ grade, label, className }) => (
-              <Pressable key={grade} onPress={() => handleGrade(grade)} className={`flex-1 items-center gap-1 rounded-2xl py-3 shadow-card ${className}`}>
-                {grade === 'easy' && <Check size={16} color="white" />}
-                <Text className="text-sm font-bold text-white">{label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </View>
-    </SafeAreaView>
+    </View>
   )
 }
 
-function ReviewHeader({
-  onClose,
-  step,
-  total,
-  progress,
-  tint = 'brand',
-}: {
-  onClose: () => void
-  step: number
-  total: number
-  progress: number
-  tint?: 'brand' | 'amber'
-}) {
-  const pct = Math.min(100, Math.max(0, progress * 100))
+interface ModeCardProps {
+  tag: string
+  title: string
+  description: string
+  count: string
+  countUnit: string
+  badge: React.ReactNode
+  cardClass: string
+  tagClass: string
+  countClass: string
+  onPress: () => void
+}
+
+function ModeCard({ tag, title, description, count, countUnit, badge, cardClass, tagClass, countClass, onPress }: ModeCardProps) {
   return (
-    <View className="px-4 pt-4">
-      <View className="flex-row items-center gap-3">
-        <Pressable onPress={onClose} accessibilityLabel="Close review" className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900">
-          <X size={20} color="#64748b" />
-        </Pressable>
-        <View className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-          <View className={`h-full rounded-full ${tint === 'amber' ? 'bg-amber-500' : 'bg-brand-500'}`} style={{ width: `${pct}%` }} />
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}, ${count} ${countUnit}`}
+      className={`flex-row items-center gap-4 rounded-3xl px-4 py-4 active:opacity-80 ${cardClass}`}
+    >
+      {badge}
+      <View className="flex-1">
+        <View className={`self-start rounded-md px-2 py-0.5 ${tagClass}`}>
+          <Text className="text-[11px] font-extrabold uppercase tracking-wide">{tag}</Text>
         </View>
-        <Text className="w-12 text-right text-xs font-semibold text-slate-400">
-          {step} / {total}
-        </Text>
+        <Text className="mt-1 text-[21px] font-extrabold text-slate-900 dark:text-white">{title}</Text>
+        <Text className="mt-0.5 text-[13px] leading-[17px] text-slate-500 dark:text-slate-400">{description}</Text>
       </View>
-    </View>
+      <View className="items-center">
+        <Text className={`text-[26px] font-extrabold leading-[30px] ${countClass}`}>{count}</Text>
+        <Text className="text-[12px] font-medium text-slate-500 dark:text-slate-400">{countUnit}</Text>
+      </View>
+      <View className="h-9 w-9 items-center justify-center rounded-full bg-white shadow-card dark:bg-slate-800">
+        <ChevronRight size={20} color="#64748b" strokeWidth={2.5} />
+      </View>
+    </Pressable>
+  )
+}
+
+export function Review() {
+  const { deck, settings, streak } = useApp()
+
+  const { width: windowWidth } = useWindowDimensions()
+  // Measured rather than taken from useWindowDimensions: on web the window can be
+  // far wider than the screen the app is actually laid out in.
+  const [containerWidth, setContainerWidth] = useState(windowWidth)
+
+  const counts = useMemo(
+    () => ({
+      due: dueCountFor(deck),
+      flashcards: dueCardsFor(deck, settings).length,
+      listening: listeningCardsFor(deck, settings).length,
+      mistakes: mistakeCardsFor(deck).length,
+      weak: weakCardsFor(deck).length,
+    }),
+    [deck, settings],
+  )
+
+  const mascotMessage =
+    counts.due === 0
+      ? "Nothing due right now — want to drill what you've missed before?"
+      : counts.mistakes > 0
+        ? "Let's strengthen what you've learned!"
+        : `${counts.due} word${counts.due === 1 ? '' : 's'} waiting — let's strengthen what you've learned!`
+
+  return (
+    <SafeAreaView edges={['top']} className="flex-1 bg-canvas dark:bg-slate-950">
+      <View
+        pointerEvents="none"
+        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: containerWidth / CLOUDS_ASPECT }}
+      >
+        <Image source={CLOUDS} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <View className="mb-4 flex-row items-center gap-1">
+          {/* Same back control the Lessons path uses — Review is pushed over the
+              tabs, so this is the way out. */}
+          <Pressable
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            className="-ml-1 p-1"
+          >
+            <ChevronLeft size={28} color="#1e293b" strokeWidth={2.5} />
+          </Pressable>
+          <Text className="flex-1 text-[38px] font-extrabold leading-[44px] text-slate-900 dark:text-white">Review</Text>
+          <View className="flex-row items-center gap-1.5 rounded-full border border-coral-200 bg-white px-3.5 py-2 shadow-card dark:border-coral-900 dark:bg-slate-900">
+            <Image source={FIRE_ICON} style={{ width: 20, height: 20 }} resizeMode="contain" />
+            <Text className="text-base font-extrabold text-slate-800 dark:text-slate-100">{streak}</Text>
+          </View>
+        </View>
+
+        <MascotPrompt message={mascotMessage} />
+
+        <View className="mb-4 flex-row items-stretch rounded-3xl bg-white px-2 py-4 shadow-card dark:bg-slate-900">
+          <Pressable
+            onPress={() => router.push('/due-words')}
+            accessibilityRole="button"
+            accessibilityLabel={`${counts.due} words due. Browse them.`}
+            className="flex-1 items-center gap-1 active:opacity-70"
+          >
+            <Text className="text-[26px] font-extrabold leading-[30px] text-slate-900 dark:text-white">{counts.due}</Text>
+            <Text className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Words due</Text>
+            <ClipboardList size={18} color="#f04747" />
+          </Pressable>
+          <View className="w-px bg-slate-200 dark:bg-slate-700" />
+          <View className="flex-1 items-center gap-1">
+            <Text className="text-[26px] font-extrabold leading-[30px] text-slate-900 dark:text-white">{streak}</Text>
+            <Text className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Day streak</Text>
+            <Flame size={18} color="#ff6b6b" fill="#f5b93d" />
+          </View>
+          <View className="w-px bg-slate-200 dark:bg-slate-700" />
+          <View className="flex-1 items-center gap-1">
+            <Text className="text-[26px] font-extrabold leading-[30px] text-slate-900 dark:text-white">{counts.weak}</Text>
+            <Text className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Weak words</Text>
+            <TriangleAlert size={18} color="#f5b93d" fill="#f5b93d" />
+          </View>
+        </View>
+
+        <View className="gap-3">
+          <ModeCard
+            tag="Review"
+            title="Flashcards"
+            description="Review words and meanings with spaced repetition."
+            count={String(counts.flashcards)}
+            countUnit="due"
+            badge={<FlashcardsBadge />}
+            cardClass="bg-coral-50 dark:bg-coral-900/20"
+            tagClass="bg-coral-100 dark:bg-coral-900/40"
+            countClass="text-coral-600"
+            onPress={() => openSession('flashcards')}
+          />
+
+          <ModeCard
+            tag="Listen"
+            title="Listening"
+            description="Practice listening and improve your comprehension."
+            count={String(counts.listening)}
+            countUnit="due"
+            badge={
+              <View className="h-[68px] w-[68px] items-center justify-center rounded-full bg-brand-500">
+                <Volume2 size={34} color="white" strokeWidth={2.25} />
+              </View>
+            }
+            cardClass="bg-brand-50 dark:bg-brand-900/20"
+            tagClass="bg-brand-100 dark:bg-brand-900/40"
+            countClass="text-brand-600"
+            onPress={() => openSession('listening')}
+          />
+
+          <ModeCard
+            tag="Improve"
+            title="Mistakes"
+            description="Review words you've missed before."
+            count={String(counts.mistakes)}
+            countUnit="due"
+            badge={
+              <View className="h-[68px] w-[68px] items-center justify-center rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                <RotateCcw size={34} color="#64748b" strokeWidth={2.25} />
+              </View>
+            }
+            cardClass="bg-slate-100/80 dark:bg-slate-800/50"
+            tagClass="bg-slate-200 dark:bg-slate-700"
+            countClass="text-slate-700 dark:text-slate-200"
+            onPress={() => openSession('mistakes')}
+          />
+        </View>
+
+        <Pressable
+          onPress={() => openSession('full')}
+          accessibilityRole="button"
+          className="mt-5 flex-row items-center justify-center gap-3 rounded-full bg-brand-600 py-4 shadow-card active:opacity-90"
+        >
+          <BookOpen size={22} color="white" strokeWidth={2.25} />
+          <Text className="text-[19px] font-extrabold text-white">Start Review Session</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => openSession('quick')}
+          accessibilityRole="button"
+          className="mt-3 flex-row items-center justify-center gap-2 self-center rounded-full border-2 border-brand-500 bg-white/80 px-7 py-3 active:opacity-80 dark:bg-slate-900/80"
+        >
+          <Timer size={19} color="#16a34a" strokeWidth={2.25} />
+          <Text className="text-[16px] font-extrabold text-brand-700 dark:text-brand-400">Quick 5-min Review</Text>
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
   )
 }

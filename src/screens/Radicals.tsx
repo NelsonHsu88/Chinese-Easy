@@ -2,9 +2,8 @@ import { useMemo, useState } from 'react'
 import { View, Text, TextInput, Pressable, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ArrowLeft, PenSquare, Search } from 'lucide-react-native'
-import { Modal } from '../components/Modal'
-import { SpeakButton } from '../components/SpeakButton'
+import { ArrowLeft, Search } from 'lucide-react-native'
+import { RadicalDetailModal } from '../components/RadicalDetailModal'
 import { RADICALS } from '../data/radicals'
 import type { Radical } from '../types'
 
@@ -115,25 +114,7 @@ export function Radicals() {
         ))}
       </ScrollView>
 
-      {selected && (
-        <Modal title={selected.character} onClose={() => setSelected(null)}>
-          <View className="items-center gap-3">
-            <View className="flex-row items-center gap-2">
-              <Text className="font-hanzi text-6xl font-bold text-slate-900 dark:text-white">{selected.character}</Text>
-              <SpeakButton text={selected.character} />
-            </View>
-            <Text className="text-lg font-medium text-slate-400">{selected.pinyin}</Text>
-            <Text className="text-xl font-semibold text-slate-900 dark:text-white">{selected.meaning}</Text>
-
-            <View className="flex-row items-center gap-2 rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">
-              <PenSquare size={14} color="#94a3b8" />
-              <Text className="text-xs font-bold text-slate-400">
-                {selected.strokeCount} stroke{selected.strokeCount === 1 ? '' : 's'}
-              </Text>
-            </View>
-          </View>
-        </Modal>
-      )}
+      {selected && <RadicalDetailModal radical={selected} onClose={() => setSelected(null)} />}
     </SafeAreaView>
   )
 }

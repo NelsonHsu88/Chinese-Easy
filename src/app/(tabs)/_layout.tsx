@@ -8,8 +8,6 @@ import {
   Library,
   Repeat,
   BookOpen,
-  BookMarked,
-  PenSquare,
   Settings as SettingsIcon,
 } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
@@ -19,7 +17,7 @@ import { TabPickerSheet } from '../../components/TabPickerSheet'
 export default function TabsLayout() {
   const { deck, newlyAddedWordIds } = useApp()
   const dueCount = dueCountFor(deck)
-  const [openSheet, setOpenSheet] = useState<'lessons' | 'dictionary' | null>(null)
+  const [openSheet, setOpenSheet] = useState<'lessons' | null>(null)
 
   return (
     <>
@@ -74,12 +72,7 @@ export default function TabsLayout() {
               </View>
             ),
           }}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault()
-              setOpenSheet('dictionary')
-            },
-          }}
+          listeners={{ tabPress: () => setOpenSheet(null) }}
         />
         <Tabs.Screen
           name="settings"
@@ -96,17 +89,6 @@ export default function TabsLayout() {
           { key: 'lessons', label: 'Lessons', description: 'Work through units, one skill at a time', icon: GraduationCap, onPress: () => router.push('/lessons') },
           { key: 'new-words', label: 'New Words', description: 'Flip through fresh vocabulary', icon: Sparkles, onPress: () => router.push('/new-words') },
           { key: 'books', label: 'Books', description: 'Read short stories in Chinese', icon: Library, onPress: () => router.push('/books') },
-        ]}
-      />
-
-      <TabPickerSheet
-        visible={openSheet === 'dictionary'}
-        title="Words"
-        onClose={() => setOpenSheet(null)}
-        options={[
-          { key: 'my-words', label: 'My Words', description: 'Everything you’ve learned so far', icon: BookMarked, onPress: () => router.push('/my-words') },
-          { key: 'dictionary', label: 'Dictionary', description: 'Search the full word bank', icon: BookOpen, onPress: () => router.push('/dictionary') },
-          { key: 'radicals', label: 'Learn Radicals', description: 'The building blocks characters are made of', icon: PenSquare, onPress: () => router.push('/radicals') },
         ]}
       />
     </>

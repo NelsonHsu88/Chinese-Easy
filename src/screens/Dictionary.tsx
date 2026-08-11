@@ -6,12 +6,16 @@ import { Search, Volume2, PlusCircle, Check, X } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, foldPinyin } from '../lib/hanzi'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
+import { RadicalDetailModal } from '../components/RadicalDetailModal'
+import { PROFICIENCY_META, ProficiencyChip, TIER_ORDER } from '../components/ProficiencyChip'
+import { proficiencyFor, proficiencyTotals, type Proficiency } from '../lib/proficiency'
 import { RADICALS } from '../data/radicals'
 import { TOWN_BUILDINGS } from '../data/townBuildings'
 import { speak } from '../lib/speech'
 import { playTapSound } from '../lib/sound'
 import { todayISO } from '../lib/date'
-import type { VocabWord } from '../types'
+import type { Radical, VocabWord } from '../types'
+import { shortGloss } from '../lib/definitions'
 
 type Tab = 'words' | 'radicals' | 'my-words'
 
@@ -38,12 +42,19 @@ function SpeakChip({ text, size = 18 }: { text: string; size?: number }) {
 /**
  * Deterministic word of the day: the date string seeds an index into the bank, so
  * every device shows the same word on a given day and it changes exactly at midnight.
+ *
+ * Drawn only from beginner-level words that have an example sentence. Seeding
+ * across the whole 20k bank surfaced things like 法西斯 ("fascist") — the long
+ * tail is full of political, technical and obscure vocabulary that makes for a
+ * poor daily feature, and most of it has no sentence to show either.
  */
 function pickWordOfTheDay(bank: VocabWord[]): VocabWord | undefined {
   if (bank.length === 0) return undefined
+  const pool = bank.filter((w) => w.hskLevel <= 3 && w.example?.translation)
+  const from = pool.length > 0 ? pool : bank
   let hash = 0
   for (const ch of todayISO()) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
-  return bank[hash % bank.length]
+  return from[hash % from.length]
 }
 
 export function Dictionary() {
@@ -53,6 +64,7 @@ export function Dictionary() {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<VocabWord | null>(null)
   const [practiceWord, setPracticeWord] = useState<VocabWord | null>(null)
+  const [selectedRadical, setSelectedRadical] = useState<Radical | null>(null)
 
   const wordOfTheDay = useMemo(() => pickWordOfTheDay(wordBank), [wordBank])
 
@@ -60,13 +72,15 @@ export function Dictionary() {
     const raw = query.trim()
     if (!raw) return []
     const q = foldPinyin(raw)
-    const matches = wordBank.filter(
-      (w) =>
-        w.simplified.includes(raw) ||
-        w.traditional.includes(raw) ||
-        foldPinyin(w.pinyin).includes(q) ||
-        w.definition.toLowerCase().includes(q),
-    )
+    // Word pinyin is stored syllable-spaced ("xué xí"), but people type it run
+    // together ("xuexi"), so match against the despaced form as well.
+    const qTight = q.replace(/\s+/g, '')
+    const matches = wordBank.filter((w) => {
+      if (w.simplified.includes(raw) || w.traditional.includes(raw)) return true
+      const p = foldPinyin(w.pinyin)
+      if (p.includes(q) || p.replace(/\s+/g, '').includes(qTight)) return true
+      return w.definition.toLowerCase().includes(q)
+    })
     // Surface exact/prefix pinyin hits before substring-of-definition noise.
     return matches
       .sort((a, b) => {
@@ -86,15 +100,36 @@ export function Dictionary() {
     [],
   )
 
+  /** Radicals grouped under a heading per stroke count, lightest first. */
+  const radicalsByStroke = useMemo(() => {
+    const map = new Map<number, Radical[]>()
+    for (const r of RADICALS) {
+      const list = map.get(r.strokeCount) ?? []
+      list.push(r)
+      map.set(r.strokeCount, list)
+    }
+    return [...map.entries()].sort((a, b) => a[0] - b[0])
+  }, [])
+
   const recentWords = useMemo(
     () => recentSearchIds.map((id) => getWord(id)).filter((w): w is VocabWord => Boolean(w)),
     [recentSearchIds, getWord],
   )
 
+  // Carries the card alongside the word: the proficiency tier is a property of
+  // the review history, not of the vocabulary entry.
   const myWords = useMemo(
-    () => deck.map((c) => getWord(c.wordId)).filter((w): w is VocabWord => Boolean(w)),
+    () =>
+      deck
+        .map((card) => {
+          const word = getWord(card.wordId)
+          return word ? { word, level: proficiencyFor(card) } : null
+        })
+        .filter((x): x is { word: VocabWord; level: Proficiency } => x !== null),
     [deck, getWord],
   )
+
+  const myWordTotals = useMemo(() => proficiencyTotals(deck), [deck])
 
   const choose = (word: VocabWord) => {
     playTapSound()
@@ -148,7 +183,7 @@ export function Dictionary() {
                 </Text>
                 <Text className="text-[13px] text-slate-400">{displayPinyin(w, settings.phoneticScript)}</Text>
                 <Text numberOfLines={1} className="flex-1 text-[13px] text-slate-500 dark:text-slate-400">
-                  {w.definition}
+                  {shortGloss(w)}
                 </Text>
               </Pressable>
             ))}
@@ -183,7 +218,7 @@ export function Dictionary() {
         {tab === 'words' && (
           <>
             {shown && (
-              <View className="mt-4 flex-row gap-3 rounded-3xl bg-brand-50 p-3 dark:bg-brand-950/30">
+              <View className="mt-3 flex-row gap-3 rounded-3xl bg-brand-100/80 p-3 shadow-card dark:bg-brand-950/30">
                 <Pressable
                   onPress={() => setPracticeWord(shown)}
                   accessibilityRole="button"
@@ -248,30 +283,40 @@ export function Dictionary() {
               </View>
             )}
 
-            <View className="mt-6 flex-row items-center justify-between">
+            <View className="mt-4 flex-row items-center justify-between">
               <Text className="text-[19px] font-extrabold text-slate-900 dark:text-white">Common Radicals</Text>
               <Pressable onPress={() => router.push('/radicals')} accessibilityRole="button">
                 <Text className="text-[15px] font-semibold text-brand-600">View all</Text>
               </Pressable>
             </View>
-            <View className="mt-2.5 flex-row gap-2.5">
+            <View className="mt-2.5 flex-row gap-3">
               {commonRadicals.map((r) => (
-                <View
+                <Pressable
                   key={r.id}
-                  className="flex-1 items-center rounded-2xl bg-brand-50 py-4 dark:bg-brand-950/30"
+                  onPress={() => {
+                    playTapSound()
+                    setSelectedRadical(r)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${r.character}, ${r.pinyin}, ${r.meaning}`}
+                  style={{ aspectRatio: 0.82 }}
+                  className="flex-1 items-center justify-center rounded-2xl bg-brand-100/80 py-2 shadow-card active:opacity-70 dark:bg-brand-950/30"
                 >
-                  <Text className="font-hanzi text-[34px] leading-[44px] text-slate-900 dark:text-white">
+                  <Text className="font-hanzi-bold text-[30px] leading-[38px] text-slate-900 dark:text-white">
                     {r.character}
                   </Text>
-                  <Text className="mt-1.5 text-[13px] text-slate-400">{r.pinyin}</Text>
-                  <Text numberOfLines={1} className="mt-0.5 text-[13px] text-slate-800 dark:text-slate-300">
+                  <Text className="mt-1 text-[12px] leading-[15px] text-slate-400">{r.pinyin}</Text>
+                  <Text
+                    numberOfLines={1}
+                    className="text-[12px] leading-[16px] text-slate-800 dark:text-slate-300"
+                  >
                     {r.meaning.split(',')[0]}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </View>
 
-            <View className="mt-6 flex-row items-center justify-between">
+            <View className="mt-4 flex-row items-center justify-between">
               <Text className="text-[19px] font-extrabold text-slate-900 dark:text-white">Recent Searches</Text>
               {recentWords.length > 0 && (
                 <Pressable onPress={clearRecentSearches} accessibilityRole="button">
@@ -296,7 +341,7 @@ export function Dictionary() {
                     </Text>
                     <Text className="w-16 text-[14px] text-slate-400">{displayPinyin(w, settings.phoneticScript)}</Text>
                     <Text numberOfLines={1} className="flex-1 text-[14px] text-slate-500 dark:text-slate-400">
-                      {w.definition}
+                      {shortGloss(w)}
                     </Text>
                     <SpeakChip text={displayWord(w, settings.script)} size={16} />
                   </Pressable>
@@ -305,7 +350,7 @@ export function Dictionary() {
             )}
 
             {wordOfTheDay && (
-              <View className="mt-6 flex-row items-center overflow-hidden rounded-3xl bg-brand-50 pl-4 dark:bg-brand-950/30">
+              <View className="mt-4 flex-row items-center overflow-hidden rounded-3xl bg-brand-100/80 pl-4 shadow-card dark:bg-brand-950/30">
                 <View className="flex-1 py-4">
                   <Text className="text-[17px] font-extrabold text-brand-600 dark:text-brand-400">Word of the Day</Text>
                   <View className="mt-1.5 flex-row items-center gap-3">
@@ -317,7 +362,7 @@ export function Dictionary() {
                         {displayPinyin(wordOfTheDay, settings.phoneticScript)}
                       </Text>
                       <Text numberOfLines={1} className="text-[15px] text-slate-700 dark:text-slate-300">
-                        {wordOfTheDay.definition}
+                        {shortGloss(wordOfTheDay)}
                       </Text>
                     </View>
                   </View>
@@ -332,12 +377,30 @@ export function Dictionary() {
         )}
 
         {tab === 'radicals' && (
-          <View className="mt-4 flex-row flex-wrap gap-2.5">
-            {RADICALS.map((r) => (
-              <View key={r.id} className="w-[23.5%] items-center rounded-2xl bg-brand-50 py-3 dark:bg-brand-950/30">
-                <Text className="font-hanzi text-[28px] leading-[36px] text-slate-900 dark:text-white">{r.character}</Text>
-                <Text className="mt-1 text-[11px] text-slate-400">{r.pinyin}</Text>
-                <Text numberOfLines={1} className="px-1 text-[11px] text-slate-700 dark:text-slate-300">{r.meaning}</Text>
+          <View className="mt-4 gap-5">
+            {radicalsByStroke.map(([strokeCount, radicals]) => (
+              <View key={strokeCount}>
+                <Text className="mb-2 text-[13px] font-bold text-slate-500 dark:text-slate-400">
+                  {strokeCount} stroke{strokeCount === 1 ? '' : 's'}
+                </Text>
+                <View className="flex-row flex-wrap gap-2.5">
+                  {radicals.map((r) => (
+                    <Pressable
+                      key={r.id}
+                      onPress={() => {
+                        playTapSound()
+                        setSelectedRadical(r)
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${r.character}, ${r.pinyin}, ${r.meaning}`}
+                      className="w-[23.5%] items-center rounded-2xl bg-brand-50 py-3 active:opacity-70 dark:bg-brand-950/30"
+                    >
+                      <Text className="font-hanzi text-[28px] leading-[36px] text-slate-900 dark:text-white">{r.character}</Text>
+                      <Text className="mt-1 text-[11px] text-slate-400">{r.pinyin}</Text>
+                      <Text numberOfLines={1} className="px-1 text-[11px] text-slate-700 dark:text-slate-300">{r.meaning}</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             ))}
           </View>
@@ -350,30 +413,47 @@ export function Dictionary() {
                 No saved words yet — search above and tap Add to My Words.
               </Text>
             ) : (
-              <View className="overflow-hidden rounded-2xl bg-white shadow-card dark:bg-slate-900">
-                {myWords.map((w, i) => (
-                  <Pressable
-                    key={w.id}
-                    onPress={() => choose(w)}
-                    className={`flex-row items-center gap-4 px-4 py-3 ${i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}
-                  >
-                    <Text className="font-hanzi text-[26px] font-bold text-slate-900 dark:text-white">
-                      {displayWord(w, settings.script)}
-                    </Text>
-                    <Text className="w-16 text-[14px] text-slate-400">{displayPinyin(w, settings.phoneticScript)}</Text>
-                    <Text numberOfLines={1} className="flex-1 text-[14px] text-slate-500 dark:text-slate-400">
-                      {w.definition}
-                    </Text>
-                    <SpeakChip text={displayWord(w, settings.script)} size={16} />
-                  </Pressable>
-                ))}
-              </View>
+              <>
+                <View className="mb-3 flex-row gap-2">
+                  {TIER_ORDER.map((tier) => {
+                    const meta = PROFICIENCY_META[tier]
+                    const Icon = meta.icon
+                    return (
+                      <View key={tier} className={`flex-1 items-center gap-0.5 rounded-2xl py-2 ${meta.chip}`}>
+                        <Icon size={14} color={meta.iconColor} />
+                        <Text className={`text-[17px] font-extrabold leading-[21px] ${meta.text}`}>{myWordTotals[tier]}</Text>
+                        <Text className={`text-[10px] font-bold ${meta.text}`}>{meta.label}</Text>
+                      </View>
+                    )
+                  })}
+                </View>
+                <View className="overflow-hidden rounded-2xl bg-white shadow-card dark:bg-slate-900">
+                  {myWords.map(({ word: w, level }, i) => (
+                    <Pressable
+                      key={w.id}
+                      onPress={() => choose(w)}
+                      className={`flex-row items-center gap-3 px-4 py-3 ${i > 0 ? 'border-t border-slate-100 dark:border-slate-800' : ''}`}
+                    >
+                      <Text className="font-hanzi text-[26px] font-bold text-slate-900 dark:text-white">
+                        {displayWord(w, settings.script)}
+                      </Text>
+                      <Text className="w-14 text-[14px] text-slate-400">{displayPinyin(w, settings.phoneticScript)}</Text>
+                      <Text numberOfLines={1} className="flex-1 text-[14px] text-slate-500 dark:text-slate-400">
+                        {shortGloss(w)}
+                      </Text>
+                      <ProficiencyChip level={level} compact />
+                      <SpeakChip text={displayWord(w, settings.script)} size={16} />
+                    </Pressable>
+                  ))}
+                </View>
+              </>
             )}
           </View>
         )}
       </ScrollView>
 
       {practiceWord && <WritingPracticeModal word={practiceWord} onClose={() => setPracticeWord(null)} />}
+      {selectedRadical && <RadicalDetailModal radical={selectedRadical} onClose={() => setSelectedRadical(null)} />}
     </SafeAreaView>
   )
 }

@@ -85,26 +85,99 @@ function renderStrokeSound() {
   return out
 }
 
-// --- 2. Positive chime: three ascending sine notes ---------------------------
+// --- 2. Positive chime: struck bell tones in a small room --------------------
+/*
+ * This is heard more than any other sound in the app — every correct answer — so
+ * it's worth more than three bare sine waves, which read as a beep from a
+ * microwave rather than as a reward.
+ *
+ * Three things make it feel like an instrument rather than a tone generator:
+ *
+ *  - Partials. A struck bar or bell sounds above its fundamental, and those
+ *    upper partials sit slightly sharp of whole-number ratios. That inharmonicity
+ *    is most of what the ear hears as "metal" instead of "sine".
+ *  - Independent decay per partial. High partials die first, so the timbre
+ *    softens as the note rings — bright on the strike, mellow as it fades.
+ *  - A little room. A short reverb tail is what stops a sound feeling pasted on
+ *    top of the interface rather than happening somewhere.
+ */
 function renderPositiveChime() {
-  const notes = [880, 1108.73, 1318.51] // A5, C#6, E6
-  const noteGap = 0.075
-  const noteLen = 0.36
-  const totalDuration = (notes.length - 1) * noteGap + noteLen
-  const out = samplesFor(totalDuration)
+  // A major triad rising into the octave — resolved, and unambiguously "yes".
+  const notes = [659.25, 830.61, 987.77, 1318.51] // E5, G#5, B5, E6
+  const noteGap = 0.058
+  const noteLen = 0.85
+  const tail = 0.5
+  const out = samplesFor((notes.length - 1) * noteGap + noteLen + tail)
+
+  // Ratio, starting gain and decay time per partial. The stretched ratios
+  // (2.01, 3.02, …) rather than exact 2/3/4 are what read as struck metal.
+  const partials = [
+    { ratio: 1, gain: 0.5, decay: 0.75 },
+    { ratio: 2.01, gain: 0.22, decay: 0.45 },
+    { ratio: 3.02, gain: 0.1, decay: 0.28 },
+    { ratio: 4.16, gain: 0.05, decay: 0.16 },
+    { ratio: 5.43, gain: 0.025, decay: 0.1 },
+  ]
 
   notes.forEach((freq, i) => {
-    const start = i * noteGap
-    const startSample = Math.floor(start * SAMPLE_RATE)
+    const startSample = Math.floor(i * noteGap * SAMPLE_RATE)
     const noteSamples = Math.floor(noteLen * SAMPLE_RATE)
+    // Later notes sit back slightly so the phrase doesn't pile up in volume.
+    const voiceGain = 0.62 - i * 0.04
+
     for (let s = 0; s < noteSamples; s++) {
       const t = s / SAMPLE_RATE
-      const gain = t < 0.015 ? expEnvelope(t, 0, 0.0001, 0.015, 0.22) : expEnvelope(t, 0.015, 0.22, 0.35, 0.0001)
-      const sample = Math.sin(2 * Math.PI * freq * t) * gain
+      // 4ms strike: long enough to avoid a click, short enough to have an attack.
+      const strike = t < 0.004 ? t / 0.004 : 1
+      let sample = 0
+      for (const p of partials) {
+        sample += Math.sin(2 * Math.PI * freq * p.ratio * t) * p.gain * Math.exp(-t / p.decay)
+      }
       const idx = startSample + s
-      if (idx < out.length) out[idx] += sample
+      if (idx < out.length) out[idx] += sample * strike * voiceGain
     }
   })
+
+  return addRoom(out, 0.055, 0.28)
+}
+
+/*
+ * A very small Schroeder-style room: feedback comb filters in parallel, then an
+ * allpass to smear the echo pattern so it reads as space rather than as a
+ * distinct repeat. Deliberately short and quiet — a room, not a cathedral.
+ */
+function addRoom(dry, mix, decay) {
+  const combDelaysMs = [23.1, 28.7, 34.3, 41.9]
+  const wet = new Float32Array(dry.length)
+
+  for (const ms of combDelaysMs) {
+    const delay = Math.floor((ms / 1000) * SAMPLE_RATE)
+    const buf = new Float32Array(delay)
+    let idx = 0
+    for (let i = 0; i < dry.length; i++) {
+      const delayed = buf[idx]
+      wet[i] += delayed / combDelaysMs.length
+      buf[idx] = dry[i] + delayed * decay
+      idx = (idx + 1) % delay
+    }
+  }
+
+  // Allpass diffuser: same magnitude response, scrambled phase.
+  const apDelay = Math.floor(0.0053 * SAMPLE_RATE)
+  const apBuf = new Float32Array(apDelay)
+  const g = 0.7
+  let apIdx = 0
+  for (let i = 0; i < wet.length; i++) {
+    const delayed = apBuf[apIdx]
+    const input = wet[i]
+    const output = -g * input + delayed
+    apBuf[apIdx] = input + g * output
+    wet[i] = output
+    apIdx = (apIdx + 1) % apDelay
+  }
+
+  const out = samplesFor(dry.length / SAMPLE_RATE)
+  for (let i = 0; i < dry.length; i++) out[i] = dry[i] * (1 - mix) + wet[i] * mix
   return out
 }
 
@@ -175,8 +248,58 @@ function renderFanfareSound() {
   return out
 }
 
+// --- 6. Gong: struck when the writer gives up and shows the stroke ------------
+/*
+ * Played when a learner has missed the same stroke enough times that the app
+ * shows them where it goes. That's a "stop and look" moment, so it wants weight
+ * rather than a buzzer — a struck gong says "here, let me show you" without
+ * sounding like a penalty.
+ *
+ * A gong is mostly inharmonic: a dense cluster of partials at ratios that share
+ * no common fundamental, so the ear hears a wash of metal instead of a pitch.
+ * Two other details do a lot of the work — the shimmer (partials beating against
+ * slightly detuned twins, giving the sound its live, moving quality) and the
+ * strike noise burst in the first few milliseconds, which is the mallet itself.
+ */
+function renderGongSound() {
+  const duration = 2.2
+  const out = samplesFor(duration)
+  const n = out.length
+  const base = 138 // low enough to read as a large bowl, not a hand bell
+
+  // Deliberately non-integer ratios — a gong has no harmonic series.
+  const partials = [
+    { ratio: 1, gain: 0.34, decay: 1.5 },
+    { ratio: 1.52, gain: 0.24, decay: 1.2 },
+    { ratio: 2.37, gain: 0.19, decay: 0.95 },
+    { ratio: 3.41, gain: 0.13, decay: 0.7 },
+    { ratio: 4.63, gain: 0.09, decay: 0.5 },
+    { ratio: 6.11, gain: 0.06, decay: 0.34 },
+    { ratio: 8.29, gain: 0.035, decay: 0.22 },
+  ]
+
+  for (let i = 0; i < n; i++) {
+    const t = i / SAMPLE_RATE
+    let sample = 0
+    for (const p of partials) {
+      const env = Math.exp(-t / p.decay)
+      // Each partial paired with a twin a fraction of a hertz away; the two drift
+      // in and out of phase, which is the shimmer.
+      sample += Math.sin(2 * Math.PI * base * p.ratio * t) * p.gain * env
+      sample += Math.sin(2 * Math.PI * base * p.ratio * 1.006 * t) * p.gain * 0.7 * env
+    }
+    // Mallet contact: a short noise burst, gone within 40ms.
+    if (t < 0.04) sample += (Math.random() * 2 - 1) * 0.28 * (1 - t / 0.04)
+    // 3ms fade-in so the waveform doesn't start on a discontinuity and click.
+    out[i] = sample * (t < 0.003 ? t / 0.003 : 1) * 0.5
+  }
+
+  return addRoom(out, 0.12, 0.4)
+}
+
 writeWav('stroke.wav', renderStrokeSound())
 writeWav('chime.wav', renderPositiveChime())
 writeWav('retry.wav', renderRetryTone())
 writeWav('tap.wav', renderTapSound())
 writeWav('fanfare.wav', renderFanfareSound())
+writeWav('gong.wav', renderGongSound())

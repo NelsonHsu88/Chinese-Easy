@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { View, Text, Pressable, ScrollView, Image } from 'react-native'
+import { View, Text, Pressable, ScrollView, Image, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { ChevronLeft, Lock, Check, CheckCircle2, Circle, Star } from 'lucide-react-native'
@@ -9,6 +9,32 @@ import { lessonsForUnit } from '../data/lessons'
 import { TOWN_BUILDINGS } from '../data/townBuildings'
 import { playTapSound } from '../lib/sound'
 import { levelForXp, XP_PER_LEVEL } from '../lib/townEconomy'
+
+const CLOUDS = require('../assets/images/icons/lessons-clouds.png')
+// Cropped to its own content by scripts/processCloudOverlay.mjs, so the sprite's
+// aspect is fixed and the art meets the bottom edge exactly — no magic offset.
+const CLOUDS_ASPECT = 1080 / 239
+
+/**
+ * Badge art for each unit's path node, cut from the design renders by
+ * scripts/processUnitIcons.mjs. Keyed by unit id rather than listed in
+ * src/data/units.ts so that `require` stays static — Metro resolves these at
+ * bundle time and can't follow a computed path. A unit with no entry falls back
+ * to its `glyph`, so adding a unit doesn't require art up front.
+ *
+ * There is also a units/pop-culture-music.png; swap it in here if the music note
+ * suits Pop Culture better than the gift.
+ */
+const UNIT_ICONS: Record<string, number> = {
+  'the-basics': require('../assets/images/units/the-basics.png'),
+  'basic-food': require('../assets/images/units/basic-food.png'),
+  friendship: require('../assets/images/units/friendship.png'),
+  travel: require('../assets/images/units/travel.png'),
+  electronics: require('../assets/images/units/electronics.png'),
+  lifestyle: require('../assets/images/units/lifestyle.png'),
+  beauty: require('../assets/images/units/beauty.png'),
+  'pop-culture': require('../assets/images/units/pop-culture.png'),
+}
 
 const NODE = 104 // diameter of a path node
 const RAIL = 136 // width of the left rail the nodes and connector sit in
@@ -30,12 +56,32 @@ function Connector({ active }: { active: boolean }) {
 export function Lessons() {
   const { completedLessonIds, xp } = useApp()
   const [expandedUnitId, setExpandedUnitId] = useState<string | null>(null)
+  // Measured rather than taken from useWindowDimensions: on web the window can be
+  // far wider than the screen the app is actually laid out in, and that would
+  // scale the mist band to match the window instead of the content.
+  const { width: windowWidth } = useWindowDimensions()
+  const [containerWidth, setContainerWidth] = useState(windowWidth)
+  const cloudsHeight = containerWidth / CLOUDS_ASPECT
 
   const sortedUnits = [...UNITS].sort((a, b) => a.order - b.order)
   const { level, xpIntoLevel, levelPct } = levelForXp(xp)
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-canvas dark:bg-slate-950">
+      {/*
+        Misty mountains sitting behind the path, as in the reference design.
+        Height is derived from the screen width so the art keeps its aspect — the
+        old fixed 190pt box stretched it, which is what made the mountains look
+        smeared. It has to be computed rather than left to `aspectRatio`, because
+        an RN <Image> falls back to its intrinsic pixel height and wins.
+      */}
+      <View
+        pointerEvents="none"
+        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: cloudsHeight }}
+      >
+        <Image source={CLOUDS} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      </View>
       <View className="flex-row items-center gap-2 px-4 pb-3 pt-2">
         <Pressable
           onPress={() => router.back()}
@@ -96,18 +142,18 @@ export function Lessons() {
                   <View style={{ width: RAIL }} className="items-center">
                     <View
                       style={{ width: NODE, height: NODE }}
-                      className={`items-center justify-center rounded-full border-[6px] border-white shadow-card ${
+                      className={`items-center justify-center overflow-hidden rounded-full border-[6px] border-white shadow-card ${
                         unlocked ? 'bg-brand-500' : 'bg-stone-200 dark:bg-slate-800'
                       }`}
                     >
-                      {unlocked ? (
-                        /\p{Script=Han}/u.test(unit.glyph) ? (
-                          <Text className="font-hanzi text-[46px] leading-[54px] text-white">{unit.glyph}</Text>
-                        ) : (
-                          <Text className="text-[40px] leading-[48px]">{unit.glyph}</Text>
-                        )
-                      ) : (
+                      {!unlocked ? (
                         <Lock size={32} color="#78716c" strokeWidth={2.5} />
+                      ) : UNIT_ICONS[unit.id] ? (
+                        <Image source={UNIT_ICONS[unit.id]} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      ) : /\p{Script=Han}/u.test(unit.glyph) ? (
+                        <Text className="font-hanzi text-[46px] leading-[54px] text-white">{unit.glyph}</Text>
+                      ) : (
+                        <Text className="text-[40px] leading-[48px]">{unit.glyph}</Text>
                       )}
                     </View>
                     {unlocked && (

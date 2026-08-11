@@ -106,7 +106,15 @@ function w(
 // `example` is simply omitted rather than inventing one.
 const importedWords = importedWordsJson as VocabWord[]
 
-export const hskFrequency: VocabWord[] = [...curatedWords, ...importedWords]
+// The two lists overlap on ~40 common words. Curated entries win: their example
+// sentences are hand-verified and carry pinyin, which the corpus-sourced ones
+// don't. Without this the dictionary shows the same word twice.
+const curatedForms = new Set(curatedWords.map((word) => word.simplified))
+
+export const hskFrequency: VocabWord[] = [
+  ...curatedWords,
+  ...importedWords.filter((word) => !curatedForms.has(word.simplified)),
+]
 
 const wordIndex = new Map(hskFrequency.map((word) => [word.id, word]))
 
