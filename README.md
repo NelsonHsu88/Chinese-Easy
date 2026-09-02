@@ -8,6 +8,18 @@ Built with React Native, Expo and TypeScript. **~44,000 lines of TypeScript** ac
 
 ---
 
+## Screenshots
+
+Running on a physical Android device.
+
+| Dashboard | Dictionary | Review | Settings |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/dashboard.jpg" width="200" alt="Dashboard — greeting, streak counter and the daily review prompt"> | <img src="docs/screenshots/dictionary.jpg" width="200" alt="Dictionary — an English search returning ranked Chinese results"> | <img src="docs/screenshots/review.jpg" width="200" alt="Review hub — due counts and the flashcard, listening and mistakes drills"> | <img src="docs/screenshots/settings.jpg" width="200" alt="Settings — study preferences and account"> |
+
+**▶ [Watch the demo recording](https://github.com/NelsonHsu88/Chinese-Easy/releases/download/v0.1.0-preview/chinese-easy-demo.mp4)** — a walkthrough of the app on a real device.
+
+---
+
 ## What it does
 
 **Vocabulary with a real scheduler.** 25,180 frequency-ranked learning words, scheduled by [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) rather than the usual SM-2 approximation. A further 81,437 reference entries are searchable, for 106,617 words total.
