@@ -191,6 +191,7 @@ export const WRITER_HTML = `<!doctype html>
     if (msg.type === 'init') {
       mode = msg.mode;
       stageSize = msg.size;
+      var speedScale = msg.speed === 'slow' ? 0.5 : 1;
       holdOnComplete = !!msg.holdCharacterOnComplete;
       document.getElementById('target').innerHTML = '';
       hideHint();
@@ -205,9 +206,18 @@ export const WRITER_HTML = `<!doctype html>
         },
         showOutline: msg.showOutline,
         showCharacter: false,
-        strokeAnimationSpeed: mode === 'demo' ? 3.5 : 1,
+        // Demo playback runs at 70% of what it used to (speed 3.5, 60ms gap):
+        // fast enough not to drag, slow enough to actually follow a stroke as
+        // it's drawn. The inter-stroke gap is stretched by the same factor so
+        // the whole animation slows evenly rather than just the strokes.
+        //
+        // "Slow" halves that again, and stretches the gap between strokes by
+        // more than it slows the strokes themselves — the pause is where you
+        // work out where the next stroke starts, which is the part that's too
+        // quick when you're trying to copy along by hand.
+        strokeAnimationSpeed: (mode === 'demo' ? 2.45 : 1) * speedScale,
         strokeFadeDuration: 200,
-        delayBetweenStrokes: mode === 'demo' ? 60 : 250,
+        delayBetweenStrokes: Math.round((mode === 'demo' ? 86 : 250) / speedScale),
         // These exact values are the hooks the gradient CSS above matches on —
         // change one and you must change the corresponding selector too.
         strokeColor: '#22c55e',
@@ -247,6 +257,15 @@ export const WRITER_HTML = `<!doctype html>
       if (mode === 'demo') {
         writer.animateCharacter({
           onComplete: function () {
+            /*
+             * Same reason as the quiz branch below: hanzi-writer fades the
+             * strokes it drew once the animation ends, so a screen that stays
+             * on the finished character was left showing the faint grey
+             * outline. Opt-in, because the review flashcard wants exactly that
+             * fade before it moves on — but the writing guide's whole page is
+             * built around the green character being *there*.
+             */
+            if (holdOnComplete) writer.showCharacter();
             post({ type: 'demoComplete' });
           },
         });

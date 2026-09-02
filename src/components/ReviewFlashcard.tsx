@@ -3,8 +3,10 @@ import { View, Text, Pressable, Animated, Platform } from 'react-native'
 import { Eye, Check, RotateCw, Lightbulb } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayExample, displayPinyin } from '../lib/hanzi'
+import { ReadingSentence } from './dictionary/ReadingSentence'
 import { HanziStage } from './HanziStage'
 import { SpeakButton } from './SpeakButton'
+import type { ReviewPreview } from '../lib/srs'
 import type { Grade, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 
@@ -26,18 +28,31 @@ const GRADE_BUTTONS: { grade: Grade; label: string; className: string }[] = [
 ]
 
 /**
- * One flashcard: prompt, stroke-order stage, reveal, and the four SM-2 grade
+ * One flashcard: prompt, stroke-order stage, reveal, and the four FSRS grade
  * buttons. Holds only per-card UI state — mount it with `key={word.id}` so it
  * resets on advance; scheduling and session bookkeeping stay with the caller.
  */
 export function ReviewFlashcard({
   word,
   direction,
+  preview,
   onGrade,
+  onSkip,
 }: {
   word: VocabWord
   direction: ReviewDirectionResolved
+  /**
+   * The four scheduling outcomes, for the interval under each button.
+   *
+   * Comes from the caller rather than being computed here, and that is what
+   * makes the number a promise: it is the same result object the caller commits,
+   * so the "4d" on the button is the 4d that gets stored. Optional because the
+   * card can be rendered before a preview exists.
+   */
+  preview?: ReviewPreview
   onGrade: (grade: Grade) => void
+  /** "I don't know" — sends the word to the back of the session queue ungraded. */
+  onSkip?: () => void
 }) {
   const { settings } = useApp()
   const [revealed, setRevealed] = useState(false)
@@ -100,9 +115,20 @@ export function ReviewFlashcard({
         style={{ minHeight: 200 }}
         className="relative mx-4 mb-4 flex-1 rounded-2xl border border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40"
       >
+        {/*
+          The answer animation always runs slow, with no control to change it.
+          This isn't a stroke-order reference you came to study — it's the replay
+          you get the moment you finish writing, and its whole job is to be
+          followable at a glance while the card is still in front of you. A speed
+          toggle here would also sit right over the drawing area, one more thing
+          to catch mid-stroke. The full Normal/Slow choice lives where someone
+          has actually gone looking for stroke order: the "Watch stroke order"
+          sheet and the writing guide.
+        */}
         <HanziStage
           character={displayWord(word, settings.script)}
           mode={revealed ? 'demo' : 'quiz'}
+          speed="slow"
           showOutline={revealed || direction === 'recognition' || hintShown}
           showGuides
           resetKey={`${word.id}-${attempt}-${revealed}`}
@@ -134,8 +160,7 @@ export function ReviewFlashcard({
             <Text className="mt-1.5 text-xl font-semibold text-slate-800 dark:text-slate-200">{shortGloss(word)}</Text>
             {word.example && displayExample(word, settings.script) && (
               <View className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
-                <Text className="font-hanzi text-lg text-slate-700 dark:text-slate-300">{displayExample(word, settings.script)}</Text>
-                {word.example.pinyin ? <Text className="mt-0.5 text-sm text-slate-400">{word.example.pinyin}</Text> : null}
+                <ReadingSentence text={displayExample(word, settings.script)} term={displayWord(word, settings.script)} tone="card" size="compact" />
                 <Text className="mt-0.5 text-sm italic text-slate-500 dark:text-slate-400">{word.example.translation}</Text>
               </View>
             )}
@@ -169,13 +194,46 @@ export function ReviewFlashcard({
                 </Pressable>
               )}
             </View>
+
+            {/*
+              The honest way out, offered before the answer rather than after.
+              It sends the word to the back of the session queue ungraded — a
+              learner who admits they don't know has told the truth, and making
+              them grade themselves "Again" to move on scores that as a miss.
+              Only before the reveal: once the answer is on screen the four
+              grade buttons are the right thing to press.
+            */}
+            {onSkip && (
+              <Pressable
+                onPress={onSkip}
+                accessibilityRole="button"
+                accessibilityLabel="I don't know this word"
+                className="items-center py-1 active:opacity-60"
+              >
+                <Text className="text-sm font-semibold text-slate-400 dark:text-slate-500">I don’t know</Text>
+              </Pressable>
+            )}
           </View>
         ) : (
           <View className="flex-row gap-2">
             {GRADE_BUTTONS.map(({ grade, label, className }) => (
-              <Pressable key={grade} onPress={() => onGrade(grade)} className={`flex-1 items-center gap-1 rounded-2xl py-3 shadow-card ${className}`}>
+              <Pressable
+                key={grade}
+                onPress={() => onGrade(grade)}
+                accessibilityRole="button"
+                accessibilityLabel={preview ? `${label}, next review in ${preview[grade].label}` : label}
+                className={`flex-1 items-center gap-0.5 rounded-2xl py-3 shadow-card ${className}`}
+              >
                 {grade === 'easy' && <Check size={16} color="white" />}
                 <Text className="text-sm font-bold text-white">{label}</Text>
+                {/*
+                  When the card comes back if this button is pressed — the Anki
+                  habit of showing the consequence before the choice. Rendered
+                  only once the preview has arrived rather than as a placeholder,
+                  because a row of dashes that becomes numbers reads as the app
+                  still thinking.
+                */}
+                {preview && <Text className="text-[11px] font-semibold text-white/75">{preview[grade].label}</Text>}
               </Pressable>
             ))}
           </View>

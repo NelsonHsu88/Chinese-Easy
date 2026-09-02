@@ -31,6 +31,15 @@ interface BrushHighlightProps {
   bleedX?: number
   bleedTop?: number
   bleedBottom?: number
+  /**
+   * The detached fleck past the end of the swipe.
+   *
+   * Worth having behind a short word, where it reads as the nib drying out.
+   * Behind a long one it separates far enough from the stroke to stop looking
+   * like part of the same gesture and start looking like a stray rectangle —
+   * which is why the Dashboard greeting turns it off.
+   */
+  fleck?: boolean
 }
 
 export function BrushHighlight({
@@ -39,6 +48,7 @@ export function BrushHighlight({
   bleedX = 14,
   bleedTop = 4,
   bleedBottom = 2,
+  fleck = true,
 }: BrushHighlightProps) {
   return (
     <View className="self-start">
@@ -49,7 +59,7 @@ export function BrushHighlight({
         <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
           <Path d={STROKE_MAIN} fill={color} />
           <Path d={STROKE_SECOND_PASS} fill={color} opacity={0.55} />
-          <Path d={STROKE_FLECK} fill={color} opacity={0.75} />
+          {fleck && <Path d={STROKE_FLECK} fill={color} opacity={0.75} />}
         </Svg>
       </View>
       {children}

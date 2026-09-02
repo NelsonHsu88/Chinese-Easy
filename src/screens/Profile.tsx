@@ -1,63 +1,111 @@
 import { useState } from 'react'
-import { View, Text, TextInput, Pressable } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { View, Text, TextInput } from 'react-native'
 import { router } from 'expo-router'
-import { ArrowLeft, Check } from 'lucide-react-native'
+import { Check } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
+import { DetailShell, ControlGroup, Field, ActionButton, Hint } from '../components/settings/parts'
+import { setColors as c, setSpacing as s, setType as t, setRadius } from '../components/settings/tokens'
 
+/*
+ * Edit Profile, repainted to match the Settings screen it opens from.
+ *
+ * The email field is new here, and it is not a new setting: onboarding has been
+ * writing `settings.email` since the account step, and until now there was no
+ * way to correct it afterwards. The profile card on Settings shows that address,
+ * so it had to become editable in the place the card points at.
+ */
 export function Profile() {
   const { settings, updateSettings } = useApp()
   const [name, setName] = useState(settings.username)
+  const [email, setEmail] = useState(settings.email)
 
-  const trimmed = name.trim()
-  const canSave = trimmed.length > 0 && trimmed.length <= 24
+  const trimmedName = name.trim()
+  const trimmedEmail = email.trim()
+
+  /* A blank address is allowed — plenty of installs have none. A wrong-looking
+     one is not, and the pattern is deliberately loose: anything stricter only
+     ever rejects somebody's real address. */
+  const emailOk = trimmedEmail.length === 0 || /^\S+@\S+\.\S+$/.test(trimmedEmail)
+  const canSave = trimmedName.length > 0 && trimmedName.length <= 24 && emailOk
 
   const handleSave = () => {
     if (!canSave) return
-    updateSettings({ username: trimmed })
-    router.push('/settings')
+    updateSettings({ username: trimmedName, email: trimmedEmail })
+    if (router.canGoBack()) router.back()
+    else router.replace('/settings')
   }
 
-  return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 px-4 pt-2 dark:bg-slate-950">
-      <View className="mb-6 flex-row items-center gap-3">
-        <Pressable
-          onPress={() => router.push('/settings')}
-          accessibilityRole="button"
-          accessibilityLabel="Back to Settings"
-          className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900"
-        >
-          <ArrowLeft size={20} color="#64748b" />
-        </Pressable>
-        <Text className="text-lg font-bold text-slate-900 dark:text-white">Edit Profile</Text>
-      </View>
+  const input = {
+    borderWidth: 1.5,
+    borderColor: c.border,
+    backgroundColor: c.background,
+    borderRadius: setRadius.inner,
+    paddingHorizontal: s.lg,
+    paddingVertical: s.md,
+    fontSize: 16,
+    color: c.navy,
+  } as const
 
-      <View className="items-center gap-3 py-4">
-        <View className="h-24 w-24 items-center justify-center rounded-full bg-brand-500">
-          <Text className="text-4xl font-bold text-white">{trimmed ? trimmed[0].toUpperCase() : '?'}</Text>
+  return (
+    <DetailShell title="Edit profile">
+      <View className="items-center">
+        <View
+          className="items-center justify-center rounded-full"
+          style={{ width: 88, height: 88, backgroundColor: c.sage }}
+        >
+          <Text
+            className="font-nunito-extrabold"
+            style={{ fontSize: 42, lineHeight: 52, color: '#FFFFFF' }}
+          >
+            {trimmedName ? trimmedName[0].toUpperCase() : '?'}
+          </Text>
+        </View>
+        <View style={{ marginTop: s.md }}>
+          <Hint>Your initial stands in until profile pictures arrive.</Hint>
         </View>
       </View>
 
-      <View className="gap-1.5">
-        <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">Display name</Text>
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          maxLength={24}
-          placeholder="Your name"
-          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-lg text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-        />
-      </View>
-      <Text className="mt-1.5 text-xs text-slate-400">Shown on your Dashboard. Up to 24 characters.</Text>
+      <ControlGroup title="Your details">
+        <Field label="Display name" hint="Shown on your Dashboard. Up to 24 characters.">
+          <TextInput
+            value={name}
+            onChangeText={setName}
+            maxLength={24}
+            placeholder="Your name"
+            placeholderTextColor={c.textMuted}
+            accessibilityLabel="Display name"
+            className="font-nunito-semibold"
+            style={input}
+          />
+        </Field>
 
-      <Pressable
-        onPress={handleSave}
-        disabled={!canSave}
-        className={`mt-6 w-full flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 shadow-card ${!canSave ? 'opacity-40' : ''}`}
-      >
-        <Check size={20} color="white" />
-        <Text className="text-lg font-bold text-white">Save</Text>
-      </Pressable>
-    </SafeAreaView>
+        <Field label="Email" hint="From the account you signed in with. Never shared.">
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            placeholder="you@example.com"
+            placeholderTextColor={c.textMuted}
+            accessibilityLabel="Email address"
+            className="font-nunito-semibold"
+            style={[input, !emailOk && { borderColor: c.coral }]}
+          />
+          {!emailOk && (
+            <Text
+              className="font-nunito-semibold"
+              style={{ ...t.hint, color: c.coralDark, marginTop: 6 }}
+            >
+              That does not look like an email address.
+            </Text>
+          )}
+        </Field>
+      </ControlGroup>
+
+      <View style={{ opacity: canSave ? 1 : 0.45 }}>
+        <ActionButton label="Save" icon={Check} tone="primary" onPress={handleSave} />
+      </View>
+    </DetailShell>
   )
 }

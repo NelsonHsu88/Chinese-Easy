@@ -1,85 +1,94 @@
-import { useMemo, useState } from 'react'
-import { View, Text, Pressable, ScrollView, Image, useWindowDimensions } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useMemo } from 'react'
+import { View, Text, Pressable, ScrollView, useWindowDimensions } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ChevronLeft, ChevronRight, Volume2, RotateCcw, BookOpen, Timer, TriangleAlert, Flame, ClipboardList } from 'lucide-react-native'
+import { ChevronLeft, BookOpen, Timer, TriangleAlert, Flame, CalendarDays } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { MascotPrompt } from '../components/OnboardingKit'
+import {
+  StreakPill,
+  ReviewHero,
+  StatsCard,
+  Stat,
+  DeckPeekCard,
+  DrillCard,
+  DrillBadge,
+  CtaButton,
+  FootDecor,
+} from '../components/review/parts'
+import { revArt } from '../components/review/art'
+import { Reveal, useEntranceRun } from '../components/dashboard/entrance'
+import { FlexGap } from '../components/FlexGap'
+import { vspace } from '../lib/verticalSpace'
+import {
+  revColors as c,
+  revSpacing as s,
+  revType as t,
+  revCard,
+  revDrills,
+  revEntrance as anim,
+  REV_CONTENT_MAX,
+} from '../components/review/tokens'
 import { dueCardsFor, dueCountFor, listeningCardsFor, mistakeCardsFor, weakCardsFor } from '../lib/selectors'
 import { playTapSound } from '../lib/sound'
+import { tapHaptic, thunkHaptic } from '../lib/haptics'
 import type { ReviewMode } from './ReviewSession'
 
-const FIRE_ICON = require('../assets/images/icons/fire.png')
-// The same misty band the Lessons path sits on. Cropped to its own content by
-// scripts/processCloudOverlay.mjs, so the aspect is fixed and the art meets the
-// bottom edge exactly.
-const CLOUDS = require('../assets/images/icons/lessons-clouds.png')
-const CLOUDS_ASPECT = 1080 / 239
+/*
+ * The Review hub, built to its reference mockup.
+ *
+ * Its design system is `components/review/tokens.ts` and its pieces are in
+ * `components/review/parts.tsx`. What lives here is the composition and the
+ * wiring from deck state to each number — every count on this screen is a
+ * selector over the real deck, so the mockup's 29 / 3 / 6 appear only when the
+ * learner's own deck says so.
+ *
+ * The drills themselves run in `ReviewSession.tsx`, pushed on top of this hub
+ * and closing back to it. None of that changed: `openSession` is the same call
+ * it always was.
+ */
 
 function openSession(mode: ReviewMode) {
   playTapSound()
   router.push(`/review-session?mode=${mode}`)
 }
 
-/** The stack-of-flashcards badge from the reference — two cards offset behind a front one. */
-function FlashcardsBadge() {
-  return (
-    <View className="h-[68px] w-[68px] items-center justify-center rounded-full bg-coral-600">
-      <View className="absolute h-9 w-8 rotate-[-14deg] rounded-md bg-white/70" />
-      <View className="h-9 w-8 items-center justify-center rounded-md bg-white shadow-card">
-        <Text className="font-hanzi-bold text-[19px] leading-[24px] text-coral-600">學</Text>
-      </View>
-    </View>
-  )
-}
-
-interface ModeCardProps {
-  tag: string
-  title: string
-  description: string
-  count: string
-  countUnit: string
-  badge: React.ReactNode
-  cardClass: string
-  tagClass: string
-  countClass: string
-  onPress: () => void
-}
-
-function ModeCard({ tag, title, description, count, countUnit, badge, cardClass, tagClass, countClass, onPress }: ModeCardProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${title}, ${count} ${countUnit}`}
-      className={`flex-row items-center gap-4 rounded-3xl px-4 py-4 active:opacity-80 ${cardClass}`}
-    >
-      {badge}
-      <View className="flex-1">
-        <View className={`self-start rounded-md px-2 py-0.5 ${tagClass}`}>
-          <Text className="text-[11px] font-extrabold uppercase tracking-wide">{tag}</Text>
-        </View>
-        <Text className="mt-1 text-[21px] font-extrabold text-slate-900 dark:text-white">{title}</Text>
-        <Text className="mt-0.5 text-[13px] leading-[17px] text-slate-500 dark:text-slate-400">{description}</Text>
-      </View>
-      <View className="items-center">
-        <Text className={`text-[26px] font-extrabold leading-[30px] ${countClass}`}>{count}</Text>
-        <Text className="text-[12px] font-medium text-slate-500 dark:text-slate-400">{countUnit}</Text>
-      </View>
-      <View className="h-9 w-9 items-center justify-center rounded-full bg-white shadow-card dark:bg-slate-800">
-        <ChevronRight size={20} color="#64748b" strokeWidth={2.5} />
-      </View>
-    </Pressable>
-  )
-}
-
 export function Review() {
   const { deck, settings, streak } = useApp()
 
-  const { width: windowWidth } = useWindowDimensions()
-  // Measured rather than taken from useWindowDimensions: on web the window can be
-  // far wider than the screen the app is actually laid out in.
-  const [containerWidth, setContainerWidth] = useState(windowWidth)
+  const { width, height } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
+  const column = Math.min(width, REV_CONTENT_MAX)
+  const contentWidth = column - s.screen * 2
+
+  /*
+   * Vertical rhythm, sized to the device rather than to one screenshot.
+   *
+   * Both of these sit at their designed minimum on every iPhone in the range
+   * this app is built for — 10.5% of an 852pt screen is 89, well under the 126pt
+   * card — and only open up on a viewport with genuine room to spare. Growth is
+   * capped at about 12% so a tall window gets a slightly roomier page rather
+   * than three inflated panels.
+   */
+  const drillHeight = vspace(revCard.minHeight, 0.115, 148, height)
+  const drillGap = vspace(s.md, 0.014, 20, height)
+
+  /*
+   * Below the button block, and it is not only the home indicator this clears:
+   * the bonsai hangs 26pt past the block's own bottom edge so its pot is cropped
+   * rather than resting on a line. Now that the block is pinned to the foot of
+   * the viewport, that overhang needs somewhere to be — without this it is the
+   * screen edge doing the cropping, which is a different and much worse crop.
+   */
+  const pageFoot = Math.max(30, insets.bottom + 8)
+
+  /*
+   * The entrance replays on every focus, not only on mount — coming back from a
+   * finished session should find the screen assembling itself again rather than
+   * already sitting there. One `run` drives all of it, and every element shares
+   * one delay, so the whole page arrives on a single beat.
+   */
+  const run = useEntranceRun()
+  const beat = { at: anim.at, duration: anim.for, run, distance: anim.slideY } as const
 
   const counts = useMemo(
     () => ({
@@ -92,135 +101,201 @@ export function Review() {
     [deck, settings],
   )
 
-  const mascotMessage =
+  /*
+   * Shifu's line. Three states rather than one: with nothing due, offering the
+   * mistakes drill is more use than congratulating someone on an empty queue.
+   */
+  const message =
     counts.due === 0
-      ? "Nothing due right now — want to drill what you've missed before?"
-      : counts.mistakes > 0
-        ? "Let's strengthen what you've learned!"
-        : `${counts.due} word${counts.due === 1 ? '' : 's'} waiting — let's strengthen what you've learned!`
+      ? 'Nothing due — want to\ndrill past mistakes?'
+      : "Let's strengthen\nwhat you've learned!"
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-canvas dark:bg-slate-950">
-      <View
-        pointerEvents="none"
-        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
-        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: containerWidth / CLOUDS_ASPECT }}
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        /*
+         * `flexGrow: 1` rather than a natural content height, and it is the whole
+         * fix for this screen: it lets the column below fill a tall device while
+         * still scrolling on a short one. Without it the page is laid out to the
+         * height of its own contents and everything the device has left over is a
+         * band of bare paper under the last button.
+         */
+        contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingBottom: pageFoot }}
       >
-        <Image source={CLOUDS} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-      </View>
+        <View style={{ width: column, flexGrow: 1, paddingHorizontal: s.screen }}>
+          {/*
+            Review is pushed over the tabs, so this arrow is the only way out —
+            and it is guarded rather than a bare `back()`. Reached by deep link
+            or as the first entry after a web reload there is nothing to pop, and
+            `back()` then silently does nothing.
+          */}
+          <View className="flex-row items-center" style={{ height: 46 }}>
+            <Pressable
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={12}
+              className="items-center justify-center active:opacity-60"
+              style={{ width: 34, height: 44, marginLeft: -8 }}
+            >
+              <ChevronLeft size={26} color={c.navy} strokeWidth={2.6} />
+            </Pressable>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 8, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-        <View className="mb-4 flex-row items-center gap-1">
-          {/* Same back control the Lessons path uses — Review is pushed over the
-              tabs, so this is the way out. */}
-          <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            className="-ml-1 p-1"
-          >
-            <ChevronLeft size={28} color="#1e293b" strokeWidth={2.5} />
-          </Pressable>
-          <Text className="flex-1 text-[38px] font-extrabold leading-[44px] text-slate-900 dark:text-white">Review</Text>
-          <View className="flex-row items-center gap-1.5 rounded-full border border-coral-200 bg-white px-3.5 py-2 shadow-card dark:border-coral-900 dark:bg-slate-900">
-            <Image source={FIRE_ICON} style={{ width: 20, height: 20 }} resizeMode="contain" />
-            <Text className="text-base font-extrabold text-slate-800 dark:text-slate-100">{streak}</Text>
+            <Text
+              className="flex-1 font-nunito-extrabold"
+              style={{ ...t.title, color: c.navy, marginLeft: 2 }}
+            >
+              Review
+            </Text>
+
+            <StreakPill streak={streak} />
           </View>
-        </View>
 
-        <MascotPrompt message={mascotMessage} />
+          {/*
+            Tight to the title, and barely allowed to grow. The scenery is the
+            top of this page, and a generous gap above it just reads as the
+            screen starting late — so this gap takes the smallest share of any
+            slack there is to hand out.
+          */}
+          <FlexGap min={s.sm} max={s.lg} grow={0.4} />
+          <ReviewHero message={message} width={contentWidth} run={run} />
 
-        <View className="mb-4 flex-row items-stretch rounded-3xl bg-white px-2 py-4 shadow-card dark:bg-slate-900">
-          <Pressable
-            onPress={() => router.push('/due-words')}
-            accessibilityRole="button"
-            accessibilityLabel={`${counts.due} words due. Browse them.`}
-            className="flex-1 items-center gap-1 active:opacity-70"
-          >
-            <Text className="text-[26px] font-extrabold leading-[30px] text-slate-900 dark:text-white">{counts.due}</Text>
-            <Text className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Words due</Text>
-            <ClipboardList size={18} color="#f04747" />
-          </Pressable>
-          <View className="w-px bg-slate-200 dark:bg-slate-700" />
-          <View className="flex-1 items-center gap-1">
-            <Text className="text-[26px] font-extrabold leading-[30px] text-slate-900 dark:text-white">{streak}</Text>
-            <Text className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Day streak</Text>
-            <Flame size={18} color="#ff6b6b" fill="#f5b93d" />
+          <FlexGap min={s.lg} max={34} />
+          <View>
+            <Reveal from="bottom" {...beat}>
+              <StatsCard>
+                {[
+                <Stat
+                  key="due"
+                  value={counts.due}
+                  label="Words due"
+                  icon={CalendarDays}
+                  iconColor={c.coral}
+                  onPress={() => router.push('/due-words')}
+                />,
+                <Stat key="streak" value={streak} label="Day streak" icon={Flame} iconColor={c.coral} iconFill={c.gold} />,
+                <Stat
+                  key="weak"
+                  value={counts.weak}
+                  label="Weak words"
+                  icon={TriangleAlert}
+                  iconColor={c.gold}
+                  iconFill={c.goldSoft}
+                />,
+                ]}
+              </StatsCard>
+            </Reveal>
           </View>
-          <View className="w-px bg-slate-200 dark:bg-slate-700" />
-          <View className="flex-1 items-center gap-1">
-            <Text className="text-[26px] font-extrabold leading-[30px] text-slate-900 dark:text-white">{counts.weak}</Text>
-            <Text className="text-[13px] font-medium text-slate-500 dark:text-slate-400">Weak words</Text>
-            <TriangleAlert size={18} color="#f5b93d" fill="#f5b93d" />
-          </View>
-        </View>
 
-        <View className="gap-3">
-          <ModeCard
-            tag="Review"
-            title="Flashcards"
-            description="Review words and meanings with spaced repetition."
-            count={String(counts.flashcards)}
-            countUnit="due"
-            badge={<FlashcardsBadge />}
-            cardClass="bg-coral-50 dark:bg-coral-900/20"
-            tagClass="bg-coral-100 dark:bg-coral-900/40"
-            countClass="text-coral-600"
-            onPress={() => openSession('flashcards')}
-          />
+          {/*
+            A way to *look* at the deck rather than be tested on it. Every other
+            route to My Words is inside the Dictionary tab, which is a strange
+            place to go looking for it when you are standing in front of your
+            review queue wondering what is in it.
+          */}
+          <FlexGap min={s.md} max={20} />
+          <Reveal from="bottom" {...beat}>
+            <DeckPeekCard count={deck.length} onPress={() => router.push('/my-words')} />
+          </Reveal>
 
-          <ModeCard
-            tag="Listen"
-            title="Listening"
-            description="Practice listening and improve your comprehension."
-            count={String(counts.listening)}
-            countUnit="due"
-            badge={
-              <View className="h-[68px] w-[68px] items-center justify-center rounded-full bg-brand-500">
-                <Volume2 size={34} color="white" strokeWidth={2.25} />
+          {/*
+            A section break, not a list gap. On a phone the drills sit `drillGap`
+            apart — 12 — and this used to be 16, near enough to read as one more
+            item in the same stack rather than the start of a new group. Doubling
+            it is what separates "here is your deck" from "here are the ways to
+            drill it".
+          */}
+          <FlexGap min={s.xxl} max={40} />
+          <Reveal from="bottom" {...beat}>
+            <View style={{ gap: drillGap }}>
+              <DrillCard
+                minHeight={drillHeight}
+                tag="Review"
+                title="Flashcards"
+                description="Review words and meanings with spaced repetition."
+                count={String(counts.flashcards)}
+                fill={revDrills.flashcards.fill}
+                ink={revDrills.flashcards.ink}
+                badge={<DrillBadge source={revArt.flashcards} />}
+                onPress={() => openSession('flashcards')}
+              />
+
+              <DrillCard
+                minHeight={drillHeight}
+                tag="Listen"
+                title="Listening"
+                description="Practice listening and improve your comprehension."
+                count={String(counts.listening)}
+                fill={revDrills.listening.fill}
+                ink={revDrills.listening.ink}
+                badge={<DrillBadge source={revArt.listening} />}
+                onPress={() => openSession('listening')}
+              />
+
+              {/*
+                A dash rather than a zero when nothing has been missed. A bold 0
+                reads as a broken counter; a dash reads as "nothing here", which is
+                the truth and is not a failure.
+              */}
+              <DrillCard
+                minHeight={drillHeight}
+                tag="Improve"
+                title="Mistakes"
+                description="Review words you've missed before."
+                count={counts.mistakes > 0 ? String(counts.mistakes) : '—'}
+                fill={revDrills.mistakes.fill}
+                ink={revDrills.mistakes.ink}
+                badge={<DrillBadge source={revArt.mistakes} />}
+                onPress={() => openSession('mistakes')}
+              />
+            </View>
+          </Reveal>
+
+          <FlexGap min={s.xl} max={64} grow={1.4} />
+
+          {/*
+            The two buttons and the artwork share one container so the bonsai can
+            be anchored to the block rather than to the page, and so it is painted
+            underneath both of them.
+
+            This block is the screen's slack absorber — `flexGrow` with no ceiling,
+            where every gap above it is capped. That is deliberate and it is what
+            anchors the landscape: the buttons stay put at the top of the block and
+            the bonsai and petals, which are pinned to its *bottom*, ride down to
+            the foot of the viewport. On a phone the block is its natural height
+            and the canopy overlaps the buttons as drawn; on a tall window the two
+            separate and the artwork becomes the bottom of the page. Either way
+            there is no unexplained rectangle beneath it, because the space that
+            would have been one now has the painting in it.
+          */}
+          <View style={{ flexGrow: 3, flexShrink: 0, paddingBottom: s.xxl }}>
+            <FootDecor width={contentWidth} run={run} />
+
+            <Reveal from="bottom" {...beat}>
+              <View style={{ gap: s.md }}>
+                <CtaButton
+                  label="Start Review Session"
+                  icon={BookOpen}
+                  tone="primary"
+                  onPress={() => {
+                    thunkHaptic()
+                    openSession('full')
+                  }}
+                />
+                <CtaButton
+                  label="Quick 5-min Review"
+                  icon={Timer}
+                  tone="quiet"
+                  onPress={() => {
+                    tapHaptic()
+                    openSession('quick')
+                  }}
+                />
               </View>
-            }
-            cardClass="bg-brand-50 dark:bg-brand-900/20"
-            tagClass="bg-brand-100 dark:bg-brand-900/40"
-            countClass="text-brand-600"
-            onPress={() => openSession('listening')}
-          />
-
-          <ModeCard
-            tag="Improve"
-            title="Mistakes"
-            description="Review words you've missed before."
-            count={String(counts.mistakes)}
-            countUnit="due"
-            badge={
-              <View className="h-[68px] w-[68px] items-center justify-center rounded-full border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-                <RotateCcw size={34} color="#64748b" strokeWidth={2.25} />
-              </View>
-            }
-            cardClass="bg-slate-100/80 dark:bg-slate-800/50"
-            tagClass="bg-slate-200 dark:bg-slate-700"
-            countClass="text-slate-700 dark:text-slate-200"
-            onPress={() => openSession('mistakes')}
-          />
+            </Reveal>
+          </View>
         </View>
-
-        <Pressable
-          onPress={() => openSession('full')}
-          accessibilityRole="button"
-          className="mt-5 flex-row items-center justify-center gap-3 rounded-full bg-brand-600 py-4 shadow-card active:opacity-90"
-        >
-          <BookOpen size={22} color="white" strokeWidth={2.25} />
-          <Text className="text-[19px] font-extrabold text-white">Start Review Session</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => openSession('quick')}
-          accessibilityRole="button"
-          className="mt-3 flex-row items-center justify-center gap-2 self-center rounded-full border-2 border-brand-500 bg-white/80 px-7 py-3 active:opacity-80 dark:bg-slate-900/80"
-        >
-          <Timer size={19} color="#16a34a" strokeWidth={2.25} />
-          <Text className="text-[16px] font-extrabold text-brand-700 dark:text-brand-400">Quick 5-min Review</Text>
-        </Pressable>
       </ScrollView>
     </SafeAreaView>
   )

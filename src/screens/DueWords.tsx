@@ -7,16 +7,19 @@ import { ArrowLeft, Play } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { allDueCardsFor } from '../lib/selectors'
 import { displayWord, displayPinyin, displayExample } from '../lib/hanzi'
+import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { Modal } from '../components/Modal'
 import { SpeakButton } from '../components/SpeakButton'
 import { CATEGORY_META } from '../lib/categories'
 import type { VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 
+/** FSRS card states, as a learner-facing word. Relearning is a lapsed card working its way back. */
 const STAGE_LABEL: Record<string, string> = {
   new: 'New',
   learning: 'Learning',
   review: 'Review',
+  relearning: 'Relearning',
 }
 
 export function DueWords() {
@@ -70,7 +73,7 @@ export function DueWords() {
                   </Text>
                 </View>
                 <Text className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-400 dark:bg-slate-800">
-                  {STAGE_LABEL[card.stage] ?? card.stage}
+                  {STAGE_LABEL[card.state] ?? card.state}
                 </Text>
               </Pressable>
             )
@@ -105,8 +108,7 @@ export function DueWords() {
             <Text className="text-xl font-semibold text-slate-900 dark:text-white">{shortGloss(selected)}</Text>
             {selected.example && displayExample(selected, settings.script) && (
               <View className="w-full border-t border-slate-100 pt-3 dark:border-slate-800">
-                <Text className="font-hanzi text-base text-slate-700 dark:text-slate-300">{displayExample(selected, settings.script)}</Text>
-                <Text className="text-sm text-slate-400">{selected.example.pinyin}</Text>
+                <ReadingSentence text={displayExample(selected, settings.script)} term={displayWord(selected, settings.script)} tone="card" size="compact" />
                 <Text className="text-sm italic text-slate-400">{selected.example.translation}</Text>
               </View>
             )}

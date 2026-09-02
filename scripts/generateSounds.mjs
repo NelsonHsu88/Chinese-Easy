@@ -8,7 +8,43 @@ const SAMPLE_RATE = 44100
 const OUT_DIR = join(import.meta.dirname, '..', 'src', 'assets', 'sounds')
 mkdirSync(OUT_DIR, { recursive: true })
 
+/*
+ * Output peak per effect.
+ *
+ * The synthesis envelopes below were each tuned in isolation, which left the
+ * set badly unbalanced: the stroke burst came out peaking at 0.23 and the tap
+ * at 0.14 against the chime's 0.92 — roughly 12dB down, which on a phone
+ * speaker is the difference between a click you hear and one you don't. The
+ * envelopes now shape each sound and this table decides how loud it ends up, in
+ * one place where the balance between them can actually be read.
+ *
+ * The one-off events sit at the top. The stroke and tap fire many times a
+ * minute and sit deliberately under them — present, without demanding the same
+ * attention. Normalising here is also what guarantees nothing clips.
+ */
+const PEAKS = {
+  'stroke.wav': 0.62,
+  'tap.wav': 0.42,
+  'retry.wav': 0.62,
+  'chime.wav': 0.92,
+  'fanfare.wav': 0.88,
+  'gong.wav': 0.8,
+}
+
+/** Scales a buffer so its loudest sample lands exactly on `target`. */
+function normalize(samples, target) {
+  let peak = 0
+  for (const s of samples) peak = Math.max(peak, Math.abs(s))
+  if (peak === 0) return peak
+  for (let i = 0; i < samples.length; i++) samples[i] *= target / peak
+  return peak
+}
+
 function writeWav(filename, samples) {
+  const target = PEAKS[filename]
+  if (target === undefined) throw new Error(`No output peak declared for ${filename}`)
+  const rendered = normalize(samples, target)
+
   const buffer = Buffer.alloc(44 + samples.length * 2)
   buffer.write('RIFF', 0)
   buffer.writeUInt32LE(36 + samples.length * 2, 4)
@@ -28,7 +64,10 @@ function writeWav(filename, samples) {
     buffer.writeInt16LE(Math.round(clamped * 32767), 44 + i * 2)
   }
   writeFileSync(join(OUT_DIR, filename), buffer)
-  console.log(`Wrote ${filename} (${(samples.length / SAMPLE_RATE).toFixed(3)}s)`)
+  console.log(
+    `Wrote ${filename} (${(samples.length / SAMPLE_RATE).toFixed(3)}s, ` +
+      `rendered peak ${rendered.toFixed(3)} → ${target.toFixed(2)})`,
+  )
 }
 
 function samplesFor(durationSec) {

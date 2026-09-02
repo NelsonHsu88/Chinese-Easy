@@ -7,19 +7,29 @@
     "icon": "./assets/images/icon.png",
     "scheme": "chineseeasy",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#1fb96d",
+    "backgroundColor": "#FFFDFC",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.chineseeasy.app"
+      "bundleIdentifier": "com.chineseeasy.app",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Chinese Easy uses speech recognition to check whether you pronounced a word correctly.",
+        "NSMicrophoneUsageDescription": "Chinese Easy uses the microphone so you can say a word out loud and check your pronunciation."
+      }
     },
     "android": {
       "package": "com.chineseeasy.app",
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#1fb96d",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "com.google.android.gms.permission.AD_ID"
+      ]
     },
     "web": {
       "output": "static",
@@ -38,10 +48,54 @@
       ],
       "expo-audio",
       "@react-native-community/datetimepicker",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Chinese Easy uses the microphone so you can say a word out loud and check your pronunciation.",
+          "speechRecognitionPermission": "Chinese Easy uses speech recognition to check whether you pronounced a word correctly.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-3940256099942544~3347511713",
+          "iosAppId": "ca-app-pub-3940256099942544~1458002511",
+          "userTrackingUsageDescription": "Chinese Easy asks so that the ads you see between lessons can be more relevant. Declining keeps every learning feature exactly as it is.",
+          "delayAppMeasurementInit": true,
+          "optimizeInitialization": true,
+          "optimizeAdLoading": true
+        }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "Chinese Easy asks so that the ads you see between lessons can be more relevant. Declining keeps every learning feature exactly as it is."
+        }
+      ],
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "owner": "nelsonhsu",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "262b92d2-8981-40ca-a28e-e12f52a4cce8"
+      }
     }
+  },
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
+    "ios_app_id": "ca-app-pub-3940256099942544~1458002511",
+    "user_tracking_usage_description": "Chinese Easy asks so that the ads you see between lessons can be more relevant. Declining keeps every learning feature exactly as it is.",
+    "delay_app_measurement_init": true,
+    "optimize_initialization": true,
+    "optimize_ad_loading": true
   }
 }

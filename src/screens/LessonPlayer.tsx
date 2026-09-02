@@ -7,7 +7,7 @@ import { useApp } from '../context/AppContext'
 import { lessonById } from '../data/lessons'
 import { speak } from '../lib/speech'
 import { playPositiveChime, playRetryTone, playFanfare } from '../lib/sound'
-import { celebrateHaptic } from '../lib/haptics'
+import { celebrateHaptic, thunkHaptic } from '../lib/haptics'
 import { Celebration } from '../components/Celebration'
 import { SpeakButton } from '../components/SpeakButton'
 import { XP_PER_LESSON } from '../lib/townEconomy'
@@ -40,6 +40,10 @@ function MatchExerciseView({ exercise, onComplete }: { exercise: MatchExercise; 
     if (matched.includes(pairIndex) || selected === null) return
     if (selected === pairIndex) {
       playPositiveChime()
+      // One pair of several, not the end of the exercise — the weight of
+      // something landing, rather than the two-beat celebration that belongs to
+      // finishing the whole thing.
+      thunkHaptic()
       setMatched((m) => [...m, pairIndex])
       setSelected(null)
     } else {
@@ -122,6 +126,7 @@ function ScrambleExerciseView({ exercise, onComplete }: { exercise: ScrambleExer
     const isCorrect = built.map((t) => t.text).join('') === exercise.tokens.join('')
     if (isCorrect) {
       playPositiveChime()
+      celebrateHaptic()
       setChecked('correct')
       setTimeout(onComplete, 900)
     } else {
@@ -188,6 +193,7 @@ function FillBlankExerciseView({ exercise, onComplete }: { exercise: FillBlankEx
     if (answered) return
     if (opt === exercise.answer) {
       playPositiveChime()
+      celebrateHaptic()
       setAnswered(opt)
       setTimeout(onComplete, 900)
     } else {

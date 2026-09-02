@@ -10,9 +10,36 @@ web-build/
 expo-env.d.ts
 *.orig.*
 
+# Environment. Real credentials never go in git — .env.example is the committed
+# record of which variables the app expects, and is deliberately not ignored.
+.env
+.env.*
+!.env.example
+
+# Hand-downloaded dictionary corpora for scripts/buildWordBank.mjs (CC-CEDICT,
+# a frequency list, optionally the Tatoeba sentence pairs). ~14MB of third-party
+# source data whose *outputs* — src/data/importedWords.json and
+# src/data/lookupWords.json — are committed, so a fresh clone builds fine
+# without it. See the header of buildWordBank.mjs for where to fetch each file.
+.wordbank-data/
+
 # Source artwork and design references. Kept out of git deliberately: it's ~225MB
 # of full-resolution PNGs the app never loads — book covers are resized into
 # src/assets/images/covers by scripts/buildStoryCovers.mjs, and the decorative
 # pieces it uses are copied into src/assets/images/decor. Committing the
 # originals would bloat every clone permanently, since git keeps them forever.
 Photos for Reference/
+
+# Supabase CLI scratch state — the linked project ref, the pooler connection URL
+# and the remote server versions, rewritten by `npx supabase link`. None of it
+# belongs in git. The directory above it does: supabase/migrations holds the
+# schema and the Row Level Security policies, which are this app's entire
+# access-control boundary and the last thing that should live on one laptop.
+supabase/.temp/
+
+# Screenshots of provider consoles. These carry client ids, project names and
+# sometimes a secret in plain sight — a credential in a picture is still a
+# credential, and git keeps it forever. Kept local deliberately.
+Google Client Oauth.png
+*Oauth*.png
+*OAuth*.png

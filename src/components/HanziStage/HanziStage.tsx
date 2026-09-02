@@ -3,33 +3,85 @@ import { Platform, View, Text, ActivityIndicator, type LayoutChangeEvent } from 
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import type { CharacterJson } from 'hanzi-writer'
 import { playStrokeSound, playGongSound } from '../../lib/sound'
+import { tickHaptic, thudHaptic } from '../../lib/haptics'
 import { WRITER_HTML } from './writerHtml'
-import hanziData from '../../assets/hanziData.json'
+import { bundledCharacterData } from '../../lib/hanziStrokeData'
 
 export type HanziStageMode = 'demo' | 'quiz'
 
-const CDN_URL = (char: string) => `https://cdn.jsdelivr.net/npm/hanzi-writer-data@latest/${encodeURIComponent(char)}.json`
+/**
+ * How fast the demo animation runs. `slow` is for a learner following a stroke
+ * with their eye or their hand rather than watching the character appear.
+ */
+export type HanziStageSpeed = 'normal' | 'slow'
+
+/*
+ * Pinned, deliberately. This used to be `@latest`, which meant the stroke data
+ * a learner's device executed could change without a single change to this repo
+ * or to package-lock.json — including after an upstream compromise, and
+ * including a breaking change to the data format. Keep this in step with the
+ * `hanzi-writer-data` devDependency, which is what buildHanziData.mjs bundles
+ * from, so the CDN fallback and the bundled shards are the same vintage.
+ */
+const CDN_VERSION = '2.0.1'
+const CDN_URL = (char: string) =>
+  `https://cdn.jsdelivr.net/npm/hanzi-writer-data@${CDN_VERSION}/${encodeURIComponent(char)}.json`
 const GAP = 10
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/**
+ * hanzi-writer's own contract: a list of SVG path strings and one median per
+ * stroke.
+ *
+ * Checked because this is third-party data arriving over the network and going
+ * straight into the WebView. The blast radius is small — hanzi-writer turns it
+ * into path geometry, not script — but "small" is an argument for validating
+ * cheaply, not for trusting. A malformed payload has somewhere good to go
+ * already: `loadCharData`'s caller shows "Stroke data unavailable", which is a
+ * supported state for the 165 characters upstream has no data for anyway.
+ */
+function isCharacterJson(value: unknown): value is CharacterJson {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return (
+    Array.isArray(candidate.strokes) &&
+    candidate.strokes.length > 0 &&
+    candidate.strokes.every((stroke) => typeof stroke === 'string') &&
+    Array.isArray(candidate.medians) &&
+    candidate.medians.length === candidate.strokes.length
+  )
+}
+
 async function fetchJson(url: string): Promise<CharacterJson> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Request failed (${res.status})`)
-  return res.json()
+  const body: unknown = await res.json()
+  if (!isCharacterJson(body)) throw new Error('Unexpected stroke data shape')
+  return body
 }
 
 /**
  * Loads stroke data for our own word list from the locally-bundled dataset
- * first (instant, no network) and only falls back to the public
- * hanzi-writer-data CDN for characters we haven't bundled — e.g. a user's
- * custom word.
+ * first (no network) and only falls back to the public hanzi-writer-data CDN
+ * for characters we haven't bundled — e.g. a user's custom word.
+ *
+ * The bundled read is a file read rather than an object lookup now: the dataset
+ * ships as asset shards instead of being inlined into the JS bundle (see
+ * lib/hanziStrokeData.ts). Still offline, still the same data, and this function
+ * was already async — which is why nothing above it had to change. A failed
+ * shard read falls through to the CDN rather than throwing, so a character the
+ * app *does* have bundled still draws if its shard is somehow unreadable.
  */
 async function loadCharData(char: string): Promise<CharacterJson> {
-  const bundled = (hanziData as Record<string, CharacterJson>)[char]
-  if (bundled) return bundled
+  try {
+    const bundled = await bundledCharacterData(char)
+    if (bundled) return bundled
+  } catch {
+    // Fall through to the CDN below.
+  }
   // One retry on the CDN fetch since a transient network hiccup shouldn't
   // permanently show "stroke data unavailable" for a character that's really there.
   try {
@@ -54,12 +106,20 @@ interface Props {
   revealKey?: number
   /** Bump to restart the demo animation or reset a quiz attempt for the same word. */
   resetKey?: number | string
+  /** Demo playback speed. Ignored in quiz mode, which isn't animating anything. */
+  speed?: HanziStageSpeed
   /**
    * Keeps the finished character painted in the stroke colour once a quiz is
    * completed, instead of leaving the learner looking at the faint outline.
    * For screens that stay on the completed character rather than moving on.
    */
   holdCharacterOnComplete?: boolean
+  /**
+   * Fired on every accepted stroke, with figures for the **whole word** — not
+   * for the character currently being written. A multi-character word is quizzed
+   * one glyph at a time, but a caller showing "7 / 12" means the word, so the
+   * per-glyph numbers are summed here rather than in each screen.
+   */
   onQuizProgress?: (strokesRemaining: number, totalMistakes: number) => void
   onQuizComplete?: (totalMistakes: number) => void
   onDemoComplete?: () => void
@@ -81,6 +141,7 @@ export function HanziStage({
   hintKey = 0,
   revealKey = 0,
   resetKey,
+  speed = 'normal',
   holdCharacterOnComplete = false,
   onQuizProgress,
   onQuizComplete,
@@ -116,13 +177,47 @@ export function HanziStage({
   const demoCompletedIndexes = useRef(new Set<number>())
   const totalMistakes = useRef(0)
 
+  /*
+   * Per-glyph stroke bookkeeping, so progress can be reported for the word.
+   *
+   * `glyphTotals` is filled as each glyph's stroke data loads — every glyph
+   * mounts and loads at once, even though only the active one takes input, so
+   * the totals are all known well before the first stroke is drawn. A glyph
+   * whose data never arrives stays absent and simply contributes nothing, which
+   * is the same way the rest of this component treats missing stroke data.
+   */
+  const glyphTotals = useRef<number[]>([])
+  const glyphDrawn = useRef<number[]>([])
+
   useEffect(() => {
     completedIndexes.current = new Set()
     demoCompletedIndexes.current = new Set()
     totalMistakes.current = 0
+    glyphDrawn.current = []
     setActiveIndex(0)
     setWordComplete(false)
   }, [character, mode, resetKey])
+
+  // Totals belong to the characters, not to an attempt, so they survive a reset
+  // and are only discarded when the word itself changes.
+  useEffect(() => {
+    glyphTotals.current = []
+  }, [character])
+
+  const handleGlyphProgress = (idx: number, strokesRemaining: number, mistakes: number) => {
+    // Derive this glyph's total from its own first event if its stroke data
+    // hasn't landed yet: what remains plus what has been drawn.
+    glyphDrawn.current[idx] = (glyphDrawn.current[idx] ?? 0) + 1
+    glyphTotals.current[idx] ??= strokesRemaining + glyphDrawn.current[idx]
+
+    let remaining = 0
+    for (let i = 0; i < chars.length; i++) {
+      remaining += Math.max(0, (glyphTotals.current[i] ?? 0) - (glyphDrawn.current[i] ?? 0))
+    }
+    // Completed glyphs have already banked their mistakes; the active one is
+    // still reporting a running count of its own.
+    onQuizProgress?.(remaining, totalMistakes.current + mistakes)
+  }
 
   const handleGlyphQuizComplete = (idx: number, mistakes: number) => {
     completedIndexes.current.add(idx)
@@ -149,9 +244,13 @@ export function HanziStage({
       {perCharSize &&
         chars.map((char, idx) => (
           <SingleGlyphStage
-            key={`${idx}-${char}-${mode}-${resetKey}-${Math.round(perCharSize / 4) * 4}-${showOutline}`}
+            // `speed` is in the key because the WebView is configured once, by the
+            // `init` message — there is no way to retune a live writer, so
+            // changing speed has to rebuild it.
+            key={`${idx}-${char}-${mode}-${speed}-${resetKey}-${Math.round(perCharSize / 4) * 4}-${showOutline}`}
             char={char}
             mode={mode}
+            speed={speed}
             showOutline={showOutline}
             showGuides={showGuides}
             hintKey={hintKey}
@@ -160,7 +259,10 @@ export function HanziStage({
             holdCharacterOnComplete={holdCharacterOnComplete}
             active={idx === activeIndex}
             dimmed={!wordComplete && idx !== activeIndex}
-            onQuizProgress={onQuizProgress}
+            onStrokeTotal={(total) => {
+              glyphTotals.current[idx] = total
+            }}
+            onQuizProgress={(remaining, mistakes) => handleGlyphProgress(idx, remaining, mistakes)}
             onQuizComplete={(mistakes) => handleGlyphQuizComplete(idx, mistakes)}
             onDemoComplete={() => handleGlyphDemoComplete(idx)}
           />
@@ -170,6 +272,7 @@ export function HanziStage({
 }
 
 interface GlyphProps {
+  speed: HanziStageSpeed
   char: string
   mode: HanziStageMode
   showOutline: boolean
@@ -186,12 +289,15 @@ interface GlyphProps {
    * still nominally belongs to the last one.
    */
   dimmed: boolean
+  /** This glyph's stroke count, as soon as its stroke data resolves. */
+  onStrokeTotal: (total: number) => void
+  /** Strokes remaining in *this* glyph. The parent sums them across the word. */
   onQuizProgress?: (strokesRemaining: number, totalMistakes: number) => void
   onQuizComplete: (mistakes: number) => void
   onDemoComplete: () => void
 }
 
-function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, revealKey, size, holdCharacterOnComplete, active, dimmed, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
+function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey, revealKey, size, holdCharacterOnComplete, active, dimmed, onStrokeTotal, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
   const webviewRef = useRef<WebView>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const startedRef = useRef(false)
@@ -209,7 +315,9 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
     let cancelled = false
     loadCharData(char)
       .then((data) => {
-        if (!cancelled) setStrokeData(data)
+        if (cancelled) return
+        setStrokeData(data)
+        onStrokeTotal(data.strokes.length)
       })
       .catch(() => {
         if (!cancelled) setStatus('error')
@@ -217,6 +325,9 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
     return () => {
       cancelled = true
     }
+    // Keyed on the character alone. `onStrokeTotal` is an inline arrow from the
+    // parent, so including it would refetch the stroke data on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [char])
 
   /** Sends a message into this glyph's writer — a real WebView on native, a plain <iframe> on web (see render below). */
@@ -236,6 +347,7 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
       type: 'init',
       char,
       mode,
+      speed,
       showOutline,
       showGuides,
       showStartHint,
@@ -285,12 +397,18 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
       setStatus('error')
     } else if (msg.type === 'correctStroke') {
       playStrokeSound()
+      // The lightest feel in the app. A stroke lands many times per character,
+      // and anything heavier stops reading as confirmation and turns into a
+      // rattle by the fourth or fifth stroke.
+      tickHaptic()
       onQuizProgress?.(msg.strokesRemaining ?? 0, msg.totalMistakes ?? 0)
     } else if (msg.type === 'strokeHint') {
       // The writer has given up on this stroke and highlighted it. Sounded here
       // alongside the stroke sound rather than in each screen, so every place
       // that shows a quiz gets the same feedback without repeating itself.
+      // The heaviest feel in the app, and the only place it's used.
       playGongSound()
+      thudHaptic()
     } else if (msg.type === 'demoComplete') {
       onDemoComplete()
     } else if (msg.type === 'quizComplete') {
@@ -363,7 +481,24 @@ function SingleGlyphStage({ char, mode, showOutline, showGuides, hintKey, reveal
               ref={webviewRef}
               source={{ html: WRITER_HTML }}
               onMessage={handleMessage}
-              originWhitelist={['*']}
+              /*
+               * This document is static local HTML that draws one glyph. It has
+               * no links, no forms and no reason to navigate anywhere, so say
+               * so — `originWhitelist={['*']}` let it navigate to any URL, which
+               * is a permission nothing here ever needed.
+               *
+               * Defence in depth rather than a fix for a live bug: the only
+               * external input is the CDN stroke data above, which arrives as
+               * postMessage JSON and becomes SVG path geometry. This caps the
+               * blast radius if that data, or a future hanzi-writer, ever
+               * produced something navigable.
+               *
+               * `about:blank` is the origin React Native gives a `source={{html}}`
+               * document; the guard below is what actually refuses everything else.
+               */
+              originWhitelist={['about:blank']}
+              onShouldStartLoadWithRequest={(request) => request.url === 'about:blank'}
+              setSupportMultipleWindows={false}
               scrollEnabled={false}
               bounces={false}
               style={{ width: size, height: size, backgroundColor: 'transparent' }}

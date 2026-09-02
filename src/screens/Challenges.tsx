@@ -1,47 +1,78 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, ScrollView, Image, Animated, Easing } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
-import { ChevronLeft, ChevronRight, Check, Star } from 'lucide-react-native'
+import { router, Stack } from 'expo-router'
+import { ChevronLeft, CalendarDays, Trophy } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { playTapSound, playPositiveChime } from '../lib/sound'
-import { celebrateHaptic } from '../lib/haptics'
+import { celebrateHaptic, tapHaptic } from '../lib/haptics'
 import { devNow } from '../lib/devClock'
-import { BrushHighlight } from '../components/BrushHighlight'
+import { FEATURES, safeRoute } from '../lib/features'
+import { ChallengeCard, type CardState } from '../components/challenges/ChallengeCard'
+import { ChallengeHero } from '../components/challenges/ChallengeHero'
+import { SegmentedTabs, XpCounter } from '../components/challenges/ChallengeParts'
+import { CARD, CHAL, GUTTER } from '../components/challenges/tokens'
+import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
+import { AppBannerAd } from '../components/ads/AppBannerAd'
 import {
   CHALLENGE_DEFS,
-  CHALLENGE_DONE,
-  CHALLENGE_TONES,
   challengeInstanceId,
   type ChallengeDef,
-  type ToneColors,
 } from '../lib/challenges'
 
 /*
  * Challenges.
  *
- * Warm cream paper, one illustrated tile per row, and a progress bar tinted to
- * that challenge's own colour family — a long column of identical grey progress
- * rows is the thing this screen is built to avoid.
+ * Rebuilt against the reference mockup: warm off-white page, a hero that answers
+ * "how much of today is done", and one card component in four states below it.
+ * Colours come from the `chal-*` tokens in the Tailwind config and nowhere else.
  *
- * Light-only, matching the reading screens: the design rests on cream paper and
- * a dark repaint would be a different design rather than a recolour.
+ * Light-only, like the reading screens — the design rests on warm paper, and a
+ * dark repaint would be a different design rather than a recolour.
  */
 
 type Tab = 'daily' | 'milestone'
 
-/** Gap between rows, carried as each row's own margin so it can collapse with it. */
-const ROW_GAP = 12
-
 /*
- * How a claimed challenge leaves the list: it slides off to the right and fades,
- * and at the same time its height and margin collapse so everything below rises
- * to fill the space. Both halves run off one value, which is what keeps the
- * slide and the reflow feeling like a single movement instead of two.
+ * The page's arrival: the whole screen rises a little and fades up.
  *
- * Height and margin are layout properties, so this can't use the native driver.
+ * One beat rather than a staggered score, matching `Books` — the Dashboard
+ * assembles itself because it is six unrelated things, where this is one board
+ * being put in front of the learner. The rise is short on purpose; past about
+ * 40pt the movement stops reading as arrival and starts reading as a page turn.
+ *
+ * It replays on every focus, so coming back from a challenge's own screen hands
+ * the board back the same way it was first opened.
  */
-const EXIT_DURATION = 420
+const ENTER = { at: 0, for: 640, rise: 28 } as const
+
+/**
+ * How a claimed challenge leaves its place in the list.
+ *
+ * It used to be removed outright. Now it keeps its row but stops competing for
+ * attention: it collapses out of position, and reappears dimmed at the foot of
+ * the list where finished work belongs. Splitting the move into a collapse and
+ * an arrival means the cards below close the gap smoothly and the claimed card
+ * doesn't have to be measured and flown across the screen to get there.
+ */
+const LEAVE_DURATION = 380
+const ARRIVE_DURATION = 320
+
+/** How much a claimed card fades once it has settled at the bottom. */
+const CLAIMED_OPACITY = 0.6
+
+/** Grace after an animation's nominal end before the timer takes over from it. */
+const ANIMATION_SAFETY_MS = 400
+
+/** Wraps a callback so the animation and its safety timer can't both run it. */
+function once(fn: () => void): () => void {
+  let called = false
+  return () => {
+    if (called) return
+    called = true
+    fn()
+  }
+}
 
 /** Time left until the daily set rolls over, from the app's notion of "now". */
 function resetsInLabel(): string {
@@ -55,319 +86,414 @@ function resetsInLabel(): string {
 }
 
 /**
- * The challenge's picture. Real artwork where a piece fits, otherwise a wash in
- * the challenge's own tone with its character on it — never an empty frame.
+ * A card in its slot, playing whichever move the list has asked of it.
+ *
+ * `leaving` collapses the row's height and margin so everything below rises into
+ * the space; `arriving` fades and lifts it into its new place at the foot. Both
+ * touch layout properties, so neither can use the native driver.
  */
-function ChallengeArt({ def, colors, size }: { def: ChallengeDef; colors: ToneColors; size: number }) {
-  return (
-    <View
-      className="items-center justify-center overflow-hidden rounded-[16px]"
-      style={{ width: size, height: size, backgroundColor: colors.soft }}
-    >
-      {def.art ? (
-        <Image
-          source={def.art}
-          style={{ width: size * 0.86, height: size * 0.86 }}
-          resizeMode="contain"
-          accessibilityIgnoresInvertColors
-        />
-      ) : (
-        <Text
-          className="font-hanzi-tc-semibold"
-          style={{ fontSize: size * 0.46, lineHeight: size * 0.6, color: colors.strong }}
-        >
-          {def.glyph ?? def.title.slice(0, 1)}
-        </Text>
-      )}
-    </View>
-  )
-}
-
-function ChallengeRow({
-  def,
-  exiting,
-  onClaim,
-  onExited,
+function CardSlot({
+  id,
+  leaving,
+  arriving,
+  dimmed,
+  onLeft,
+  onArrived,
+  children,
 }: {
-  def: ChallengeDef
-  /** Set once claimed — the row plays its exit and then reports back to be removed. */
-  exiting: boolean
-  onClaim: (def: ChallengeDef) => void
-  onExited: (id: string) => void
+  id: string
+  leaving: boolean
+  arriving: boolean
+  dimmed: boolean
+  onLeft: (id: string) => void
+  onArrived: (id: string) => void
+  children: React.ReactNode
 }) {
-  const { dailyProgress, streak, completedLessonIds, xp, claimedChallengeIds } = useApp()
-
-  const current = Math.min(
-    def.target,
-    def.progress({ dailyProgress, streak, completedLessonCount: completedLessonIds.length, xp }),
-  )
-  const instanceId = challengeInstanceId(def)
-  const claimed = claimedChallengeIds.includes(instanceId)
-  const complete = current >= def.target
-  const pct = Math.round((current / def.target) * 100)
-  const colors = complete ? CHALLENGE_DONE : CHALLENGE_TONES[def.tone]
-
-  const isMilestone = def.cadence === 'milestone'
-  const artSize = isMilestone ? 92 : 76
-
-  const exit = useRef(new Animated.Value(0)).current
-  // Captured before the exit starts, so the collapse has a real height to run
-  // from — an Animated.Value can't interpolate out of "auto".
+  const leave = useRef(new Animated.Value(0)).current
+  const arrive = useRef(new Animated.Value(arriving ? 0 : 1)).current
+  /*
+   * The row's resting height, so the collapse has something to shrink from — an
+   * Animated.Value can't interpolate out of "auto".
+   *
+   * Treated as a bonus rather than a precondition. `onLayout` doesn't fire for
+   * every view on react-native-web, and gating the animation on it meant a
+   * claimed row could sit frozen in place forever: no height, no animation, no
+   * completion callback, so the list never learned to move it. The fade and
+   * slide always run; the height collapse joins in when the measurement exists.
+   */
   const [height, setHeight] = useState<number | null>(null)
 
+  /*
+   * Both moves report back through `once`, and both are backed by a timer as
+   * well as the animation's own callback.
+   *
+   * A non-native animation is driven by requestAnimationFrame, which a browser
+   * stops entirely for a hidden tab — so an app backgrounded mid-claim would
+   * come back to a row frozen in place, still offering a Claim button for a
+   * challenge already paid out. Timers keep firing (throttled) where rAF does
+   * not, so the list reaches its resting order whether or not a single frame
+   * was ever painted.
+   */
   useEffect(() => {
-    if (!exiting || height === null) return
-    Animated.timing(exit, {
+    if (!leaving) return
+    const finish = once(() => onLeft(id))
+    Animated.timing(leave, {
       toValue: 1,
-      duration: EXIT_DURATION,
+      duration: LEAVE_DURATION,
       easing: Easing.inOut(Easing.cubic),
       useNativeDriver: false,
-      // Reported even if the animation was cut short. The challenge is claimed
-      // either way, and a row that never announces itself gone would sit in the
-      // list until the screen is remounted.
-    }).start(() => onExited(def.id))
-  }, [exiting, height, exit, def.id, onExited])
+    }).start(finish)
+    const safety = setTimeout(finish, LEAVE_DURATION + ANIMATION_SAFETY_MS)
+    return () => clearTimeout(safety)
+  }, [leaving, leave, id, onLeft])
 
-  const animatedStyle = exiting &&
-    height !== null && {
-      height: exit.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }),
-      marginBottom: exit.interpolate({ inputRange: [0, 1], outputRange: [ROW_GAP, 0] }),
-      opacity: exit.interpolate({ inputRange: [0, 0.55, 1], outputRange: [1, 0.35, 0] }),
-      transform: [{ translateX: exit.interpolate({ inputRange: [0, 1], outputRange: [0, 90] }) }],
-    }
+  useEffect(() => {
+    if (!arriving) return
+    const finish = once(() => onArrived(id))
+    arrive.setValue(0)
+    Animated.timing(arrive, {
+      toValue: 1,
+      duration: ARRIVE_DURATION,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start(finish)
+    const safety = setTimeout(finish, ARRIVE_DURATION + ANIMATION_SAFETY_MS)
+    return () => clearTimeout(safety)
+  }, [arriving, arrive, id, onArrived])
+
+  const leavingStyle = leaving
+    ? {
+        ...(height === null
+          ? null
+          : {
+              height: leave.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }),
+              marginBottom: leave.interpolate({ inputRange: [0, 1], outputRange: [CARD.gap, 0] }),
+            }),
+        opacity: leave.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 0.4, 0] }),
+        transform: [{ translateY: leave.interpolate({ inputRange: [0, 1], outputRange: [0, 18] }) }],
+      }
+    : null
+
+  const arrivingStyle = arriving
+    ? {
+        opacity: arrive.interpolate({ inputRange: [0, 1], outputRange: [0, CLAIMED_OPACITY] }),
+        transform: [{ translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+      }
+    : null
 
   return (
     <Animated.View
       onLayout={(e) => {
-        // Only the resting height is of interest; ignore the shrinking ones.
-        if (!exiting) setHeight(e.nativeEvent.layout.height)
+        if (!leaving) setHeight(e.nativeEvent.layout.height)
       }}
-      style={[{ marginBottom: ROW_GAP, overflow: 'hidden' }, animatedStyle || null]}
+      style={[
+        { marginBottom: CARD.gap, opacity: dimmed ? CLAIMED_OPACITY : 1, overflow: 'hidden' },
+        leavingStyle,
+        arrivingStyle,
+      ]}
     >
-      {/*
-        The whole row is the way in: tapping it opens the screen where this
-        challenge can actually be worked on. Switched off once it's finished —
-        at that point there's nothing left to go and do, and a stray tap would
-        navigate away from the Claim button the learner was reaching for.
-      */}
-      <Pressable
-        onPress={() => {
-          playTapSound()
-          router.push(def.route as Parameters<typeof router.push>[0])
-        }}
-        disabled={complete}
-        accessibilityRole={complete ? undefined : 'button'}
-        accessibilityLabel={complete ? undefined : def.title}
-        accessibilityHint={complete ? undefined : def.description}
-        className="flex-row items-center gap-3.5 rounded-[20px] px-3.5 py-3.5 shadow-paper"
-        style={{ backgroundColor: '#ffffff', borderWidth: 1, borderColor: 'rgba(217,207,192,0.4)' }}
-      >
-        <ChallengeArt def={def} colors={colors} size={artSize} />
-
-        <View className="flex-1">
-          <Text className="font-nunito-bold text-[16.5px]" style={{ color: '#1a1a2e' }} numberOfLines={2}>
-            {def.title}
-          </Text>
-
-          {/* What to actually do. Hidden once complete, where it would be stale
-              instructions sitting next to a finished bar. */}
-          {!complete && (
-            <Text className="mt-0.5 font-inter text-[11.5px]" style={{ color: '#8a8a99' }} numberOfLines={1}>
-              {def.description}
-            </Text>
-          )}
-
-          <View className="mt-2 h-[9px] overflow-hidden rounded-full" style={{ backgroundColor: colors.track }}>
-            <View className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: colors.strong }} />
-          </View>
-
-          <View className="mt-1.5 flex-row items-baseline">
-            <Text className="font-nunito-bold text-[15px]" style={{ color: colors.strong }}>
-              {current}
-            </Text>
-            <Text className="font-inter text-[14px]" style={{ color: '#a9a69f' }}>
-              {' '}
-              / {def.target}
-            </Text>
-          </View>
-        </View>
-
-        {/*
-          One slot, three states: claimable, already claimed, still in progress.
-          Milestones show what they're worth instead of a chevron — the reward is
-          the reason to care about a target that's weeks away.
-        */}
-        <View className="items-center justify-center" style={{ minWidth: 56 }}>
-          {complete && !claimed ? (
-            <Pressable
-              onPress={() => onClaim(def)}
-              accessibilityRole="button"
-              accessibilityLabel={`Claim ${def.xpReward} XP for ${def.title}`}
-              className="rounded-full px-4 py-2.5 shadow-glow-jade active:opacity-80"
-              style={{ backgroundColor: '#58be7c' }}
-            >
-              <Text className="font-nunito-bold text-[15px] text-white">Claim</Text>
-            </Pressable>
-          ) : claimed ? (
-            <View
-              className="h-[42px] w-[42px] items-center justify-center rounded-full"
-              style={{ backgroundColor: '#d9f2e0' }}
-            >
-              <Check size={22} color="#2e7d5b" strokeWidth={3} />
-            </View>
-          ) : isMilestone ? (
-            <View
-              className="flex-row items-center gap-1.5 rounded-full px-2.5 py-2"
-              style={{ backgroundColor: '#fdf3dd' }}
-            >
-              <Star size={14} color="#ffc414" fill="#ffc414" />
-              <Text className="font-nunito-bold text-[13px]" style={{ color: '#9c681b' }}>
-                +{def.xpReward} XP
-              </Text>
-            </View>
-          ) : (
-            <ChevronRight size={22} color="#c3bdb2" strokeWidth={2.5} />
-          )}
-        </View>
-      </Pressable>
+      {children}
     </Animated.View>
   )
 }
 
-function TabButton({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      className="flex-1 items-center justify-center rounded-full py-3"
-      style={{ backgroundColor: active ? '#b9e3cc' : 'transparent' }}
-    >
-      <Text className="font-nunito-bold text-[17px]" style={{ color: active ? '#1a3f30' : '#3b4a63' }}>
-        {label}
-      </Text>
-    </Pressable>
-  )
-}
-
 export function Challenges() {
-  const { xp, claimedChallengeIds, claimChallenge } = useApp()
+  const {
+    xp,
+    claimedChallengeIds,
+    claimChallenge,
+    dailyProgress,
+    streak,
+    completedLessonIds,
+  } = useApp()
   const [tab, setTab] = useState<Tab>('daily')
 
   /*
-   * Challenges claimed in this session that are still playing their exit. A
-   * claimed challenge is done and leaves the list, but it can't simply vanish
-   * the instant the context marks it claimed — it has to stay mounted long
-   * enough to animate away, so it lives here until the row reports it's gone.
+   * The page's arrival, on one beat — see `ENTER`. It wraps the claim animation
+   * rather than competing with it: this plays once on the way in, where that one
+   * fires on a tap long after this has settled.
    */
-  const [exitingIds, setExitingIds] = useState<string[]>([])
+  const run = useEntranceRun()
+  const enter = useReveal({ from: 'bottom', ...ENTER, duration: ENTER.for, distance: ENTER.rise, run })
+
+  /** The card collapsing out of its old position, if any. */
+  const [leavingId, setLeavingId] = useState<string | null>(null)
+  /** The card fading into its new position at the foot of the list, if any. */
+  const [arrivingId, setArrivingId] = useState<string | null>(null)
+
+  const context = useMemo(
+    () => ({ dailyProgress, streak, completedLessonCount: completedLessonIds.length, xp }),
+    [dailyProgress, streak, completedLessonIds, xp],
+  )
 
   const handleClaim = useCallback(
     (def: ChallengeDef) => {
       playPositiveChime()
       celebrateHaptic()
-      setExitingIds((prev) => (prev.includes(def.id) ? prev : [...prev, def.id]))
+      setLeavingId(def.id)
       claimChallenge(challengeInstanceId(def), def.xpReward)
     },
     [claimChallenge],
   )
 
-  const handleExited = useCallback((id: string) => {
-    setExitingIds((prev) => prev.filter((x) => x !== id))
+  const handleLeft = useCallback((id: string) => {
+    setLeavingId((current) => (current === id ? null : current))
+    setArrivingId(id)
   }, [])
 
-  const defs = useMemo(() => {
-    return CHALLENGE_DEFS.filter((d) => d.cadence === tab).filter((d) => {
-      // Already-claimed challenges are finished business and stay off the list;
-      // the one mid-exit is the exception, kept until its animation ends.
-      const claimed = claimedChallengeIds.includes(challengeInstanceId(d))
-      return !claimed || exitingIds.includes(d.id)
-    })
-  }, [tab, claimedChallengeIds, exitingIds])
+  const handleArrived = useCallback((id: string) => {
+    setArrivingId((current) => (current === id ? null : current))
+  }, [])
+
+  /*
+   * The list, with finished work sorted to the foot.
+   *
+   * A claimed challenge stays on the screen rather than vanishing — seeing what
+   * you got done is the point of the screen — but it stops holding a place among
+   * the ones still to do. The card mid-collapse is deliberately treated as *not*
+   * claimed so it holds its old slot until the animation ends; only then does
+   * the sort move it.
+   */
+  const rows = useMemo(() => {
+    const claimedNow = (def: ChallengeDef) =>
+      claimedChallengeIds.includes(challengeInstanceId(def)) && def.id !== leavingId
+
+    const list = CHALLENGE_DEFS.filter((d) => d.cadence === tab)
+      // A goal whose whole feature is hidden can't be worked on, so it isn't offered.
+      .filter((d) => !d.requires || FEATURES[d.requires])
+
+    return list
+      .map((def) => {
+        const current = Math.min(def.target, def.progress(context))
+        const claimed = claimedNow(def)
+        const complete = current >= def.target
+        const state: CardState = claimed
+          ? 'claimed'
+          : complete
+            ? 'claimable'
+            : current > 0
+              ? 'inProgress'
+              : 'notStarted'
+        return { def, current, claimed, complete, state }
+      })
+      // Stable: finished work drops to the bottom, everything else keeps the
+      // order the definitions declare.
+      .sort((a, b) => Number(a.claimed) - Number(b.claimed))
+  }, [tab, claimedChallengeIds, leavingId, context])
+
+  /** Today's tally — the number the hero exists to show. */
+  const summary = useMemo(() => {
+    const completed = rows.filter((r) => r.complete).length
+    const xpAvailable = rows.reduce((sum, r) => sum + r.def.xpReward, 0)
+    const xpEarned = rows.filter((r) => r.claimed).reduce((sum, r) => sum + r.def.xpReward, 0)
+    return { completed, total: rows.length, xpEarned, xpAvailable }
+  }, [rows])
 
   const resetsIn = useMemo(resetsInLabel, [])
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 items-center" style={{ backgroundColor: '#fdfbf5' }}>
+    <SafeAreaView edges={['top']} className="flex-1 items-center" style={{ backgroundColor: CHAL.bg }}>
+      {/*
+        The navigator's own push transition is switched off for this route so the
+        fade-up below is the only animation playing. Left on, a native build
+        would slide the whole page in from the right *and* run this one inside
+        it — two transitions at different speeds, which reads as a stutter
+        rather than as either one. Same call `Books` and `DetailShell` make.
+      */}
+      <Stack.Screen options={{ animation: 'none' }} />
+
       <View className="w-full flex-1" style={{ maxWidth: 430 }}>
-        <View className="flex-row items-center px-[18px] pb-1 pt-3">
+        {/*
+          Plain styles on the animated view with the page in a plain View inside
+          it — NativeWind drops `className` on an `Animated.View` entirely, and
+          the column's own `flex-1` would go with it.
+        */}
+        <Animated.View style={[{ flex: 1 }, enter]}>
+          <View className="flex-1">
+        {/* Header */}
+        <View
+          style={{
+            height: 52,
+            marginTop: 16,
+            paddingHorizontal: GUTTER,
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}
+        >
           <Pressable
             onPress={() => {
               playTapSound()
+              tapHaptic()
               router.back()
             }}
             accessibilityRole="button"
             accessibilityLabel="Back"
             hitSlop={12}
-            className="pr-1"
+            style={{ width: 34 }}
           >
-            <ChevronLeft size={28} color="#1a1a2e" strokeWidth={2.5} />
+            <ChevronLeft size={26} color={CHAL.navy} strokeWidth={2.25} />
           </Pressable>
 
           <Text
-            className="flex-1 text-center font-nunito-black text-[30px]"
-            style={{ color: '#16233f', lineHeight: 38, letterSpacing: -0.6 }}
+            className="flex-1 text-center font-nunito-extrabold"
+            style={{ fontSize: 30, lineHeight: 38, color: CHAL.navy, letterSpacing: -0.5 }}
           >
             Challenges
           </Text>
 
-          <View
-            className="h-[40px] flex-row items-center gap-[7px] rounded-full px-3.5"
-            style={{ backgroundColor: '#fffdf6', borderWidth: 1.5, borderColor: '#f3dfae' }}
-          >
-            <Star size={16} color="#ffc414" fill="#ffc414" />
-            <Text className="font-nunito-bold text-[14px]" style={{ color: '#16233f' }}>
-              {xp.toLocaleString('en-US')} XP
-            </Text>
-          </View>
+          <XpCounter xp={xp} />
         </View>
 
-        <View
-          className="mx-[18px] mt-3 flex-row rounded-full p-1"
-          style={{ backgroundColor: '#fffdf6', borderWidth: 1, borderColor: '#ece4d3' }}
+        <View style={{ paddingHorizontal: GUTTER, marginTop: 20 }}>
+          <SegmentedTabs
+            value={tab}
+            onChange={setTab}
+            options={[
+              {
+                value: 'daily' as Tab,
+                label: 'Daily',
+                icon: <CalendarDays size={20} color={CHAL.body} strokeWidth={2.1} />,
+                activeIcon: <CalendarDays size={20} color={CHAL.greenInk} strokeWidth={2.25} />,
+              },
+              {
+                value: 'milestone' as Tab,
+                label: 'Milestones',
+                icon: <Trophy size={20} color={CHAL.body} strokeWidth={2.1} />,
+                activeIcon: <Trophy size={20} color={CHAL.greenInk} strokeWidth={2.25} />,
+              },
+            ]}
+          />
+        </View>
+
+        <ScrollView
+          contentContainerStyle={{ paddingHorizontal: GUTTER, paddingTop: 20, paddingBottom: 32 }}
+          showsVerticalScrollIndicator={false}
         >
-          <TabButton label="Daily" active={tab === 'daily'} onPress={() => setTab('daily')} />
-          <TabButton label="Milestones" active={tab === 'milestone'} onPress={() => setTab('milestone')} />
-        </View>
+          <ChallengeHero
+            title={tab === 'daily' ? 'Daily Challenges' : 'Milestones'}
+            subtitle={
+              tab === 'daily'
+                ? 'Complete challenges, earn XP, and grow your skills!'
+                : 'Long-run goals that stay until you reach them.'
+            }
+            completed={summary.completed}
+            total={summary.total}
+            xpEarned={summary.xpEarned}
+            xpAvailable={summary.xpAvailable}
+            // Only the daily set rolls over, so only it gets the countdown.
+            footnote={tab === 'daily' ? resetsIn : undefined}
+          />
 
-        {/* No `gap` here: each row carries its own bottom margin so it can
-            collapse along with its height on the way out. */}
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 18, paddingTop: 14, paddingBottom: 32 }}>
-          {/* Only the daily set rolls over, so only it gets the countdown. */}
-          {tab === 'daily' && (
-            <View className="mb-1 items-center">
-              <View className="self-center">
-                <BrushHighlight color="#f9e58c" bleedX={14} bleedTop={4} bleedBottom={2}>
-                  <Text className="font-handwriting-medium text-[19px]" style={{ color: '#4a4335' }}>
-                    {resetsIn}
-                  </Text>
-                </BrushHighlight>
-              </View>
+          {/* No `gap` on the container: each slot carries its own bottom margin
+              so it can collapse along with its height on the way out. */}
+          <View style={{ marginTop: 22 }}>
+            {rows.map(({ def, current, state }) => (
+              <CardSlot
+                key={def.id}
+                id={def.id}
+                leaving={leavingId === def.id}
+                arriving={arrivingId === def.id}
+                dimmed={state === 'claimed' && arrivingId !== def.id}
+                onLeft={handleLeft}
+                onArrived={handleArrived}
+              >
+                <ChallengeCard
+                  def={def}
+                  current={current}
+                  state={state}
+                  onOpen={() => {
+                    playTapSound()
+                    tapHaptic()
+                    // "Earn 200 XP" points at the lesson path, but XP also comes
+                    // from reviews — so when Lessons is switched off the link
+                    // falls back to Review rather than losing its way in.
+                    router.push(safeRoute(def.route, '/review') as Parameters<typeof router.push>[0])
+                  }}
+                  onClaim={() => handleClaim(def)}
+                />
+              </CardSlot>
+            ))}
+          </View>
+
+          {rows.length === 0 && (
+            <View style={{ alignItems: 'center', paddingTop: 40 }}>
+              <Text className="font-nunito-extrabold" style={{ fontSize: 19, color: CHAL.navy }}>
+                Nothing here yet
+              </Text>
+              <Text className="mt-1.5 font-nunito-semibold" style={{ fontSize: 15, color: CHAL.body }}>
+                A fresh set arrives tomorrow.
+              </Text>
             </View>
           )}
 
-          {defs.map((def) => (
-            <ChallengeRow
-              key={def.id}
-              def={def}
-              exiting={exitingIds.includes(def.id)}
-              onClaim={handleClaim}
-              onExited={handleExited}
-            />
-          ))}
+          {rows.length > 0 && <EncouragementBanner tab={tab} remaining={summary.total - summary.completed} />}
 
-          {defs.length === 0 && (
-            <View className="items-center pt-10">
-              <Text className="font-nunito-bold text-[17px]" style={{ color: '#1a1a2e' }}>
-                {tab === 'daily' ? 'All done for today' : 'Every milestone claimed'}
-              </Text>
-              <Text className="mt-1.5 font-inter text-[13.5px]" style={{ color: '#8a8a99' }}>
-                {tab === 'daily' ? 'A fresh set arrives tomorrow.' : 'More on the way.'}
-              </Text>
-            </View>
-          )}
+          {/*
+            Last, and deliberately outside the `CardSlot` list.
+
+            Those slots animate their own height and bottom margin as a claimed
+            challenge collapses out of position and fades back in at the foot of
+            the list. A banner inside that list would be one more thing whose
+            height changes during an animation that is already backstopped by
+            timers — and an advert loading mid-claim could land exactly where
+            the collapsing card is being measured. Out here it is a static
+            sibling that the claim animation never touches.
+          */}
+          <AppBannerAd placement="challenges" />
         </ScrollView>
+          </View>
+        </Animated.View>
       </View>
     </SafeAreaView>
+  )
+}
+
+/**
+ * The footer banner.
+ *
+ * The mockup pairs a panda with a treasure chest here; this project has neither,
+ * so the app's own Shifu mascot stands in and the chest is dropped rather than
+ * faked with an icon that would look borrowed from somewhere else.
+ */
+function EncouragementBanner({ tab, remaining }: { tab: Tab; remaining: number }) {
+  const done = remaining <= 0
+  const daily = tab === 'daily'
+
+  return (
+    <View
+      className="shadow-chal"
+      style={{
+        marginTop: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        borderRadius: 20,
+        padding: 16,
+        backgroundColor: CHAL.warm,
+        borderWidth: 1,
+        borderColor: CHAL.warmLine,
+      }}
+    >
+      <Image
+        source={require('../assets/images/mascot-shifu.png')}
+        style={{ width: 62, height: 62 }}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+      />
+      <View style={{ flex: 1 }}>
+        <Text className="font-nunito-extrabold" style={{ fontSize: 19, lineHeight: 25, color: CHAL.navy }}>
+          {done ? (daily ? 'All done today!' : 'Every milestone reached!') : 'Keep it up!'}
+        </Text>
+        <Text className="mt-0.5 font-nunito-semibold" style={{ fontSize: 15, lineHeight: 20, color: CHAL.body }}>
+          {done
+            ? daily
+              ? 'Every challenge finished — come back tomorrow for a fresh set.'
+              : 'Nothing left on the board. More will be added.'
+            : daily
+              ? `Finish ${remaining} more for today's full set.`
+              : `${remaining} still to reach — they'll wait for you.`}
+        </Text>
+      </View>
+    </View>
   )
 }

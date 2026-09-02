@@ -80,6 +80,50 @@ module.exports = {
           indigo: '#597895',
           'nav-inactive': '#65656e',
         },
+        // Challenges: the palette lives in src/components/challenges/tokens.ts,
+        // not here. Almost all of it is consumed by animated or state-dependent
+        // styles rather than class names, and two sources for one palette is
+        // exactly how a screen ends up with five slightly different greens.
+        // The dictionary's own scale.
+        //
+        // Originally a cool-grey system on #F8FAFC with pure white cards, built
+        // to a mockup that looked like every other SaaS dashboard. It is now
+        // warm ivory under jade, which puts it in the same family as the reading
+        // screens, the Dashboard and Settings rather than standing apart from
+        // all three — the dictionary is reached from inside the app, not from a
+        // different app.
+        //
+        // Kept as its own `dict-*` namespace rather than folded into
+        // `canvas`/`read-*`: the dictionary is built almost entirely from
+        // Tailwind classes where those screens are built from inline style
+        // objects, and every one of these values is consumed by a class name.
+        dict: {
+          // Rice paper. Never pure white — the whole screen reads as paper.
+          page: '#FDFBF5',
+          // A card is a shade *warmer* than white, and lighter than the page.
+          card: '#FFFDFA',
+          // Deep ink with a hint of navy, not black.
+          heading: '#18263A',
+          body: '#42526B',
+          muted: '#8290A6',
+          // Warm, and very nearly invisible: separation here comes from the card
+          // sitting a shade off the paper, not from a drawn edge.
+          line: '#EDE7DB',
+          // Jade. Softer and less acidic than the stock green it replaces.
+          green: '#4AA54B',
+          'green-dark': '#3E9845',
+          // Pale mint for selected states and quiet green fills.
+          'green-pale': '#EAF5E8',
+          // Backing colours for the category tiles, one per WordCategory. Left
+          // as they were — these pastels already read warm, and they are the one
+          // place on the screen where colour is allowed to be playful.
+          'tile-green': '#e7f6ec',
+          'tile-blue': '#e0edf9',
+          'tile-peach': '#fdeee4',
+          'tile-lilac': '#ece9fa',
+          'tile-butter': '#fdf0d2',
+          'tile-rose': '#fbe6ec',
+        },
       },
       fontFamily: {
         // "Source Han Serif SC" from the visual system — Noto Serif SC/TC is the same
@@ -89,13 +133,20 @@ module.exports = {
         'hanzi-bold': ['NotoSerifSCBold', 'NotoSerifTCBold', 'serif'],
         // "Nunito Rounded" from the visual system.
         sans: ['Nunito', 'sans-serif'],
-        // The marker-hand script the dashboard greeting puts the learner's name in.
+        // The marker-hand script the reading screens use for their one
+        // handwritten note per screen.
         handwriting: ['Caveat', 'cursive'],
+        // The Dashboard greeting's learner name. A separate family from
+        // `handwriting` on purpose — Kalam is an upright marker hand, Caveat a
+        // connected slanted script, and they are not interchangeable at size.
+        handwritten: ['KalamBold', 'cursive'],
 
         // Reading-UI faces. React Native can't synthesise weights the way a browser
         // can, so every weight is loaded as its own family (same reason
         // `font-hanzi-bold` exists above) and selected by family, not fontWeight.
+        'nunito-semibold': ['NunitoSemiBold', 'sans-serif'],
         'nunito-bold': ['NunitoBold', 'sans-serif'],
+        'nunito-extrabold': ['NunitoExtraBold', 'sans-serif'],
         'nunito-black': ['NunitoBlack', 'sans-serif'],
         inter: ['Inter', 'sans-serif'],
         'inter-medium': ['InterMedium', 'sans-serif'],
@@ -104,11 +155,47 @@ module.exports = {
         // The literary serif English prose is set in — deliberately not the UI sans,
         // so translations read like a storybook rather than app chrome.
         lora: ['Lora', 'serif'],
-        // Traditional-only faces: the reader always renders traditional hanzi, so
-        // unlike `font-hanzi` these don't need the SC fallback in front.
+        // Script-specific faces, paired with the `hanzi-sc-*` set below. Neither
+        // carries a fallback to the other on purpose: `hanziFont` picks the face
+        // from `settings.script` so each script gets its own regional glyph
+        // forms, which a shared fallback chain would flatten.
         'hanzi-tc': ['NotoSerifTCMedium', 'serif'],
         'hanzi-tc-semibold': ['NotoSerifTCSemiBold', 'serif'],
+        // Sans-serif traditional hanzi, for the writing guide — its Chinese UI
+        // text sits inside Nunito sentences, where the serif reads as a quote
+        // from the reader rather than as part of the sentence.
+        'hanzi-sans': ['NotoSansTC', 'sans-serif'],
+        'hanzi-sans-medium': ['NotoSansTCMedium', 'sans-serif'],
+        'hanzi-sans-bold': ['NotoSansTCBold', 'sans-serif'],
         'handwriting-medium': ['CaveatMedium', 'cursive'],
+
+        // Dictionary UI faces — Nunito Sans, a different typeface from the
+        // rounded `sans`/`nunito-*` families above. Weight is chosen by family,
+        // never by `fontWeight`.
+        'dict-sans': ['NunitoSans', 'sans-serif'],
+        'dict-semibold': ['NunitoSansSemiBold', 'sans-serif'],
+        'dict-bold': ['NunitoSansBold', 'sans-serif'],
+        'dict-extrabold': ['NunitoSansExtraBold', 'sans-serif'],
+        // Traditional-only serif at Regular, for large vocabulary display where
+        // a real 400 weight reads better than the Medium `hanzi-tc` face.
+        'hanzi-tc-regular': ['NotoSerifTC', 'serif'],
+
+        /*
+         * Simplified-only counterparts to the `hanzi-tc*` faces above, for the
+         * surfaces that render a word in whichever script the learner chose.
+         *
+         * Deliberately NOT the same thing as `font-hanzi`, which lists SC ahead
+         * of TC as a *fallback chain* — that covers both character sets, but it
+         * also hands a traditional learner SC regional glyph forms for every
+         * character the SC face happens to contain, which is most of them. The
+         * two Noto faces disagree on the shape of characters like 骨 and 直 even
+         * where the codepoint is identical, so the script preference has to pick
+         * the face rather than lean on a fallback. `hanziFont` in lib/hanzi.ts
+         * is the one place that choice is made.
+         */
+        'hanzi-sc': ['NotoSerifSCMedium', 'serif'],
+        'hanzi-sc-regular': ['NotoSerifSC', 'serif'],
+        'hanzi-sc-semibold': ['NotoSerifSCSemiBold', 'serif'],
       },
       boxShadow: {
         card: '0 2px 10px -2px rgba(0,0,0,0.08), 0 1px 3px -1px rgba(0,0,0,0.06)',
@@ -123,6 +210,23 @@ module.exports = {
         // button reads as a glow rather than a drop shadow.
         'glow-jade': '0 8px 22px rgba(69,184,135,0.45), 0 2px 6px rgba(69,184,135,0.28)',
         'glow-paper': '0 6px 18px rgba(76,58,37,0.18), 0 2px 5px rgba(76,58,37,0.09)',
+        // Dictionary cards. Tinted with the slate the page is built from rather
+        // than black, so a white card reads as raised without a visible edge —
+        // the borders in this system are for dividers, not card outlines.
+        // Challenges. Its spec asks for one very soft shadow and nothing else —
+        // no shadow on icon tiles, XP chips or progress bars, which is what
+        // keeps a screen this dense from reading as generic app chrome.
+        chal: '0 5px 20px rgba(60,48,30,0.06)',
+        'chal-tabs': '0 3px 12px rgba(60,48,30,0.07)',
+        'chal-claim': '0 4px 14px rgba(206,150,60,0.35)',
+        dict: '0 1px 2px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.05)',
+        'dict-lifted': '0 2px 4px rgba(15,23,42,0.05), 0 10px 24px rgba(15,23,42,0.07)',
+      },
+      borderRadius: {
+        // The dictionary system's card radius — the mockups sit at 18–20px,
+        // between Tailwind's 2xl (16) and 3xl (24).
+        dict: '20px',
+        'dict-sm': '14px',
       },
     },
   },

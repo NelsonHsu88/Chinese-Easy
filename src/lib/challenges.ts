@@ -2,6 +2,7 @@ import { BookMarked, Sparkles, Flame, GraduationCap, Trophy, Zap, type LucideIco
 import type { ImageSourcePropType } from 'react-native'
 import type { DailyProgress } from '../types'
 import { todayISO } from './date'
+import type { FeatureKey } from './features'
 
 export type ChallengeCadence = 'daily' | 'milestone'
 
@@ -62,6 +63,12 @@ export interface ChallengeDef {
    * there, so a challenge is never a demand with no door next to it.
    */
   route: string
+  /**
+   * Only offered while this feature is switched on (see src/lib/features.ts).
+   * For goals that can't be worked on at all when their screen is hidden — as
+   * opposed to ones that merely *link* there, which fall back via `safeRoute`.
+   */
+  requires?: FeatureKey
   progress: (ctx: ChallengeContext) => number
 }
 
@@ -94,7 +101,7 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     id: 'daily-new-3',
     cadence: 'daily',
     title: 'Learn 3 new words',
-    description: 'Add 3 new words to your deck today',
+    description: 'Add 3 new words today',
     xpReward: 10,
     target: 3,
     icon: Sparkles,
@@ -107,7 +114,7 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     id: 'daily-streak-alive',
     cadence: 'daily',
     title: 'Keep your streak alive',
-    description: 'Do at least one review or learn one new word today',
+    description: 'One review, or one new word',
     xpReward: 5,
     target: 1,
     icon: Flame,
@@ -123,13 +130,14 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     id: 'milestone-lessons-5',
     cadence: 'milestone',
     title: 'Finish 5 lessons',
-    description: 'Complete any 5 lessons across any units',
+    description: 'Finish any 5 lessons',
     xpReward: 30,
     target: 5,
     icon: GraduationCap,
     tone: 'mint',
     art: require('../assets/images/icons/cap.png'),
     route: '/lessons',
+    requires: 'lessons',
     progress: (ctx) => ctx.completedLessonCount,
   },
   {
@@ -149,7 +157,9 @@ export const CHALLENGE_DEFS: ChallengeDef[] = [
     id: 'milestone-xp-200',
     cadence: 'milestone',
     title: 'Earn 200 XP',
-    description: 'Rack up 200 XP total from reviews and lessons',
+    // Worded without naming its sources, so it stays true whether or not the
+    // lesson path is switched on.
+    description: 'Earn 200 XP as you learn',
     xpReward: 25,
     target: 200,
     icon: Trophy,

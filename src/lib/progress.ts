@@ -1,5 +1,5 @@
 import type { DailyProgress } from '../types'
-import { lastNDays } from './date'
+import { addDays, lastNDays, todayISO } from './date'
 
 export interface HeatmapDay {
   date: string
@@ -17,6 +17,54 @@ export function buildHeatmapFromProgress(dailyProgress: DailyProgress[], days: n
     const wordsLearned = entry?.wordsLearned ?? 0
     const reviewsCompleted = entry?.reviewsCompleted ?? 0
     return { date, wordsLearned, reviewsCompleted, total: wordsLearned + reviewsCompleted }
+  })
+}
+
+export interface WeekDay {
+  date: string
+  /** The single letter shown above the dot — M, T, W, T, F, S, S. */
+  letter: string
+  active: boolean
+  isToday: boolean
+  /** Later this week: drawn as an empty ring, never as a day that was missed. */
+  isFuture: boolean
+  /** Words learned that day, for the sparkline under the strip. */
+  wordsLearned: number
+}
+
+const MONDAY_FIRST_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+/**
+ * The current Monday-to-Sunday week, for the Dashboard's activity strip.
+ *
+ * Deliberately a *calendar* week rather than the rolling `lastNDays(7)` the
+ * heatmap uses. The strip is labelled M T W T F S S, and a rolling window would
+ * print those letters against a row that starts on a different day each morning
+ * — so Wednesday's dot would quietly move position overnight.
+ *
+ * Days later in the week are marked `isFuture` rather than simply inactive:
+ * there is a real difference between a day you skipped and a day that has not
+ * happened, and colouring Saturday as missed on a Tuesday is just untrue.
+ */
+export function currentWeekActivity(dailyProgress: DailyProgress[]): WeekDay[] {
+  const byDate = new Map(dailyProgress.map((d) => [d.date, d]))
+  const today = todayISO()
+
+  const [y, m, d] = today.split('-').map(Number)
+  // getDay() is Sunday-based; this rotates it so Monday is 0.
+  const mondayOffset = (new Date(y, m - 1, d).getDay() + 6) % 7
+
+  return MONDAY_FIRST_LETTERS.map((letter, i) => {
+    const date = addDays(today, i - mondayOffset)
+    const entry = byDate.get(date)
+    return {
+      date,
+      letter,
+      active: (entry?.wordsLearned ?? 0) + (entry?.reviewsCompleted ?? 0) > 0,
+      isToday: date === today,
+      isFuture: i > mondayOffset,
+      wordsLearned: entry?.wordsLearned ?? 0,
+    }
   })
 }
 

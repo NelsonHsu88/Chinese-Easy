@@ -7,13 +7,21 @@ import { displayWord, displayPinyin } from '../lib/hanzi'
 import { HanziStage } from './HanziStage'
 import { speak } from '../lib/speech'
 import { playTapSound, playPositiveChime } from '../lib/sound'
-import { celebrateHaptic } from '../lib/haptics'
+import { rippleHaptic, tickHaptic } from '../lib/haptics'
 import type { VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
+import { ReadingSentence } from './dictionary/ReadingSentence'
 
 interface Props {
   word: VocabWord
   onClose: () => void
+  /**
+   * Fired instead of `onClose` when the learner finishes the character and taps
+   * Done — a signal that the practice was actually *completed*, not merely
+   * dismissed. The writing guide uses it to advance its lesson, which closing
+   * early must not do.
+   */
+  onCompleted?: () => void
 }
 
 /** White circular speaker chip, as used in the reference design. */
@@ -31,7 +39,7 @@ function SpeakChip({ text, size = 22, dim = 48 }: { text: string; size?: number;
   )
 }
 
-export function WritingPracticeModal({ word, onClose }: Props) {
+export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
   const { settings } = useApp()
   const [attempt, setAttempt] = useState(0)
   const [hintKey, setHintKey] = useState(0)
@@ -61,6 +69,22 @@ export function WritingPracticeModal({ word, onClose }: Props) {
 
   const text = displayWord(word, settings.script)
   const pinyin = displayPinyin(word, settings.phoneticScript)
+
+  /*
+   * Says the word once, as the screen opens.
+   *
+   * Writing a character you can't hear is copying a shape. Every caller mounts
+   * this modal fresh when practice starts, so mounting is exactly the moment
+   * practice begins and one play here covers all of them — the dictionary, New
+   * Words, My Words, the two detail screens and the story reader.
+   *
+   * Keyed on the text rather than on mount alone so that a word arriving late,
+   * or the script setting changing underneath it, says the thing actually on
+   * screen. The speaker chip stays where it is for hearing it again.
+   */
+  useEffect(() => {
+    if (text) speak(text)
+  }, [text])
   const example = word.example
   const exampleText = example
     ? settings.script === 'simplified'
@@ -73,8 +97,15 @@ export function WritingPracticeModal({ word, onClose }: Props) {
   const handleProgress = (strokesRemaining: number) => {
     setStrokesDone((done) => {
       const next = done + 1
-      // hanzi-writer never reports the stroke total up front, so derive it from
-      // the first progress event: what's left plus what's already been drawn.
+      /*
+       * hanzi-writer never reports the stroke total up front, so derive it from
+       * the first progress event: what's left plus what's already been drawn.
+       *
+       * `strokesRemaining` counts the whole word, not the character currently
+       * being written (see `HanziStage`), so a two-character word reads 12 here
+       * rather than the 8 of its first character — which used to leave the
+       * counter finishing at 12 / 8 with the bar overshot.
+       */
       setTotalStrokes((t) => (t > 0 ? t : strokesRemaining + next))
       return next
     })
@@ -90,11 +121,14 @@ export function WritingPracticeModal({ word, onClose }: Props) {
     if (finished) return
     setFinished(true)
     playPositiveChime()
-    celebrateHaptic()
+    // One beat per character, so the rhythm counts back what was just written —
+    // a two-character word feels different from a four.
+    rippleHaptic([...text].length)
   }
 
   const reset = () => {
     playTapSound()
+    tickHaptic()
     setStrokesDone(0)
     setTotalStrokes(0)
     setFinished(false)
@@ -123,7 +157,9 @@ export function WritingPracticeModal({ word, onClose }: Props) {
         </View>
 
         <View className="flex-row items-center justify-between px-5 pt-6">
-          <Text className="text-[22px] font-extrabold text-slate-900 dark:text-white">Write this character</Text>
+          <Text className="text-[22px] font-extrabold text-slate-900 dark:text-white">
+            {[...text].length > 1 ? 'Write this word' : 'Write this character'}
+          </Text>
           <SpeakChip text={text} />
         </View>
 
@@ -157,10 +193,7 @@ export function WritingPracticeModal({ word, onClose }: Props) {
         {exampleText ? (
           <View className="mx-5 mt-4 flex-row items-center gap-3 rounded-2xl bg-brand-100/70 px-4 py-3.5 dark:bg-brand-950/40">
             <View className="flex-1">
-              <Text className="font-hanzi text-[21px] text-slate-900 dark:text-white">{exampleText}</Text>
-              {example?.pinyin ? (
-                <Text className="mt-1 text-[14px] text-slate-500 dark:text-slate-400">{example.pinyin}</Text>
-              ) : null}
+              <ReadingSentence text={exampleText} term={text} tone="card" />
             </View>
             <SpeakChip text={exampleText} size={19} dim={42} />
           </View>
@@ -198,7 +231,7 @@ export function WritingPracticeModal({ word, onClose }: Props) {
                 <Pressable
                   onPress={() => {
                     playTapSound()
-                    onClose()
+                    ;(onCompleted ?? onClose)()
                   }}
                   accessibilityRole="button"
                   className="flex-1 flex-row items-center justify-center gap-2 rounded-full bg-brand-500 py-4 shadow-card active:opacity-80"
@@ -218,6 +251,7 @@ export function WritingPracticeModal({ word, onClose }: Props) {
             <Pressable
               onPress={() => {
                 playTapSound()
+                tickHaptic()
                 setHintKey((n) => n + 1)
               }}
               className="flex-row items-center gap-2 rounded-full bg-brand-100 px-5 py-2.5 active:opacity-80 dark:bg-brand-900/40"

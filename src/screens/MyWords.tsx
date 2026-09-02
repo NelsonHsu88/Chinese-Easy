@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { View, Text, Pressable, ScrollView } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ArrowLeft, PenLine } from 'lucide-react-native'
+import { ArrowLeft, PenLine, Trash2 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, displayExample } from '../lib/hanzi'
+import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { Modal } from '../components/Modal'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
 import { SpeakButton } from '../components/SpeakButton'
@@ -20,6 +21,8 @@ import {
 } from '../lib/proficiency'
 import type { SrsCard, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
+import { FEATURES } from '../lib/features'
+import { tapHaptic, tickHaptic } from '../lib/haptics'
 
 interface LearnedWord {
   word: VocabWord
@@ -35,11 +38,13 @@ interface Group {
 type LevelFilter = 'all' | number
 
 export function MyWords() {
-  const { deck, getWord, settings, clearNewWordFlags } = useApp()
+  const { deck, getWord, settings, clearNewWordFlags, removeFromReviewDeck } = useApp()
   const [selected, setSelected] = useState<LearnedWord | null>(null)
   const [practiceWord, setPracticeWord] = useState<VocabWord | null>(null)
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all')
   const [tierFilter, setTierFilter] = useState<Proficiency | 'all'>('all')
+  /** Whether the open word's remove button has been armed — see `RemoveWord`. */
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   useEffect(() => {
     clearNewWordFlags()
@@ -84,6 +89,27 @@ export function MyWords() {
     if (custom && custom.length > 0) ordered.push({ label: 'Custom words', words: custom })
     return ordered
   }, [filtered])
+
+  // The sheet is reused for every word, so the armed state has to be cleared on
+  // the way in as well as out — otherwise closing a sheet mid-confirm would leave
+  // the next word opening with its remove button already primed.
+  const openEntry = (entry: LearnedWord) => {
+    setConfirmRemove(false)
+    setSelected(entry)
+  }
+
+  const closeEntry = () => {
+    setConfirmRemove(false)
+    setSelected(null)
+  }
+
+  const removeSelected = () => {
+    if (!selected) return
+    // Light impact, not a success: a word left the deck, which isn't a win.
+    tapHaptic()
+    removeFromReviewDeck([selected.word.id])
+    closeEntry()
+  }
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
@@ -138,7 +164,7 @@ export function MyWords() {
       <ScrollView contentContainerStyle={{ gap: 24, paddingHorizontal: 16, paddingBottom: 32 }}>
         {learned.length === 0 && (
           <Text className="py-12 text-center text-sm text-slate-400">
-            No words learned yet — add some from New Words, Lessons, or Books.
+            No words learned yet — add some from {FEATURES.lessons ? 'New Words, Lessons, or Books' : 'New Words or Books'}.
           </Text>
         )}
         {learned.length > 0 && groups.length === 0 && (
@@ -151,7 +177,7 @@ export function MyWords() {
               {group.words.map((entry) => (
                 <Pressable
                   key={entry.word.id}
-                  onPress={() => setSelected(entry)}
+                  onPress={() => openEntry(entry)}
                   className="flex-row items-center gap-3 rounded-2xl bg-white p-3.5 shadow-card dark:bg-slate-900"
                 >
                   <Text className="font-hanzi text-2xl font-bold text-slate-900 dark:text-white">
@@ -172,7 +198,7 @@ export function MyWords() {
       </ScrollView>
 
       {selected && (
-        <Modal title={displayWord(selected.word, settings.script)} onClose={() => setSelected(null)}>
+        <Modal title={displayWord(selected.word, settings.script)} onClose={closeEntry}>
           <View className="items-center gap-3">
             <View className="flex-row items-center gap-2">
               <Text className="font-hanzi text-6xl font-bold text-slate-900 dark:text-white">
@@ -185,10 +211,12 @@ export function MyWords() {
 
             {selected.word.example && displayExample(selected.word, settings.script) && (
               <View className="w-full border-t border-slate-100 pt-3 dark:border-slate-800">
-                <Text className="font-hanzi text-base text-slate-700 dark:text-slate-300">
-                  {displayExample(selected.word, settings.script)}
-                </Text>
-                <Text className="text-sm text-slate-400">{selected.word.example.pinyin}</Text>
+                <ReadingSentence
+                  text={displayExample(selected.word, settings.script)}
+                  term={displayWord(selected.word, settings.script)}
+                  tone="card"
+                  size="compact"
+                />
                 <Text className="text-sm italic text-slate-400">{selected.word.example.translation}</Text>
               </View>
             )}
@@ -216,12 +244,90 @@ export function MyWords() {
               <PenLine size={18} color="white" />
               <Text className="text-lg font-bold text-white">Practice Writing</Text>
             </Pressable>
+
+            <RemoveWord
+              armed={confirmRemove}
+              onArm={() => {
+                tickHaptic()
+                setConfirmRemove(true)
+              }}
+              onCancel={() => {
+                tickHaptic()
+                setConfirmRemove(false)
+              }}
+              onConfirm={removeSelected}
+            />
           </View>
         </Modal>
       )}
 
       {practiceWord && <WritingPracticeModal word={practiceWord} onClose={() => setPracticeWord(null)} />}
     </SafeAreaView>
+  )
+}
+
+/**
+ * Taking a word back out of My Words.
+ *
+ * Two steps rather than one. Removing drops the card's whole review history
+ * along with it (see `removeFromReviewDeck`), so weeks of scheduling can go on a
+ * mis-tap — but a native `Alert` isn't an option here either, since the app also
+ * runs on web where it renders as a blocking browser dialog. Arming the button
+ * in place costs one extra tap and keeps the confirmation inside the sheet.
+ *
+ * Shaped to match Practice Writing above it — same full-width rounded rectangle,
+ * same height — so the sheet ends in two clear choices rather than a button and
+ * a scrap of grey text. Colour carries the difference in weight, not size.
+ */
+function RemoveWord({
+  armed,
+  onArm,
+  onCancel,
+  onConfirm,
+}: {
+  armed: boolean
+  onArm: () => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  if (!armed) {
+    return (
+      <Pressable
+        onPress={onArm}
+        accessibilityRole="button"
+        accessibilityLabel="Remove from My Words"
+        className="w-full flex-row items-center justify-center gap-2 rounded-2xl bg-coral-600 py-3.5 shadow-card"
+      >
+        <Trash2 size={18} color="white" />
+        <Text className="text-lg font-bold text-white">Remove Word</Text>
+      </Pressable>
+    )
+  }
+
+  return (
+    <View className="w-full gap-2.5 rounded-2xl bg-coral-50 p-3.5 dark:bg-coral-900/20">
+      <Text className="text-center text-[13px] leading-[18px] text-coral-800 dark:text-coral-200">
+        Remove this word? Its review progress goes with it.
+      </Text>
+      <View className="flex-row gap-2.5">
+        <Pressable
+          onPress={onCancel}
+          accessibilityRole="button"
+          className="flex-1 items-center rounded-2xl bg-white py-3.5 shadow-card dark:bg-slate-800"
+        >
+          <Text className="text-base font-bold text-slate-500 dark:text-slate-300">Keep</Text>
+        </Pressable>
+        <Pressable
+          onPress={onConfirm}
+          accessibilityRole="button"
+          accessibilityLabel="Confirm remove"
+          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl bg-coral-600 py-3.5"
+        >
+          <Trash2 size={17} color="white" />
+          <Text className="text-base font-bold text-white">Remove</Text>
+        </Pressable>
+      </View>
+    </View>
   )
 }
 
@@ -256,7 +362,10 @@ function ProficiencyDetail({ entry }: { entry: LearnedWord }) {
 function FilterChip({ active, onPress, label, icon }: { active: boolean; onPress: () => void; label: string; icon?: ReactNode }) {
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => {
+        tickHaptic()
+        onPress()
+      }}
       className={`flex-row items-center gap-1.5 rounded-full px-3.5 py-2 ${active ? 'bg-brand-500' : 'bg-white shadow-card dark:bg-slate-900'}`}
     >
       {icon}

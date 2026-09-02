@@ -39,13 +39,49 @@ export function AddCustomWordModal({ onClose }: Props) {
     <Modal title="Add Custom Word" onClose={onClose}>
       <View className="gap-3">
         <Field label="Chinese word (Traditional)">
-          <TextInput className={`${inputClasses} font-hanzi text-xl`} value={word} onChangeText={setWord} placeholder="你好" />
+          {/*
+            Capped at eight characters, which is what stops the field scrolling
+            sideways under the finger. This is a *word*, and eight hanzi at 20pt
+            still sit comfortably inside the box — so the content can never
+            overflow, and with nothing to scroll there is nothing to drag. A
+            single-line input offers no `scrollEnabled` to turn off; removing
+            the overflow is the only way to remove the slide.
+          */}
+          <TextInput
+            className={`${inputClasses} font-hanzi text-xl`}
+            value={word}
+            onChangeText={setWord}
+            placeholder="你好"
+            maxLength={8}
+          />
         </Field>
+        {/*
+          The caps below mirror the check constraints in
+          supabase/migrations/0003_constraints.sql, and the order matters: the
+          database is the control, this is the courtesy. A learner should meet a
+          field that stops accepting characters, not a write that is rejected
+          after they press Add — but nothing here is what *enforces* the bound,
+          because the app's key can drive PostgREST directly.
+
+          Change one and change the other. The migration is the source of truth.
+        */}
         <Field label="Pinyin">
-          <TextInput className={inputClasses} value={pinyin} onChangeText={setPinyin} placeholder="nǐ hǎo" />
+          <TextInput
+            className={inputClasses}
+            value={pinyin}
+            onChangeText={setPinyin}
+            placeholder="nǐ hǎo"
+            maxLength={128}
+          />
         </Field>
         <Field label="Definition">
-          <TextInput className={inputClasses} value={definition} onChangeText={setDefinition} placeholder="hello" />
+          <TextInput
+            className={inputClasses}
+            value={definition}
+            onChangeText={setDefinition}
+            placeholder="hello"
+            maxLength={512}
+          />
         </Field>
         <Field label="Example sentence (optional)">
           <TextInput
@@ -53,10 +89,19 @@ export function AddCustomWordModal({ onClose }: Props) {
             value={exampleSimplified}
             onChangeText={setExampleSimplified}
             placeholder="你好吗？"
+            /* The sentence pair and its translation share the example's 2 KB
+               jsonb budget, so each side is bounded well inside it. */
+            maxLength={200}
           />
         </Field>
         <Field label="Example translation (optional)">
-          <TextInput className={inputClasses} value={exampleTranslation} onChangeText={setExampleTranslation} placeholder="How are you?" />
+          <TextInput
+            className={inputClasses}
+            value={exampleTranslation}
+            onChangeText={setExampleTranslation}
+            placeholder="How are you?"
+            maxLength={300}
+          />
         </Field>
 
         <Pressable

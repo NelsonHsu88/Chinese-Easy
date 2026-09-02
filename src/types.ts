@@ -24,16 +24,42 @@ export interface VocabWord {
   custom?: boolean
 }
 
-export type SrsStage = 'new' | 'learning' | 'review'
+/** FSRS's own card states, mirroring `State` in ts-fsrs. */
+export type SrsState = 'new' | 'learning' | 'review' | 'relearning'
 
+/**
+ * A card in the deck: FSRS scheduling state plus the fields Chinese Easy owns.
+ *
+ * **Schema v2.** v1 was SM-2 (`intervalDays`/`easeFactor`/`stage`, with `dueDate`
+ * an ISO *date*); `migrateDeck` in lib/srs.ts converts a persisted v1 deck in
+ * place on hydrate. `v` is optional because a v1 card predates the field —
+ * absent means 1.
+ *
+ * Everything FSRS owns is snake_case, matching the library's own `Card` shape
+ * exactly so serialising is a date conversion and nothing else. Do not rename
+ * them into camelCase: the round-trip through AsyncStorage is the one place a
+ * silent field mismatch would show up as "scheduling looks a bit wrong" rather
+ * than as an error.
+ */
 export interface SrsCard {
   wordId: string
-  stage: SrsStage
-  intervalDays: number
-  easeFactor: number
-  dueDate: string // ISO date, yyyy-mm-dd
+  /** Schema version. Absent or 1 = SM-2, 2 = FSRS. */
+  v?: number
+
+  // --- FSRS state. Dates are ISO datetime strings; lib/srs.ts owns conversion.
+  /** When the card comes up again — a datetime, not a date: steps can be minutes. */
+  due: string
+  stability: number
+  difficulty: number
+  elapsed_days: number
+  scheduled_days: number
+  learning_steps: number
+  state: SrsState
+  last_review?: string
   reps: number
   lapses: number
+
+  // --- Chinese Easy's own fields, unchanged in meaning.
   /**
    * Mistakes made lately, as opposed to the all-time `lapses` count: bumped by
    * an "Again" grade and worked back down one per correct review. Drives the
@@ -41,13 +67,35 @@ export interface SrsCard {
    * this existed have no value for it — read it as `?? 0`.
    */
   recentLapses?: number
-  lastReviewed?: string
   /** extra remedial writing reps queued after an "Again" grade */
   practiceQueue: number
   practiceTotal: number
 }
 
 export type Grade = 'again' | 'hard' | 'good' | 'easy'
+
+/**
+ * One graded review, kept so scheduling decisions can be reconstructed later —
+ * FSRS parameter optimisation, learning analytics, or debugging a due date that
+ * looks wrong.
+ *
+ * "I don't know" is deliberately absent from this log: it submits no rating and
+ * changes no schedule, so recording it here would put a review in the history
+ * that never happened. Response time is analytics only and never feeds scheduling.
+ */
+export interface ReviewLogEntry {
+  wordId: string
+  /** The FSRS rating actually submitted. */
+  grade: Grade
+  /** When the review was graded, ISO datetime. */
+  at: string
+  /** The card's state *before* this review. */
+  state: SrsState
+  /** Scheduled interval in days after this review — 0 for a same-day step. */
+  scheduledDays: number
+  /** Milliseconds from the question appearing to the grade landing, capped. */
+  durationMs: number
+}
 
 export interface DailyProgress {
   date: string // yyyy-mm-dd
@@ -57,6 +105,9 @@ export interface DailyProgress {
 
 export type ReviewDirection = 'recognition' | 'production' | 'mixed'
 export type ReviewOrder = 'due' | 'shuffled' | 'hardest-first'
+
+/** Why the learner says they're here. Chosen once during onboarding. */
+export type LearningGoal = 'daily-life' | 'travel' | 'exam' | 'culture'
 
 export interface AppSettings {
   username: string
@@ -71,6 +122,16 @@ export interface AppSettings {
   reminderTime: string // HH:MM
   notificationsEnabled: boolean
   hskLevel: number
+  learningGoal: LearningGoal
+  /**
+   * Sound effects and haptics, both on by default — Settings → General.
+   *
+   * They ride in the settings blob, which hydrates as
+   * `{ ...DEFAULT_SETTINGS, ...loaded }`, so an install that predates them
+   * simply picks up the default rather than needing a migration.
+   */
+  soundEnabled: boolean
+  hapticsEnabled: boolean
 }
 
 export interface PlacementAnswer {
@@ -191,6 +252,23 @@ export interface RadicalExample {
   word: string
   pinyin: string
   meaning: string
+}
+
+/**
+ * One of the 214 Kangxi radicals, reduced to what a lookup needs.
+ *
+ * Every character is filed under exactly one of these, so this is the table the
+ * dictionary falls back to for the radicals `RADICALS` doesn't teach in depth.
+ */
+export interface KangxiRadical {
+  /** Its Kangxi index, 1–214. The join key with `characterRadicals.json`. */
+  number: number
+  character: string
+  pinyin: string
+  /** A word or two, not a definition — "water", "short-tailed bird". */
+  meaning: string
+  /** Combining forms the radical takes inside a character, e.g. 水 → 氵. */
+  variants?: string[]
 }
 
 /** A Kangxi radical — not a vocabulary word, so it's never addable to My Words. */

@@ -1,5 +1,6 @@
 import type { VocabWord, WordCategory } from '../types'
 import importedWordsJson from './importedWords.json'
+import { lookupWordById } from './lookupWords'
 
 // A hand-curated starter set with verified example sentences. Word-level
 // pinyin is syllable-spaced (one token per character) so it can be converted
@@ -118,6 +119,15 @@ export const hskFrequency: VocabWord[] = [
 
 const wordIndex = new Map(hskFrequency.map((word) => [word.id, word]))
 
+/**
+ * Falls through to the tier-2 lookup tail for `lk-` ids.
+ *
+ * A rare word found by search can be added to the deck like any other, and its
+ * card then references an id that is not in `hskFrequency`. Without this fallback
+ * AppContext's hydrate — which drops cards whose word no longer resolves — would
+ * delete it on the next launch, so the word would appear to be added and then
+ * quietly disappear overnight.
+ */
 export function wordById(id: string): VocabWord | undefined {
-  return wordIndex.get(id)
+  return wordIndex.get(id) ?? lookupWordById(id)
 }

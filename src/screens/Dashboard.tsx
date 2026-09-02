@@ -1,24 +1,47 @@
-import { useMemo } from 'react'
-import { View, Text, Pressable, ScrollView, Image } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { View, ScrollView, Pressable, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { Flame, BookMarked, CalendarCheck, Zap, Trophy, Menu } from 'lucide-react-native'
+import { Menu } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { BrushHighlight } from '../components/BrushHighlight'
-import { IllustratedCard } from '../components/IllustratedCard'
-import { WordsLineChart } from '../components/WordsLineChart'
-import { Heatmap } from '../components/Heatmap'
-import { MascotPrompt } from '../components/OnboardingKit'
-import { dueCountFor } from '../lib/selectors'
-import { buildHeatmapFromProgress, summarizeActivity } from '../lib/progress'
-import { lastNDays, weekdayLabel } from '../lib/date'
+import { StreakPill } from '../components/dashboard/parts'
+import { DashboardHero } from '../components/dashboard/DashboardHero'
+import { ReviewCard } from '../components/dashboard/ReviewCard'
+import { NewWordCard } from '../components/dashboard/NewWordCard'
+import { ChallengesSummaryCard } from '../components/dashboard/ChallengesSummaryCard'
+import { WeeklyActivityCard } from '../components/dashboard/WeeklyActivityCard'
+import { FIRE_ICON } from '../components/dashboard/art'
+import { Reveal, useEntranceRun } from '../components/dashboard/entrance'
+import { useScrollToTopOnFocus } from '../components/useScrollToTopOnFocus'
+import {
+  dashColors as c,
+  dashSpacing as s,
+  dashEntrance as e,
+  DASH_CONTENT_MAX,
+} from '../components/dashboard/tokens'
+import { dueCountFor, newWordsPool } from '../lib/selectors'
+import { currentWeekActivity } from '../lib/progress'
+import { todayISO } from '../lib/date'
 import { devNow } from '../lib/devClock'
 import { CHALLENGE_DEFS, challengeInstanceId } from '../lib/challenges'
-import { LESSONS } from '../data/lessons'
-import { TOWN_BUILDINGS } from '../data/townBuildings'
+import { carefulHaptic, tapHaptic } from '../lib/haptics'
+import { playTapSound } from '../lib/sound'
+import { AppBannerAd } from '../components/ads/AppBannerAd'
 
-const FIRE_ICON = require('../assets/images/icons/fire.png')
-const CAP_ICON = require('../assets/images/icons/cap.png')
+/*
+ * The Dashboard, built to the reference mockup.
+ *
+ * Its design system is `components/dashboard/tokens.ts`; its pieces are the
+ * five components in that folder. What lives here is the screen's composition
+ * and the wiring from app state to each card — deliberately, because every one
+ * of those cards is a pure presentation of numbers this screen has already
+ * worked out.
+ *
+ * The whole screen scrolls inside a fixed 430pt column. On a wider window the
+ * column centres rather than stretching: these cards are phone-sized objects,
+ * and a 700pt-wide "Start Review" card with a campfire marooned in one corner
+ * is not the same design at a larger size.
+ */
 
 function greeting(): string {
   const hour = devNow().getHours()
@@ -35,21 +58,40 @@ const GENERAL_SHIFU_LINES = [
   'Small steps every day add up to big progress.',
 ]
 
-/** Picks what Shifu says on the dashboard: a contextual nudge first, otherwise a day-stable rotating line. */
-function shifuQuote(name: string, lessonsCompletedCount: number, dueCount: number, streak: number): string {
+/**
+ * What Shifu says when there is nothing due.
+ *
+ * The due-word case is handled in the bubble itself, which sets the count in
+ * bold — so this covers only the lines with no number in them.
+ */
+function shifuQuote(name: string, streak: number): string {
   const displayName = name || 'friend'
-  if (lessonsCompletedCount === 0) return `Hi ${displayName}! Let's start our first lesson together!`
-  if (dueCount > 0) return `You have ${dueCount} word${dueCount === 1 ? '' : 's'} waiting — let's review them!`
-  if (streak >= 3) return `You're on a ${streak}-day streak! I'm proud of you, ${displayName}.`
-  const dayIndex = new Date().getDate() % GENERAL_SHIFU_LINES.length
+  if (streak >= 3) return `You’re on a ${streak}-day streak! I’m proud of you, ${displayName}.`
+  const dayIndex = devNow().getDate() % GENERAL_SHIFU_LINES.length
   return GENERAL_SHIFU_LINES[dayIndex]
 }
 
 export function Dashboard() {
-  const { wordsLearnedToday, dailyProgress, streak, deck, settings, xp, unlockedBuildingIds, completedLessonIds, claimedChallengeIds } =
-    useApp()
+  const {
+    wordBank,
+    wordsLearnedToday,
+    dailyProgress,
+    streak,
+    deck,
+    settings,
+    xp,
+    completedLessonIds,
+    claimedChallengeIds,
+    addToReviewDeck,
+  } = useApp()
+
+  const { width } = useWindowDimensions()
+  const columnWidth = Math.min(width, DASH_CONTENT_MAX)
+  const contentWidth = columnWidth - s.screen * 2
 
   const dueCount = dueCountFor(deck)
+  const todayReviews = dailyProgress.find((d) => d.date === todayISO())?.reviewsCompleted ?? 0
+
   const claimableChallenges = useMemo(() => {
     const ctx = { dailyProgress, streak, completedLessonCount: completedLessonIds.length, xp }
     return CHALLENGE_DEFS.filter((def) => {
@@ -58,153 +100,171 @@ export function Dashboard() {
       return def.progress(ctx) >= def.target
     }).length
   }, [dailyProgress, streak, completedLessonIds.length, xp, claimedChallengeIds])
-  const heatmap = useMemo(() => buildHeatmapFromProgress(dailyProgress, 98), [dailyProgress])
-  const heatmapSummary = useMemo(() => summarizeActivity(heatmap), [heatmap])
-  const weekTotal = useMemo(() => dailyProgress.reduce((sum, d) => sum + d.wordsLearned, 0), [dailyProgress])
 
-  const weeklyChartData = useMemo(() => {
-    const byDate = new Map(dailyProgress.map((d) => [d.date, d]))
-    return lastNDays(7).map((date) => ({ date, wordsLearned: byDate.get(date)?.wordsLearned ?? 0 }))
-  }, [dailyProgress])
-  const dayLabels = useMemo(() => weeklyChartData.map((d) => weekdayLabel(d.date)), [weeklyChartData])
+  const week = useMemo(() => currentWeekActivity(dailyProgress), [dailyProgress])
 
-  // The reference mockup breaks the greeting over two lines ("Good" / "Morning,").
+  // --- The word on offer ------------------------------------------------------
+
+  /*
+   * Dismissal lasts for the session only, so the card comes back next launch
+   * without needing any persisted state of its own — the same bargain the old
+   * `NewWordPrompt` made. `added` is separate from dismissal: adding a word
+   * confirms in place rather than collapsing the card out from under the finger.
+   */
+  const [wordDismissed, setWordDismissed] = useState(false)
+  const [addedWordId, setAddedWordId] = useState<string | null>(null)
+
+  const nextWord = useMemo(() => newWordsPool(wordBank, deck, settings)[0], [wordBank, deck, settings])
+  const reachedDailyGoal = wordsLearnedToday >= settings.dailyNewWordLimit
+  const showWordCard = !wordDismissed && !reachedDailyGoal && !!nextWord
+
   const [greetingLead, ...greetingRest] = greeting().split(' ')
   const greetingTail = greetingRest.join(' ')
 
-  const lessonsCompletedCount = completedLessonIds.length
-  const lessonSubtitle =
-    lessonsCompletedCount === 0 ? 'Begin Unit 1: The Basics' : `${lessonsCompletedCount}/${LESSONS.length} lessons complete`
-  const mascotMessage = useMemo(
-    () => shifuQuote(settings.username, lessonsCompletedCount, dueCount, streak),
-    [settings.username, lessonsCompletedCount, dueCount, streak],
-  )
+  const fallbackMessage = useMemo(() => shifuQuote(settings.username, streak), [settings.username, streak])
+
+  /*
+   * A streak that's alive but untouched today is about to lapse. Warned once per
+   * mount of this screen — the flame and day count are right here, so the buzz
+   * has something to point at rather than arriving out of nowhere.
+   */
+  const warnedRef = useRef(false)
+  const streakAtRisk = streak > 0 && wordsLearnedToday === 0 && todayReviews === 0
+  useEffect(() => {
+    if (!streakAtRisk || warnedRef.current) return
+    warnedRef.current = true
+    carefulHaptic()
+  }, [streakAtRisk])
+
+  /*
+   * The entrance replays every time this screen is focused, not only on mount —
+   * arriving from another tab or back from Review should assemble the scene
+   * again. `run` is the one number the whole score keys off.
+   */
+  const run = useEntranceRun()
+
+  /* Coming back to the Dashboard means coming back to the greeting, not to
+     wherever the last visit happened to leave the scroll. */
+  const scroll = useScrollToTopOnFocus()
+
+  /*
+   * The cards arrive in the order they are read, so their delays come from
+   * their position rather than being written out per card — the word card is
+   * conditional, and a hardcoded delay each would leave a hole in the rhythm on
+   * the days it is not shown.
+   */
+  let cardIndex = 0
+  const nextCardDelay = () => e.cards.at + e.cards.stagger * cardIndex++
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-canvas dark:bg-slate-950">
-      <ScrollView contentContainerStyle={{ gap: 20, padding: 16, paddingTop: 8 }}>
-        <View className="flex-row items-center justify-between">
-          <Pressable
-            onPress={() => router.push('/settings')}
-            accessibilityRole="button"
-            accessibilityLabel="Open settings"
-            className="-ml-1 rounded-full p-1 active:bg-slate-200/60 dark:active:bg-slate-800"
-          >
-            <Menu size={26} color="#334155" strokeWidth={2.5} />
-          </Pressable>
-          <View className="flex-row items-center gap-1.5 rounded-full border border-black/5 bg-white px-3.5 py-2 shadow-card dark:border-white/10 dark:bg-slate-900">
-            <Flame size={18} color="#ff6b6b" fill="#f5b93d" />
-            <Text className="text-base font-extrabold text-slate-800 dark:text-slate-100">{streak}</Text>
-          </View>
-        </View>
+    <View className="flex-1" style={{ backgroundColor: c.background }}>
+      <SafeAreaView edges={['top']} className="flex-1">
+        <ScrollView
+          ref={scroll}
+          className="flex-1"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            alignItems: 'center',
+            // Clears the tab bar with room to spare, so the last card is never
+            // half-hidden behind it at the end of the scroll.
+            paddingBottom: s.xxl,
+          }}
+        >
+          <View style={{ width: columnWidth, paddingHorizontal: s.screen }}>
+            <View className="flex-row items-center justify-between" style={{ height: 52 }}>
+              <Pressable
+                onPress={() => {
+                  tapHaptic()
+                  router.push('/settings')
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Open settings"
+                hitSlop={12}
+                className="items-center justify-center rounded-full active:opacity-60"
+                style={{ width: 44, height: 44, marginLeft: -10 }}
+              >
+                <Menu size={25} color={c.navy} strokeWidth={2.5} />
+              </Pressable>
 
-        <View className="-mt-2">
-          <Text className="text-[38px] font-extrabold leading-[1.08] text-slate-900 dark:text-white">
-            {greetingLead}
-          </Text>
-          <Text className="text-[38px] font-extrabold leading-[1.08] text-slate-900 dark:text-white">
-            {greetingTail},
-          </Text>
-          {/*
-            Caveat sits on a much smaller x-height than Nunito, so it's set larger
-            than the 38px greeting above it to read at the same optical size.
-          */}
-          <BrushHighlight bleedX={16} bleedTop={12} bleedBottom={6}>
-            {/* Stays dark in both themes — it's read against the amber stroke, not the page. */}
-            <Text className="mt-1 px-1.5 font-handwriting text-[54px] leading-[62px] text-slate-900">
-              {settings.username || 'Learner'}!
-            </Text>
-          </BrushHighlight>
-        </View>
-
-        <MascotPrompt message={mascotMessage} />
-
-        <IllustratedCard
-          tag="Review"
-          title="Start Review"
-          subtitle={dueCount > 0 ? 'Keep your streak alive!' : "You're all caught up"}
-          icon={<Image source={FIRE_ICON} style={{ width: 78, height: 78 }} resizeMode="contain" />}
-          color="coral"
-          stats={[
-            { label: 'Words due', value: dueCount },
-            { label: 'Day streak', value: streak },
-          ]}
-          onPress={() => router.push('/review')}
-        />
-        <IllustratedCard
-          tag="Learn"
-          title="Ready to start a lesson?"
-          subtitle={lessonSubtitle}
-          icon={<Image source={CAP_ICON} style={{ width: 84, height: 84 }} resizeMode="contain" />}
-          color="brand"
-          stats={[
-            { label: 'Lessons completed', value: lessonsCompletedCount },
-            { label: 'XP earned', value: xp },
-          ]}
-          onPress={() => router.push('/lessons')}
-        />
-
-        <IllustratedCard
-          tag="Build"
-          title="Build your town"
-          subtitle="Grow your Chinese village!"
-          icon={<Image source={TOWN_BUILDINGS[6].image} style={{ width: 84, height: 84 }} resizeMode="contain" />}
-          color="amber"
-          stats={[
-            { label: 'Buildings', value: unlockedBuildingIds.length },
-            { label: 'XP to spend', value: xp },
-          ]}
-          onPress={() => router.push('/my-town')}
-        />
-
-        <IllustratedCard
-          tag="Challenges"
-          title={claimableChallenges > 0 ? 'Rewards ready to claim!' : 'Daily challenges'}
-          subtitle="Complete goals to earn bonus XP"
-          icon={<Trophy size={56} color="#8b5cf6" strokeWidth={1.75} />}
-          color="violet"
-          stats={[
-            { label: 'Ready to claim', value: claimableChallenges },
-            { label: 'Total challenges', value: CHALLENGE_DEFS.length },
-          ]}
-          onPress={() => router.push('/challenges')}
-        />
-
-        <View className="rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-          <Text className="mb-1 text-sm font-semibold text-slate-500 dark:text-slate-400">Words learned</Text>
-          <Text className="mb-2 text-xs text-slate-400">Last 7 days · {wordsLearnedToday} today</Text>
-          <WordsLineChart data={weeklyChartData} dayLabels={dayLabels} />
-        </View>
-
-        <View className="rounded-2xl bg-white p-4 pb-5 shadow-card dark:bg-slate-900">
-          <View className="mb-3 flex-row items-center justify-between">
-            <Text className="text-sm font-semibold text-slate-500 dark:text-slate-400">Consistency</Text>
-            <Text className="text-xs text-slate-400">Last {heatmapSummary.totalDays} days</Text>
-          </View>
-
-          <View className="mb-4 flex-row gap-2">
-            <View className="flex-1 items-center rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800">
-              <CalendarCheck size={14} color="#22c55e" />
-              <Text className="mt-1 text-lg font-bold leading-none text-slate-900 dark:text-white">{heatmapSummary.activeDays}</Text>
-              <Text className="mt-0.5 text-[10px] text-slate-400">active days</Text>
+              {/* The streak's own screen is Challenges — that's where the
+                  streak milestones are claimed. */}
+              <StreakPill streak={streak} icon={FIRE_ICON} onPress={() => router.push('/challenges')} />
             </View>
-            <View className="flex-1 items-center rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800">
-              <Zap size={14} color="#f59e0b" />
-              <Text className="mt-1 text-lg font-bold leading-none text-slate-900 dark:text-white">{heatmapSummary.longestStreak}</Text>
-              <Text className="mt-0.5 text-[10px] text-slate-400">best streak</Text>
-            </View>
-            <View className="flex-1 items-center rounded-xl bg-slate-50 p-2.5 dark:bg-slate-800">
-              <BookMarked size={14} color="#ff6b6b" />
-              <Text className="mt-1 text-lg font-bold leading-none text-slate-900 dark:text-white">
-                {heatmapSummary.totalWordsLearned + heatmapSummary.totalReviewsCompleted}
-              </Text>
-              <Text className="mt-0.5 text-[10px] text-slate-400">total activity</Text>
+
+            <DashboardHero
+              greetingLead={greetingLead}
+              greetingTail={greetingTail}
+              name={settings.username || 'Learner'}
+              dueCount={dueCount}
+              fallbackMessage={fallbackMessage}
+              width={contentWidth}
+              run={run}
+            />
+
+            {/*
+              Each card is wrapped rather than the group, so they rise one after
+              another. The wrapper is the flex child the `gap` measures between,
+              which is why the spacing survives — a transform moves what is
+              painted, not what is laid out.
+            */}
+            <View style={{ gap: s.cardGap, marginTop: 14 }}>
+              <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                <ReviewCard dueCount={dueCount} onPress={() => router.push('/review')} />
+              </Reveal>
+
+              {showWordCard && (
+                <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                  <NewWordCard
+                    word={nextWord}
+                    script={settings.script}
+                    phoneticScript={settings.phoneticScript}
+                    added={addedWordId === nextWord.id}
+                    onSeeAll={() => {
+                      playTapSound()
+                      router.push('/new-words')
+                    }}
+                    onDismiss={() => setWordDismissed(true)}
+                    onAdd={() => {
+                      playTapSound()
+                      addToReviewDeck(nextWord.id)
+                      setAddedWordId(nextWord.id)
+                    }}
+                  />
+                </Reveal>
+              )}
+
+              <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                <ChallengesSummaryCard
+                  claimable={claimableChallenges}
+                  total={CHALLENGE_DEFS.length}
+                  onPress={() => router.push('/challenges')}
+                />
+              </Reveal>
+
+              <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                {/* The week in summary; Progress is the same story over twelve
+                    weeks, so it is where this card leads. It arrives from the
+                    right on `DetailShell`'s own transition. */}
+                <WeeklyActivityCard week={week} onPress={() => router.push('/settings/progress')} />
+              </Reveal>
+
+              {/*
+                The one advert on this screen, and it is last on purpose.
+                Everything the learner came here to do — what is due, the next
+                word, the week — is above it, so the advert is something they
+                scroll *past* rather than through. It renders nothing at all for
+                an ad-free learner, and collapses silently if it fails to load;
+                being the final element means either outcome moves nothing.
+
+                Deliberately outside `Reveal`: the entrance score is the
+                Dashboard introducing itself, and an advert has no business
+                being choreographed into it.
+              */}
+              <AppBannerAd placement="dashboard" />
             </View>
           </View>
-
-          <Heatmap data={heatmap} />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   )
 }

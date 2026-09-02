@@ -41,7 +41,12 @@ const ZERO_INITIAL: Record<string, string> = {
 
 const TONE_MARKS: Record<number, string> = { 1: '', 2: 'ˊ', 3: 'ˇ', 4: 'ˋ', 5: '˙' }
 
-function extractTone(rawSyllable: string): { base: string; tone: number } {
+/**
+ * Splits a pinyin syllable into its toneless base and tone number, 5 for
+ * neutral. Shared with the pronunciation scorer, which needs the same reading of
+ * a tone mark that the zhuyin converter does.
+ */
+export function splitTone(rawSyllable: string): { base: string; tone: number } {
   let base = ''
   let tone = 5
   for (const ch of rawSyllable) {
@@ -98,7 +103,7 @@ function syllableToZhuyin(base: string): string | null {
 export function pinyinSyllableToZhuyin(token: string): string {
   const cleaned = token.trim().toLowerCase()
   if (!cleaned) return token
-  const { base, tone } = extractTone(cleaned)
+  const { base, tone } = splitTone(cleaned)
   const zhuyin = syllableToZhuyin(base)
   if (!zhuyin) return token
   return tone === 5 ? TONE_MARKS[5] + zhuyin : zhuyin + TONE_MARKS[tone]

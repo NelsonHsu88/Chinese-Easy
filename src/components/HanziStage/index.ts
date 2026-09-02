@@ -1,1 +1,1 @@
-export { HanziStage, type HanziStageMode } from './HanziStage'
+export { HanziStage, type HanziStageMode, type HanziStageSpeed } from './HanziStage'

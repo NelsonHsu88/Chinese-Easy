@@ -2,6 +2,9 @@ import { View, Text, Image, StyleSheet } from 'react-native'
 import Svg, { Circle } from 'react-native-svg'
 import { LinearGradient } from 'expo-linear-gradient'
 import type { Story } from '../../types'
+import { useApp } from '../../context/AppContext'
+import { hanziFont } from '../../lib/hanzi'
+import { forScript } from '../../lib/scriptConversion'
 import { paletteFor } from './storyPresentation'
 
 interface Props {
@@ -25,6 +28,8 @@ interface Props {
  */
 export function StoryArt({ story, width, height, radius, glyphScale = 1 }: Props) {
   const palette = paletteFor(story)
+  // Read before the early return below — a hook must not sit behind a branch.
+  const script = useApp().settings.script
 
   if (story.art) {
     return (
@@ -58,7 +63,7 @@ export function StoryArt({ story, width, height, radius, glyphScale = 1 }: Props
       </Svg>
       <View className="flex-1 items-center justify-center">
         <Text
-          className="font-hanzi-tc-semibold"
+          className={hanziFont(script, 'semibold')}
           style={{
             fontSize: base * 0.42 * glyphScale,
             lineHeight: base * 0.56 * glyphScale,
@@ -66,7 +71,7 @@ export function StoryArt({ story, width, height, radius, glyphScale = 1 }: Props
             opacity: 0.62,
           }}
         >
-          {story.title.slice(0, 1)}
+          {forScript(story.title, script).slice(0, 1)}
         </Text>
       </View>
     </View>
