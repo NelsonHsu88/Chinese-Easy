@@ -9,6 +9,7 @@ import { bestTranscript, gradePronunciation, PASS_THRESHOLD } from '../lib/pronu
 import { isSpeechRecognitionAvailable, startListening, type ListenSession, type RecognitionFailure } from '../lib/speechRecognition'
 import { playPositiveChime, playRetryTone } from '../lib/sound'
 import { celebrateHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
+import { CHIP_SHADOW } from './chipShadow'
 import type { VocabWord } from '../types'
 
 type Status =
@@ -347,8 +348,9 @@ export function PronunciationCheck({
           <Pressable
             onPress={skip}
             accessibilityRole="button"
+            style={status === 'blocked' ? CHIP_SHADOW : undefined}
             className={`flex-row items-center justify-center gap-1.5 rounded-2xl py-4 ${
-              status === 'blocked' ? 'bg-brand-500 shadow-card' : 'border border-slate-300 dark:border-slate-700'
+              status === 'blocked' ? 'bg-brand-500' : 'border border-slate-300 dark:border-slate-700'
             }`}
           >
             <Text

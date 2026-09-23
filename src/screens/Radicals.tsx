@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { ArrowLeft, Search } from 'lucide-react-native'
 import { RadicalDetailModal } from '../components/RadicalDetailModal'
+import { CHIP_SHADOW } from '../components/chipShadow'
 import { RADICALS } from '../data/radicals'
 import type { Radical } from '../types'
 
@@ -73,7 +74,8 @@ export function Radicals() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 14 }}>
           <Pressable
             onPress={() => setStrokeFilter('all')}
-            className={`rounded-full px-3.5 py-2 ${strokeFilter === 'all' ? 'bg-brand-500' : 'bg-white shadow-card dark:bg-slate-900'}`}
+            style={strokeFilter === 'all' ? undefined : CHIP_SHADOW}
+            className={`rounded-full px-3.5 py-2 ${strokeFilter === 'all' ? 'bg-brand-500' : 'bg-white dark:bg-slate-900'}`}
           >
             <Text className={`text-xs font-semibold ${strokeFilter === 'all' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>
               All Strokes
@@ -83,7 +85,8 @@ export function Radicals() {
             <Pressable
               key={sc}
               onPress={() => setStrokeFilter(sc)}
-              className={`rounded-full px-3.5 py-2 ${strokeFilter === sc ? 'bg-brand-500' : 'bg-white shadow-card dark:bg-slate-900'}`}
+              style={strokeFilter === sc ? undefined : CHIP_SHADOW}
+              className={`rounded-full px-3.5 py-2 ${strokeFilter === sc ? 'bg-brand-500' : 'bg-white dark:bg-slate-900'}`}
             >
               <Text className={`text-xs font-semibold ${strokeFilter === sc ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>{sc}</Text>
             </Pressable>

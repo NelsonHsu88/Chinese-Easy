@@ -23,6 +23,7 @@ import type { SrsCard, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 import { FEATURES } from '../lib/features'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
+import { CHIP_SHADOW } from '../components/chipShadow'
 
 interface LearnedWord {
   word: VocabWord
@@ -366,7 +367,8 @@ function FilterChip({ active, onPress, label, icon }: { active: boolean; onPress
         tickHaptic()
         onPress()
       }}
-      className={`flex-row items-center gap-1.5 rounded-full px-3.5 py-2 ${active ? 'bg-brand-500' : 'bg-white shadow-card dark:bg-slate-900'}`}
+      style={active ? undefined : CHIP_SHADOW}
+      className={`flex-row items-center gap-1.5 rounded-full px-3.5 py-2 ${active ? 'bg-brand-500' : 'bg-white dark:bg-slate-900'}`}
     >
       {icon}
       <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>{label}</Text>

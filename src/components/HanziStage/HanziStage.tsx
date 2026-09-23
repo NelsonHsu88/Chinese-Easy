@@ -482,6 +482,34 @@ function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey,
               source={{ html: WRITER_HTML }}
               onMessage={handleMessage}
               /*
+               * The same readiness backstop the web branch above has, and it is
+               * needed here for exactly the same reason.
+               *
+               * The writer document posts `ready` once, synchronously, with no
+               * retry (writerHtml.ts). If that single message is missed — a
+               * screen the navigator is keeping mounted but inactive, a slow
+               * first paint, any timing hiccup — `webviewReadyRef` never flips,
+               * `sendInit` refuses to send, the writer is never handed its
+               * stroke data, and the glyph sits under its spinner **forever**.
+               * Nothing after that point retries. It shows up as "some
+               * characters never draw", varying run to run, which is what a
+               * missed-message race looks like from the outside.
+               *
+               * `onLoadEnd` fires once the document has finished loading, and
+               * the script attaches its `message` listeners on both `document`
+               * and `window` before it posts `ready` — so by this point the
+               * WebView can definitely receive an init. `initSentRef` inside
+               * `sendInit` makes the overlap harmless: whichever of the two
+               * signals lands first sends, the other is a no-op.
+               *
+               * This branch was left behind when the web branch was fixed; the
+               * two must keep the same belt and braces.
+               */
+              onLoadEnd={() => {
+                webviewReadyRef.current = true
+                sendInit()
+              }}
+              /*
                * This document is static local HTML that draws one glyph. It has
                * no links, no forms and no reason to navigate anywhere, so say
                * so — `originWhitelist={['*']}` let it navigate to any URL, which

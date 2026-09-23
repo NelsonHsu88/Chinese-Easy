@@ -2,7 +2,23 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    /*
+     * `types` is listed explicitly because TypeScript 6 (which SDK 57's
+     * `expo install --fix` selects) no longer pulls @types/node in on its own
+     * here. Expo's base config sets `moduleResolution: "bundler"` with
+     * `customConditions: ["react-native"]`, and under those conditions the
+     * `node:test` / `node:assert/strict` specifiers the test suite imports stop
+     * resolving through @types/node's exports map — 37 errors across the six
+     * files in src/lib/__tests__, none of them in app source. Naming the two
+     * type packages loads their declarations directly and sidesteps that.
+     *
+     * The list is also the whole type environment now: automatic inclusion of
+     * everything under node_modules/@types is off while this is set, so a new
+     * dependency whose *globals* the app relies on has to be added here.
+     */
+    "types": ["node", "react"]
   },
   "include": [
     "**/*.ts",
