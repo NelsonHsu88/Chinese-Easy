@@ -100,7 +100,34 @@ export const SRS_SCHEMA_VERSION = 2
  * Date", which surfaces days later as a card that never comes up again.
  */
 
-function toFsrs(card: SrsCard): FsrsCard {
+/*
+ * `last_review` is clamped to `now`, and that clamp is load-bearing.
+ *
+ * ts-fsrs computes `delta_t` as the days between `last_review` and the review
+ * instant and **throws `FSRSValidationError: Invalid delta_t` on a negative
+ * one** — it does not clamp for us, and the throw escapes `previewReview`,
+ * which every review surface calls while rendering a card. A card whose last
+ * review is stamped in the future therefore does not schedule oddly, it takes
+ * the whole drill down.
+ *
+ * Three ways a stored `last_review` legitimately ends up ahead of `now`:
+ *
+ *   - **A migrated v1 card.** v1 stored `lastReviewed` as a bare yyyy-mm-dd and
+ *     `migrateCard` reads it as that local day's *start*, so any card whose day
+ *     was recorded in a timezone ahead of the current one lands in the future.
+ *     Fly Tokyo → Los Angeles and the local date goes backwards a day.
+ *   - **The developer clock** (`devClock`, Settings → Developer), whose whole
+ *     purpose is to move `now` — including backwards, to re-test a streak.
+ *   - A device clock corrected backwards after any review.
+ *
+ * Clamping loses nothing real: `delta_t` of 0 is "reviewed again immediately",
+ * which is the honest reading of a card whose recorded review has not happened
+ * yet, and FSRS handles a same-instant repeat as a matter of course. The
+ * alternative — repairing the stored date — would be guessing at a review
+ * instant v1 never recorded.
+ */
+function toFsrs(card: SrsCard, now: Date): FsrsCard {
+  const lastReview = card.last_review ? new Date(card.last_review) : undefined
   return {
     due: new Date(card.due),
     stability: card.stability,
@@ -111,7 +138,7 @@ function toFsrs(card: SrsCard): FsrsCard {
     reps: card.reps,
     lapses: card.lapses,
     state: STATE_VALUES[card.state],
-    last_review: card.last_review ? new Date(card.last_review) : undefined,
+    last_review: lastReview && lastReview > now ? now : lastReview,
   }
 }
 
@@ -203,7 +230,7 @@ export interface ReviewPreview {
  * only way the number on the button is a promise.
  */
 export function previewReview(card: SrsCard, wrongAnswerReps: number, now: Date = devNow()): ReviewPreview {
-  const record: RecordLog = scheduler.repeat(toFsrs(card), now)
+  const record: RecordLog = scheduler.repeat(toFsrs(card, now), now)
 
   const outcome = (grade: Grade): ReviewOutcome => {
     const result = record[RATINGS[grade]]

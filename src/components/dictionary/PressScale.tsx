@@ -23,6 +23,8 @@ export function PressScale({
   className = '',
   outerClassName = '',
   style,
+  outerStyle,
+  innerStyle,
   disabled = false,
   scaleTo = 0.96,
   accessibilityLabel,
@@ -35,7 +37,22 @@ export function PressScale({
   className?: string
   /** Layout classes for the touch target itself — flex, width, margin. */
   outerClassName?: string
-  style?: StyleProp<ViewStyle>
+  /**
+   * Lands on the animated view below, so this also accepts an animated
+   * shadow from `useRevealedShadow` — a plain `ViewStyle` wouldn't type-check
+   * its interpolated `shadowOpacity`/`elevation`, even though the node it's
+   * merged onto here is already `Animated.View` and handles them fine.
+   */
+  style?: StyleProp<ViewStyle> | Animated.WithAnimatedValue<ViewStyle>
+  /**
+   * Plain-style equivalents of `outerClassName` / `className`, for a control
+   * that must not depend on NativeWind at all. On native, a re-render
+   * elsewhere on the word screen (tapping Add) was stripping the class-derived
+   * padding and layout off the Stroke order / Practice buttons; style objects
+   * are applied by React Native directly and can't be dropped that way.
+   */
+  outerStyle?: StyleProp<ViewStyle>
+  innerStyle?: StyleProp<ViewStyle>
   disabled?: boolean
   scaleTo?: number
   accessibilityLabel?: string
@@ -63,6 +80,7 @@ export function PressScale({
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
       className={outerClassName}
+      style={outerStyle}
     >
       <Animated.View style={[{ transform: [{ scale }] }, { opacity: disabled ? 0.55 : 1 }, style]}>
         {/*
@@ -78,7 +96,7 @@ export function PressScale({
           nothing. This way the content height is the floor and the view only
           grows past it when there is a height to grow into.
         */}
-        <View className={className} style={{ flexGrow: 1 }}>
+        <View className={className} style={[{ flexGrow: 1 }, innerStyle]}>
           {children}
         </View>
       </Animated.View>

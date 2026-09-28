@@ -3,7 +3,8 @@ import { View, Text, Animated } from 'react-native'
 import { BrushHighlight } from '../BrushHighlight'
 import { CardArt } from './parts'
 import { dashArt } from './art'
-import { useReveal, useTypewriter } from './entrance'
+import { ARRIVE, useReveal, useTypewriter } from './entrance'
+import { revealedShadow, useShadowReveal } from '../shadowReveal'
 import {
   dashColors as c,
   dashSpacing as s,
@@ -283,22 +284,41 @@ function SpeechBubble({
 
   const line = { ...t.bubble, color: c.navy } as const
 
+  /*
+   * The bubble's own shadow ramp — there's no `ShadowRevealProvider` here
+   * because this bubble arrives on its own stagger via `useReveal` directly,
+   * rather than through the shared `Reveal` wrapper the other cards use. Same
+   * timing as `bubble` above, same reason: `elevation` can't ride the native
+   * driver that reveal runs on, so it needs its own always-JS value or it
+   * snaps to full strength partway through instead of growing in with it.
+   */
+  const shadowProgress = useShadowReveal({ at: e.bubble.at, duration: e.bubble.for, run, easing: ARRIVE })
+
   return (
-    <Animated.View style={[{ marginTop: 18, width: Math.min(186, width * 0.5) }, bubble]}>
+    /*
+     * `needsOffscreenAlphaCompositing`: the bubble underneath carries its own
+     * `elevation` shadow (`dashShadow`), and without this Android fades that
+     * shadow and the bubble's fill as separate overlapping layers rather than
+     * as one flattened surface — the shadow reads as arriving a beat before
+     * the bubble it belongs to. See the same fix on `Reveal` above.
+     */
+    <Animated.View
+      style={[{ marginTop: 18, width: Math.min(186, width * 0.5) }, bubble]}
+      needsOffscreenAlphaCompositing
+    >
       <View>
-        <View
+        {/* `Animated.View` rather than `View`, so the shadow below can ride
+            `shadowProgress`'s interpolated values — no `className` here for
+            that to break. */}
+        <Animated.View
           style={{
             backgroundColor: c.card,
             borderRadius: 18,
             paddingHorizontal: s.lg,
             paddingVertical: 14,
-            ...dashShadow,
+            ...revealedShadow(dashShadow, shadowProgress),
           }}
         >
-          <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.coral, marginBottom: 6 }}>
-            Nǐ hǎo! 👋
-          </Text>
-
           <View>
             {/* The sizer. Hidden from assistive tech, which reads the line below. */}
             <Text
@@ -320,7 +340,7 @@ function SpeechBubble({
               <SpanRuns spans={revealSpans(spans, typed)} />
             </Text>
           </View>
-        </View>
+        </Animated.View>
 
         {/*
           The tail, pointing at Shifu. A rotated square rather than a triangle, so

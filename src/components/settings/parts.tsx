@@ -147,8 +147,13 @@ export function SettingsShell({
         contentContainerStyle={{ alignItems: 'center', paddingBottom: bottomInset }}
       >
         {/* Plain styles on the animated view, content in a plain View inside it
-            — NativeWind drops `className` on an `Animated.View` entirely. */}
-        <Animated.View style={[{ width: column }, transitionStyle]}>
+            — NativeWind drops `className` on an `Animated.View` entirely.
+            `needsOffscreenAlphaCompositing`: the cards inside carry their own
+            `elevation` shadow (`setShadow`), and without this Android fades
+            each one's shadow and its fill as separate overlapping layers —
+            the shadow reads as arriving before the card. See the same fix on
+            Dictionary's `FadeSection` and the Dashboard's `Reveal`. */}
+        <Animated.View style={[{ width: column }, transitionStyle]} needsOffscreenAlphaCompositing>
           <View>{children}</View>
         </Animated.View>
       </ScrollView>
@@ -184,7 +189,10 @@ export function DetailShell({ title, children }: { title: string; children: Reac
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ alignItems: 'center', paddingBottom: s.xxxl }}
       >
-        <Animated.View style={[{ width: column }, style]}>
+        {/* `needsOffscreenAlphaCompositing`: same reason as `SettingsShell`
+            above — the cards this transition fades in carry their own
+            `elevation` shadow. */}
+        <Animated.View style={[{ width: column }, style]} needsOffscreenAlphaCompositing>
           <View style={{ paddingHorizontal: s.screen }}>
             <View className="flex-row items-center" style={{ paddingTop: s.md, gap: s.md }}>
               <Pressable

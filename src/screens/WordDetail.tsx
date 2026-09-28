@@ -17,6 +17,8 @@ import {
 } from '../components/dictionary/DetailSections'
 import { SentencesModal, WordsModal } from '../components/dictionary/AppearsInModals'
 import { DeckStateButton } from '../components/dictionary/DictionaryControls'
+import { PressScale } from '../components/dictionary/PressScale'
+import { DICT_BG, DICT_BUTTON_SHADOW } from '../components/dictionary/shadows'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
 import { TourPulse } from '../components/tour/TourPulse'
 import {
@@ -155,7 +157,22 @@ export function WordDetail() {
     return (
       <DetailShell title="Word">
         <DetailCard>
-          <Text className="font-dict-sans text-[16px] text-dict-body">This word is no longer in the dictionary.</Text>
+          <Text className="font-dict-sans text-[16px] text-dict-body">
+            This word is no longer in the dictionary. It may have been renamed or removed the last time the word
+            list was updated.
+          </Text>
+          <PressScale
+            onPress={() => {
+              tapHaptic()
+              if (router.canGoBack()) router.back()
+              else router.replace('/dictionary-tab')
+            }}
+            style={[{ height: 48, marginTop: 16 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
+            className="items-center justify-center rounded-full bg-dict-green"
+            accessibilityLabel="Back to the dictionary"
+          >
+            <Text className="font-dict-bold text-[15px] text-white">Back to Dictionary</Text>
+          </PressScale>
         </DetailCard>
       </DetailShell>
     )

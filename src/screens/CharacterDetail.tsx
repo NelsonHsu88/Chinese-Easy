@@ -13,6 +13,8 @@ import {
 } from '../components/dictionary/DetailSections'
 import { SentencesModal, WordsModal } from '../components/dictionary/AppearsInModals'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
+import { PressScale } from '../components/dictionary/PressScale'
+import { DICT_BG, DICT_BUTTON_SHADOW } from '../components/dictionary/shadows'
 import {
   appearsIn,
   buildDeckIndex,
@@ -100,6 +102,18 @@ export function CharacterDetail() {
       <DetailShell title="Character">
         <DetailCard>
           <Text className="font-dict-sans text-[16px] text-dict-body">No character was given.</Text>
+          <PressScale
+            onPress={() => {
+              tapHaptic()
+              if (router.canGoBack()) router.back()
+              else router.replace('/dictionary-tab')
+            }}
+            style={[{ height: 48, marginTop: 16 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
+            className="items-center justify-center rounded-full bg-dict-green"
+            accessibilityLabel="Back to the dictionary"
+          >
+            <Text className="font-dict-bold text-[15px] text-white">Back to Dictionary</Text>
+          </PressScale>
         </DetailCard>
       </DetailShell>
     )

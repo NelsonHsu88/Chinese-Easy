@@ -114,6 +114,14 @@ module.exports = {
           'green-dark': '#3E9845',
           // Pale mint for selected states and quiet green fills.
           'green-pale': '#EAF5E8',
+          // The landing's quieter pieces: a drawn edge for the grouped surfaces
+          // (Recent, Explore, the filter pills), and a secondary ink between
+          // `body` and `muted` for pinyin and glosses — `muted` is too faint to
+          // carry the reading a learner is actually trying to read.
+          border: '#E8E5DE',
+          soft: '#69758B',
+          // Word to discover's one warm accent (its sparkle and label).
+          gold: '#B08A2E',
           // Backing colours for the category tiles, one per WordCategory. Left
           // as they were — these pastels already read warm, and they are the one
           // place on the screen where colour is allowed to be playful.
@@ -155,6 +163,8 @@ module.exports = {
         // The literary serif English prose is set in — deliberately not the UI sans,
         // so translations read like a storybook rather than app chrome.
         lora: ['Lora', 'serif'],
+        'lora-italic': ['LoraItalic', 'serif'],
+        'lora-bold': ['LoraBold', 'serif'],
         // Script-specific faces, paired with the `hanzi-sc-*` set below. Neither
         // carries a fallback to the other on purpose: `hanziFont` picks the face
         // from `settings.script` so each script gets its own regional glyph

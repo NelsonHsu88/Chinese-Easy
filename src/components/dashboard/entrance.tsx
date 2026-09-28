@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from 'react-native'
 import { useFocusEffect } from 'expo-router'
 import { dashEntrance } from './tokens'
+import { ShadowRevealProvider, useShadowReveal } from '../shadowReveal'
 
 /*
  * The Dashboard's entrance animation.
@@ -20,7 +21,7 @@ import { dashEntrance } from './tokens'
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
 /** One curve for the whole scene. Decelerating, so everything lands rather than stops. */
-const ARRIVE = Easing.out(Easing.cubic)
+export const ARRIVE = Easing.out(Easing.cubic)
 
 /** The way out. Accelerating — the scene is being left, not shown. */
 const DEPART = Easing.in(Easing.cubic)
@@ -115,11 +116,24 @@ export function useReveal({
     leaving.current = null
   }, [])
 
-  useEffect(() => {
+  /*
+   * The reset to displaced happens in a *layout* effect, not the regular one
+   * that starts the animation. Parking on blur (below) covers a normal tab
+   * switch, but a fast switch away and back — well inside the park's own
+   * `leave + backstop` window — can catch the exit animation still mid-flight,
+   * partially faded rather than fully hidden. A regular effect runs after
+   * that in-between frame has already painted, so the reveal would flash
+   * whatever it was interrupted at before snapping hidden and fading back
+   * in. A layout effect commits the reset before that paint, so there is
+   * nothing to flash.
+   */
+  useLayoutEffect(() => {
     /* An exit still running would otherwise drag this straight back out. */
     cancelExit()
     displaced.setValue(1)
+  }, [displaced, run, cancelExit])
 
+  useEffect(() => {
     const animation = Animated.timing(displaced, {
       toValue: 0,
       duration,
@@ -138,7 +152,7 @@ export function useReveal({
       animation.stop()
       clearTimeout(settle)
     }
-  }, [displaced, at, duration, run, cancelExit])
+  }, [displaced, at, duration, run])
 
   /*
    * Leaving parks the element back where it started.
@@ -232,9 +246,27 @@ export function Reveal({
 }) {
   const reveal = useReveal({ from, at, duration, run, distance, withScale })
 
+  /*
+   * The card's `elevation` shadow can't ride the native driver `reveal` above
+   * runs on, so it gets a second, always-JS value on the same timing — the
+   * card underneath (see `DashboardCard`) reads this through
+   * `useRevealedShadow` instead of a fixed shadow constant, so the shadow
+   * visibly grows in with the card rather than snapping to full strength
+   * partway through, which is what Android did left to its own schedule for
+   * recomputing `elevation`.
+   */
+  const shadowProgress = useShadowReveal({ at, duration, run, easing: ARRIVE })
+
   return (
-    <Animated.View style={[style, reveal]}>
-      <View>{children}</View>
+    /*
+     * `needsOffscreenAlphaCompositing`: belt and braces alongside the shadow
+     * ramp above — without it, Android fades every overlapping layer in this
+     * subtree independently. See the same fix on Dictionary's `FadeSection`.
+     */
+    <Animated.View style={[style, reveal]} needsOffscreenAlphaCompositing>
+      <ShadowRevealProvider value={shadowProgress}>
+        <View>{children}</View>
+      </ShadowRevealProvider>
     </Animated.View>
   )
 }

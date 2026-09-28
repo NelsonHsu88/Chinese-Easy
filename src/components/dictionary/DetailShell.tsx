@@ -11,10 +11,24 @@ import { tapHaptic } from '../../lib/haptics'
 import { hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
 
-/** Page frame for the two detail screens: a hairline nav bar over the dictionary's page grey. */
+/**
+ * Page frame for the two detail screens: a hairline nav bar over the
+ * dictionary's page grey.
+ *
+ * Presented as a modal (see the dictionary-tab Stack) rather than a plain
+ * push, so this reads as a card raised over the browse screen rather than a
+ * new page replacing it — on iOS that presentation is a native page sheet,
+ * which already rounds its own top corners and lets the screen behind it
+ * peek through; the rounding here is what carries that same "card" feel on
+ * Android and web, where a modal is otherwise just a full-bleed screen.
+ */
 export function DetailShell({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-dict-page">
+    <SafeAreaView
+      edges={['top']}
+      className="flex-1 bg-dict-page"
+      style={{ borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }}
+    >
       <View className="flex-row items-center border-b border-dict-line bg-dict-page px-3 py-2.5">
         <Pressable
           onPress={() => {
@@ -43,10 +57,31 @@ export function DetailShell({ title, children }: { title: string; children: Reac
   )
 }
 
-/** A white detail card. */
-export function DetailCard({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <View className={`rounded-dict bg-dict-card p-5 shadow-dict ${className}`}>{children}</View>
+/**
+ * A white detail card.
+ *
+ * Plain styles, not classes: on native, adding a word re-renders the hero
+ * card, and its class-derived padding was being dropped — the card came out
+ * shorter than the buttons inside it (see the comment over `HeroCard`'s
+ * button row). The shadow is also now one Android actually draws: the old
+ * `shadow-dict` class compiles to iOS shadow props only, so this card was flat
+ * on Android all along.
+ */
+export function DetailCard({ children }: { children: ReactNode }) {
+  return <View style={DETAIL_CARD}>{children}</View>
 }
+
+/** `rounded-dict bg-dict-card p-5 shadow-dict`, spelled out. */
+const DETAIL_CARD = {
+  borderRadius: 20,
+  backgroundColor: '#FFFDFA',
+  padding: 20,
+  shadowColor: '#0F172A',
+  shadowOffset: { width: 0, height: 4 },
+  shadowRadius: 12,
+  shadowOpacity: 0.05,
+  elevation: 2,
+} as const
 
 export function CardTitle({ children }: { children: ReactNode }) {
   return <Text className="font-dict-bold text-[19px] leading-[25px] text-dict-heading">{children}</Text>

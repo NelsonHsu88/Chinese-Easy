@@ -1,10 +1,11 @@
 import { Fragment } from 'react'
 import { View, Text } from 'react-native'
-import { PlayCircle, PencilLine, ChevronRight, BookOpen, FileText, Quote } from 'lucide-react-native'
+import { PlayCircle, PencilLine, ChevronRight, BookOpen, FileText } from 'lucide-react-native'
 import { PressScale } from './PressScale'
 import { ReadingSentence } from './ReadingSentence'
 import { DetailCard, CardTitle } from './DetailShell'
 import { AddCircleButton, ICON_GREEN, ICON_STROKE, SpeakChip } from './DictionaryControls'
+import { DICT_BG, DICT_BUTTON_SHADOW } from './shadows'
 import { TourPulse } from '../tour/TourPulse'
 import { allSenses, shortGloss } from '../../lib/definitions'
 import { tapHaptic } from '../../lib/haptics'
@@ -12,6 +13,17 @@ import { displayWord, hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
 import type { RadicalInfo } from '../../lib/dictionary'
 import type { KangxiRadical, VocabWord } from '../../types'
+
+/** The hero card's two action buttons — see the comment above their row for why these are not classes. */
+const HERO_BUTTON = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  paddingVertical: 16,
+  borderRadius: 14,
+} as const
+const HERO_LABEL = { fontFamily: 'NunitoSansBold', fontSize: 15 } as const
 
 /** One cell of the hero card's fact strip. `hanzi` renders its value in the serif face. */
 export interface HeroStat {
@@ -95,17 +107,30 @@ export function HeroCard({
         overrun shows as an ellipsis rather than silently disappearing —
         `adjustsFontSizeToFit` is iOS-only and would have fixed nothing on
         Android. The full phrase stays as the accessibility label.
+
+        **No NativeWind anywhere in this row — every style is a plain object.**
+        On Android, tapping Add (which re-renders this card and swaps
+        `DeckStateButton` below from a Pressable to a View) left these two
+        buttons without their class-derived padding, their labels blank, and
+        the card behind them shorter than its content — styles NativeWind had
+        applied simply stopped applying. It never reproduced on web, which is
+        why an earlier fix that moved only the label text off `className`
+        looked correct in a browser and still failed on a phone. Plain style
+        objects are applied by React Native itself, so there is nothing left
+        here for that layer to drop. `DeckStateButton` and `DetailCard` got the
+        same treatment for the same reason.
       */}
-      <View className="mt-4 flex-row gap-3">
+      <View style={{ marginTop: 16, flexDirection: 'row', gap: 12 }}>
           <TourPulse target="word-watch" radius={14} style={{ flex: 1 }}>
             <PressScale
               onPress={onWatch}
-              outerClassName="flex-1"
-              className="flex-row items-center justify-center gap-1.5 rounded-dict-sm bg-dict-green-dark py-4"
+              outerStyle={{ flex: 1 }}
+              style={[DICT_BUTTON_SHADOW, { borderRadius: 14, backgroundColor: DICT_BG.greenDark }]}
+              innerStyle={[HERO_BUTTON, { backgroundColor: DICT_BG.greenDark }]}
               accessibilityLabel="Watch stroke order"
             >
               <PlayCircle size={18} color="#ffffff" strokeWidth={ICON_STROKE} />
-              <Text numberOfLines={1} className="font-dict-bold text-[15px] text-white">
+              <Text numberOfLines={1} style={[HERO_LABEL, { color: '#ffffff' }]}>
                 Stroke order
               </Text>
             </PressScale>
@@ -113,12 +138,13 @@ export function HeroCard({
           <TourPulse target="word-practice" radius={14} style={{ flex: 1 }}>
             <PressScale
               onPress={onPractice}
-              outerClassName="flex-1"
-              className="flex-row items-center justify-center gap-1.5 rounded-dict-sm border border-dict-green bg-dict-card py-4"
+              outerStyle={{ flex: 1 }}
+              style={[DICT_BUTTON_SHADOW, { borderRadius: 14, backgroundColor: DICT_BG.card }]}
+              innerStyle={[HERO_BUTTON, { backgroundColor: DICT_BG.card, borderWidth: 1, borderColor: DICT_BG.green }]}
               accessibilityLabel="Practice writing"
             >
               <PencilLine size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-              <Text numberOfLines={1} className="font-dict-bold text-[15px] text-dict-green-dark">
+              <Text numberOfLines={1} style={[HERO_LABEL, { color: DICT_BG.greenDark }]}>
                 Practice
               </Text>
             </PressScale>
@@ -278,13 +304,8 @@ export function ExampleCard({
         <Text className="font-inter text-[12px] leading-[16px] text-dict-muted">Tap a word to look it up</Text>
       </View>
 
-      <View className="mt-3 flex-row gap-2">
-        <View className="pt-1.5">
-          <Quote size={16} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-        </View>
-        <View className="flex-1">
-          <ReadingSentence text={sentence} term={term} onPressWord={onOpenWord} />
-        </View>
+      <View className="mt-3">
+        <ReadingSentence text={sentence} term={term} onPressWord={onOpenWord} />
       </View>
 
       {/*

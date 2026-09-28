@@ -42,10 +42,19 @@ function SpeakChip({ text, size = 22, dim = 48 }: { text: string; size?: number;
 export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
   const { settings } = useApp()
   const [attempt, setAttempt] = useState(0)
+  /** Bumped to clear only the character currently being written — see `resetActive`. */
+  const [resetActiveKey, setResetActiveKey] = useState(0)
   const [hintKey, setHintKey] = useState(0)
   const [strokesDone, setStrokesDone] = useState(0)
   const [totalStrokes, setTotalStrokes] = useState(0)
   const [finished, setFinished] = useState(false)
+  /**
+   * Which characters in the word are already written — the progress
+   * indicator's whole reason for existing. Indexes into `characters` below,
+   * not into anything HanziStage exposes directly; it reports completions as
+   * they happen rather than handing back its own internal state.
+   */
+  const [completedChars, setCompletedChars] = useState<Set<number>>(() => new Set())
 
   /*
    * Finishing the character used to leave the learner facing a "Show Answer"
@@ -69,6 +78,14 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
 
   const text = displayWord(word, settings.script)
   const pinyin = displayPinyin(word, settings.phoneticScript)
+  /* Unicode-safe: a spread iterates by code point, which is what every other
+     character count in this app already does (see `HanziStage`, `WordDetail`). */
+  const characters = [...text]
+
+  // A fresh word, or a full restart after finishing, starts every character grey again.
+  useEffect(() => {
+    setCompletedChars(new Set())
+  }, [text, attempt])
 
   /*
    * Says the word once, as the screen opens.
@@ -94,19 +111,25 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
 
   const progressPct = totalStrokes > 0 ? Math.round((strokesDone / totalStrokes) * 100) : 0
 
-  const handleProgress = (strokesRemaining: number) => {
-    setStrokesDone((done) => {
-      const next = done + 1
-      /*
-       * hanzi-writer never reports the stroke total up front, so derive it from
-       * the first progress event: what's left plus what's already been drawn.
-       *
-       * `strokesRemaining` counts the whole word, not the character currently
-       * being written (see `HanziStage`), so a two-character word reads 12 here
-       * rather than the 8 of its first character — which used to leave the
-       * counter finishing at 12 / 8 with the bar overshot.
-       */
-      setTotalStrokes((t) => (t > 0 ? t : strokesRemaining + next))
+  /*
+   * `done`/`total` come pre-computed from `HanziStage`, across every
+   * character in the word — not accumulated here by counting calls, which is
+   * what let the very first version of this go backwards incorrectly: a
+   * reset of one character in the middle of the word has to move this bar
+   * back down, and only the component that actually knows every glyph's own
+   * stroke count can get that arithmetic right.
+   */
+  const handleProgress = (done: number, total: number) => {
+    setStrokesDone(done)
+    setTotalStrokes(total)
+  }
+
+  /** A single character in the word is finished — lights it up in the header above. */
+  const handleCharacterComplete = (idx: number) => {
+    setCompletedChars((prev) => {
+      if (prev.has(idx)) return prev
+      const next = new Set(prev)
+      next.add(idx)
       return next
     })
   }
@@ -123,17 +146,32 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
     playPositiveChime()
     // One beat per character, so the rhythm counts back what was just written —
     // a two-character word feels different from a four.
-    rippleHaptic([...text].length)
+    rippleHaptic(characters.length)
   }
 
-  const reset = () => {
+  /** "Write it again" — the whole word over, from its first character. */
+  const restartWord = () => {
     playTapSound()
     tickHaptic()
     setStrokesDone(0)
     setTotalStrokes(0)
     setFinished(false)
+    setCompletedChars(new Set())
     finishRise.setValue(0)
     setAttempt((n) => n + 1)
+  }
+
+  /**
+   * "Reset" during practice — clears only the character currently being
+   * written. `HanziStage` is what actually knows which one that is, so this
+   * just bumps the counter it watches for that; the corrected stroke count
+   * for the bar above arrives back through `onQuizProgress` a moment later,
+   * same as a real stroke would.
+   */
+  const resetActive = () => {
+    playTapSound()
+    tickHaptic()
+    setResetActiveKey((n) => n + 1)
   }
 
   return (
@@ -158,12 +196,33 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
 
         <View className="flex-row items-center justify-between px-5 pt-6">
           <Text className="text-[22px] font-extrabold text-slate-900 dark:text-white">
-            {[...text].length > 1 ? 'Write this word' : 'Write this character'}
+            {characters.length > 1 ? 'Write this word' : 'Write this character'}
           </Text>
           <SpeakChip text={text} />
         </View>
 
-        <Text className="pt-5 text-center text-[26px] font-extrabold text-brand-600 dark:text-brand-400">{pinyin}</Text>
+        {/*
+          The word itself, doubling as the progress indicator: each character
+          starts muted and turns the same brand green the pinyin used to be
+          the moment `HanziStage` reports it finished. A learner can see at a
+          glance which character they're on without a separate row of dots or
+          numbers competing with the header for attention.
+        */}
+        <View className="items-center pt-5">
+          <View className="flex-row" style={{ gap: 6 }}>
+            {characters.map((glyph, i) => (
+              <Text
+                key={i}
+                className={`font-hanzi text-[34px] font-bold ${
+                  completedChars.has(i) ? 'text-brand-600 dark:text-brand-400' : 'text-slate-300 dark:text-slate-600'
+                }`}
+              >
+                {glyph}
+              </Text>
+            ))}
+          </View>
+          <Text className="mt-1 text-[16px] font-bold text-slate-400">{pinyin}</Text>
+        </View>
 
         {/* Flexes to absorb whatever height is left rather than claiming a fixed
             square — at aspect-square the box alone ate ~350pt and pushed Show
@@ -179,8 +238,10 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
             showGuides
             hintKey={hintKey}
             resetKey={attempt}
+            resetActiveKey={resetActiveKey}
             holdCharacterOnComplete
             onQuizProgress={handleProgress}
+            onCharacterComplete={handleCharacterComplete}
             onQuizComplete={handleComplete}
           />
         </View>
@@ -221,7 +282,7 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
               </View>
               <View className="flex-row gap-3">
                 <Pressable
-                  onPress={reset}
+                  onPress={restartWord}
                   accessibilityRole="button"
                   className="flex-1 flex-row items-center justify-center gap-2 rounded-full border border-slate-200 bg-white py-4 shadow-card active:opacity-80 dark:border-slate-700 dark:bg-slate-900"
                 >
@@ -244,7 +305,7 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
           </Animated.View>
         ) : (
           <View className="flex-row items-center justify-between px-5 pb-4 pt-4">
-            <Pressable onPress={reset} className="flex-row items-center gap-2.5 p-1 active:opacity-60">
+            <Pressable onPress={resetActive} className="flex-row items-center gap-2.5 p-1 active:opacity-60">
               <RotateCw size={22} color="#94a3b8" strokeWidth={2.5} />
               <Text className="text-[18px] font-semibold text-slate-400">Reset</Text>
             </Pressable>

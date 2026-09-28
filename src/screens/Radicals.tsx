@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
-import { View, Text, TextInput, Pressable, ScrollView } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
-import { ArrowLeft, Search } from 'lucide-react-native'
+import { View, Text, TextInput, useWindowDimensions } from 'react-native'
+import { Search } from 'lucide-react-native'
+import { DetailShell } from '../components/dictionary/DetailShell'
+import { PressScale } from '../components/dictionary/PressScale'
+import { ICON_GREEN, ICON_MUTED, ICON_STROKE } from '../components/dictionary/DictionaryControls'
+import { DICT_BG, DICT_CARD_SHADOW } from '../components/dictionary/shadows'
+import { useRevealedShadow } from '../components/shadowReveal'
 import { RadicalDetailModal } from '../components/RadicalDetailModal'
-import { CHIP_SHADOW } from '../components/chipShadow'
 import { RADICALS } from '../data/radicals'
 import type { Radical } from '../types'
 
@@ -13,17 +15,61 @@ interface Group {
   radicals: Radical[]
 }
 
+/** Tiles per row, and the fixed gap between them — see `Radicals` for how a tile's own width is derived from these. */
+const GRID_COLUMNS = 3
+const GRID_GAP = 10
+/** Matches `DetailShell`'s own `ScrollView` padding. */
+const SHELL_PADDING = 16
+/** Same design cap every other full-screen layout in the app centres against. */
+const CONTENT_MAX = 430
+
+/**
+ * One radical tile — a Kangxi reference glyph, always in the teaching table's
+ * own traditional form regardless of `settings.script` (see `hanziFont`'s
+ * comment on the Kangxi exception in CLAUDE.md: these come from a fixed
+ * reference table, not a bank entry with two forms).
+ *
+ * `width` is a measured pixel value, not a Tailwind percentage — a dynamic
+ * `w-[Npx]` class is invisible to NativeWind's static scan (see `hanziFont`'s
+ * own comment on the same trap), and a percentage width can't account for the
+ * fixed gap between columns, which is what left a short group's row (say, one
+ * lone radical at 1 stroke) looking like a different, wider tile rather than
+ * the same size sitting flush left.
+ */
+function RadicalTile({ radical, width, onPress }: { radical: Radical; width: number; onPress: () => void }) {
+  const shadow = useRevealedShadow(DICT_CARD_SHADOW)
+  return (
+    <PressScale
+      onPress={onPress}
+      scaleTo={0.96}
+      style={[shadow, { width, borderRadius: 16, backgroundColor: DICT_BG.card }]}
+      className="items-center justify-center gap-1 rounded-2xl border border-dict-border bg-dict-card py-3.5"
+      accessibilityLabel={`${radical.character}, ${radical.pinyin}, ${radical.meaning}`}
+    >
+      <Text className="font-hanzi-tc-regular text-[26px] leading-[32px] text-dict-heading">{radical.character}</Text>
+      <Text numberOfLines={1} className="font-dict-sans text-[11.5px] leading-[15px] text-dict-soft">
+        {radical.pinyin}
+      </Text>
+    </PressScale>
+  )
+}
+
 export function Radicals() {
   const [selected, setSelected] = useState<Radical | null>(null)
   const [query, setQuery] = useState('')
-  const [strokeFilter, setStrokeFilter] = useState<'all' | number>('all')
+  const [focused, setFocused] = useState(false)
 
-  const strokeCounts = useMemo(() => [...new Set(RADICALS.map((r) => r.strokeCount))].sort((a, b) => a - b), [])
+  const { width: windowWidth } = useWindowDimensions()
+  /* The same column the rest of the dictionary centres its content in, minus
+     `DetailShell`'s own padding — derived rather than measured with
+     `onLayout`, which doesn't fire for every view on this project's web
+     target (see CLAUDE.md's note on `budgetForArea` and friends). */
+  const contentWidth = Math.min(windowWidth, CONTENT_MAX) - SHELL_PADDING * 2
+  const tileWidth = (contentWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
 
   const groups = useMemo<Group[]>(() => {
     const q = query.trim().toLowerCase()
     const matches = RADICALS.filter((r) => {
-      if (strokeFilter !== 'all' && r.strokeCount !== strokeFilter) return false
       if (!q) return true
       return r.character.includes(q) || r.pinyin.toLowerCase().includes(q) || r.meaning.toLowerCase().includes(q)
     })
@@ -36,88 +82,59 @@ export function Radicals() {
     return [...byStroke.keys()]
       .sort((a, b) => a - b)
       .map((strokeCount) => ({ strokeCount, radicals: byStroke.get(strokeCount) ?? [] }))
-  }, [query, strokeFilter])
+  }, [query])
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <View className="mb-2 flex-row items-center gap-3 px-4 pt-2">
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900"
-        >
-          <ArrowLeft size={20} color="#64748b" />
-        </Pressable>
-        <View>
-          <Text className="text-sm font-medium text-slate-400 dark:text-slate-500">Dictionary</Text>
-          <Text className="text-lg font-bold text-slate-900 dark:text-white">Learn Radicals</Text>
-        </View>
-      </View>
-      <Text className="px-4 pb-2 text-xs text-slate-400">
-        The building blocks characters are made of — {RADICALS.length} of the most common ones. These aren't full words, so they won't be
-        added to My Words.
-      </Text>
-
-      <View className="px-4">
-        <View className="mb-3 flex-row items-center gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-card dark:bg-slate-900">
-          <Search size={16} color="#94a3b8" />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search radicals, characters, pinyin..."
-            placeholderTextColor="#94a3b8"
-            className="flex-1 text-sm text-slate-900 dark:text-white"
-          />
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 14 }}>
-          <Pressable
-            onPress={() => setStrokeFilter('all')}
-            style={strokeFilter === 'all' ? undefined : CHIP_SHADOW}
-            className={`rounded-full px-3.5 py-2 ${strokeFilter === 'all' ? 'bg-brand-500' : 'bg-white dark:bg-slate-900'}`}
-          >
-            <Text className={`text-xs font-semibold ${strokeFilter === 'all' ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>
-              All Strokes
-            </Text>
-          </Pressable>
-          {strokeCounts.map((sc) => (
-            <Pressable
-              key={sc}
-              onPress={() => setStrokeFilter(sc)}
-              style={strokeFilter === sc ? undefined : CHIP_SHADOW}
-              className={`rounded-full px-3.5 py-2 ${strokeFilter === sc ? 'bg-brand-500' : 'bg-white dark:bg-slate-900'}`}
-            >
-              <Text className={`text-xs font-semibold ${strokeFilter === sc ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>{sc}</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+    <DetailShell title="Radicals">
+      <View>
+        <Text className="font-dict-sans text-[14.5px] leading-[20px] text-dict-soft">
+          The building blocks characters are made of — {RADICALS.length} of the most common ones. These aren't full
+          words, so they won't be added to My Words.
+        </Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ gap: 24, paddingHorizontal: 16, paddingBottom: 32 }}>
-        {groups.length === 0 && <Text className="py-12 text-center text-sm text-slate-400">No radicals match this search.</Text>}
-        {groups.map((group) => (
-          <View key={group.strokeCount}>
-            <Text className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">
-              {group.strokeCount} stroke{group.strokeCount === 1 ? '' : 's'}
-            </Text>
-            <View className="flex-row flex-wrap gap-2.5">
-              {group.radicals.map((r) => (
-                <Pressable
-                  key={r.id}
-                  onPress={() => setSelected(r)}
-                  className="w-[31.5%] items-center justify-center gap-1 rounded-2xl bg-white py-3.5 shadow-card dark:bg-slate-900"
-                >
-                  <Text className="font-hanzi text-2xl font-bold text-slate-900 dark:text-white">{r.character}</Text>
-                  <Text className="text-[11px] text-slate-400">{r.pinyin}</Text>
-                </Pressable>
-              ))}
-            </View>
+      <View
+        className={`flex-row items-center rounded-[16px] border bg-dict-card px-4 ${
+          focused ? 'border-dict-green/60' : 'border-dict-border'
+        }`}
+        style={{ height: 50, gap: 10 }}
+      >
+        <Search size={18} color={focused ? ICON_GREEN : ICON_MUTED} strokeWidth={ICON_STROKE} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder="Search radicals, characters, pinyin"
+          placeholderTextColor={ICON_MUTED}
+          autoCorrect={false}
+          autoCapitalize="none"
+          keyboardType="ascii-capable"
+          accessibilityLabel="Search radicals"
+          className="flex-1 font-dict-sans text-[15px] text-dict-heading"
+        />
+      </View>
+
+      {groups.length === 0 && (
+        <Text className="py-12 text-center font-dict-sans text-[15px] text-dict-soft">
+          No radicals match this search.
+        </Text>
+      )}
+
+      {groups.map((group) => (
+        <View key={group.strokeCount} className="gap-2.5">
+          <Text className="font-dict-semibold text-[13px] leading-[17px] text-dict-soft">
+            {group.strokeCount} stroke{group.strokeCount === 1 ? '' : 's'}
+          </Text>
+          <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
+            {group.radicals.map((r) => (
+              <RadicalTile key={r.id} radical={r} width={tileWidth} onPress={() => setSelected(r)} />
+            ))}
           </View>
-        ))}
-      </ScrollView>
+        </View>
+      ))}
 
       {selected && <RadicalDetailModal radical={selected} onClose={() => setSelected(null)} />}
-    </SafeAreaView>
+    </DetailShell>
   )
 }

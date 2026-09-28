@@ -1,25 +1,14 @@
-import { useState, type ComponentType } from 'react'
+import { type ComponentType } from 'react'
 import { View, Text } from 'react-native'
 import { Tabs, router, usePathname } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import {
-  Home,
-  GraduationCap,
-  Sparkles,
-  Library,
-  Repeat,
-  BookOpen,
-  Settings as SettingsIcon,
-  PenTool,
-} from 'lucide-react-native'
+import { Home, GraduationCap, Library, Repeat, BookOpen, Settings as SettingsIcon } from 'lucide-react-native'
 import { dashColors as tabColors } from '../../components/dashboard/tokens'
 import { useApp } from '../../context/AppContext'
 import { dueCountFor } from '../../lib/selectors'
 import { FEATURES } from '../../lib/features'
 import { tickHaptic } from '../../lib/haptics'
-import { TabPickerSheet } from '../../components/TabPickerSheet'
 import { TourPulse } from '../../components/tour/TourPulse'
-import { WritingGuideModal } from '../../components/WritingGuideModal'
 
 /**
  * One tab: icon over label, both inside the pale-green pill when active.
@@ -51,7 +40,7 @@ function TabItem({
       className="items-center justify-center"
       style={{
         width: 64,
-        paddingVertical: 7,
+        paddingVertical: 5,
         borderRadius: 16,
         backgroundColor: focused ? tabColors.greenSoft : 'transparent',
       }}
@@ -89,6 +78,12 @@ function TabItem({
   )
 }
 
+/**
+ * The tab bar's height above the safe-area inset: 6 of top padding plus one
+ * `TabItem` (5 + 23 icon + 3 + 15 label + 5 = 51), plus a point of air.
+ */
+const TAB_BAR_BODY = 58
+
 export default function TabsLayout() {
   const { deck, newlyAddedWordIds, reportTourAction } = useApp()
   const dueCount = dueCountFor(deck)
@@ -101,8 +96,6 @@ export default function TabsLayout() {
    * the whole tab group and would otherwise leave nothing lit.
    */
   const dictionarySection = pathname.startsWith('/dictionary')
-  const [openSheet, setOpenSheet] = useState<'lessons' | null>(null)
-  const [showGuide, setShowGuide] = useState(false)
 
   /*
    * Room under the tabs for the system's own navigation.
@@ -114,168 +107,165 @@ export default function TabsLayout() {
    *
    * Derived rather than a magic offset: a 3-button Android nav wants ~48dp, an
    * iPhone home indicator 34, and a device with neither wants none. The floor
-   * of 12 is for the last case — it lifts the labels off the very bottom edge,
-   * which is the nudge that was asked for and costs nothing where the inset
-   * already covers it.
+   * of 6 is for the last case — it lifts the labels off the very bottom edge
+   * and costs nothing where the inset already covers it.
+   *
+   * The bar above the inset is exactly as tall as a tab (`TAB_BAR_BODY`), with
+   * nothing spare under the labels. It used to be 70 over a floor of 12, which
+   * left a band of empty bar between the labels and the phone's own navigation
+   * buttons — the bar read as floating too high up the screen.
    */
   const insets = useSafeAreaInsets()
-  const barInset = Math.max(insets.bottom, 12)
+  const barInset = Math.max(insets.bottom, 6)
 
   return (
-    <>
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          /*
-           * The label is drawn inside `tabBarIcon` (see `TabItem`) so the active
-           * pill can wrap the icon and the label together. The bar itself is
-           * warm white against the Dashboard's cream, separated by a hairline
-           * rather than a shadow — the whole design is soft, not elevated.
-           */
-          tabBarShowLabel: false,
-          tabBarStyle: {
-            height: 70 + barInset,
-            paddingTop: 8,
-            paddingBottom: barInset,
-            // Warm white, not pure white — the bar sits under cream paper on
-            // every screen it frames, and #FFFFFF reads as a cold strip.
-            backgroundColor: tabColors.card,
-            borderTopWidth: 1,
-            borderTopColor: tabColors.border,
-            elevation: 0,
-          },
-          tabBarItemStyle: { paddingVertical: 0 },
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        /*
+         * The label is drawn inside `tabBarIcon` (see `TabItem`) so the active
+         * pill can wrap the icon and the label together. The bar itself is
+         * warm white against the Dashboard's cream, separated by a hairline
+         * rather than a shadow — the whole design is soft, not elevated.
+         */
+        tabBarShowLabel: false,
+        tabBarStyle: {
+          height: TAB_BAR_BODY + barInset,
+          paddingTop: 6,
+          paddingBottom: barInset,
+          // Warm white, not pure white — the bar sits under cream paper on
+          // every screen it frames, and #FFFFFF reads as a cold strip.
+          backgroundColor: tabColors.card,
+          borderTopWidth: 1,
+          borderTopColor: tabColors.border,
+          elevation: 0,
+        },
+        tabBarItemStyle: { paddingVertical: 0 },
+      }}
+    >
+      <Tabs.Screen
+        name="index"
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ focused }) => <TabItem icon={Home} label="Home" focused={focused} filled />,
         }}
-      >
-        <Tabs.Screen
-          name="index"
-          options={{
-            title: 'Home',
-            tabBarIcon: ({ focused }) => <TabItem icon={Home} label="Home" focused={focused} filled />,
-          }}
-          listeners={{ tabPress: () => { tickHaptic(); setOpenSheet(null) } }}
-        />
-        {/*
-          This tab stays put even with Lessons switched off: it's the only route
-          to New Words and Books, which open from its picker sheet below. With
-          Lessons hidden it's just relabelled, since "Lessons" would then name
-          the one thing the sheet can't offer.
-        */}
-        <Tabs.Screen
-          name="lessons-tab"
-          options={{
-            title: FEATURES.lessons ? 'Lessons' : 'Learn',
-            tabBarIcon: ({ focused }) => (
-              <TourPulse target="learn-tab" radius={16} inset={3}>
-                <TabItem
-                  icon={FEATURES.lessons ? GraduationCap : BookOpen}
-                  label={FEATURES.lessons ? 'Lessons' : 'Learn'}
-                  focused={focused}
-                />
-              </TourPulse>
-            ),
-          }}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault()
-              tickHaptic()
-              setOpenSheet('lessons')
-              reportTourAction('learn:open')
-            },
-          }}
-        />
-        <Tabs.Screen
-          name="review-tab"
-          options={{
-            title: 'Review',
-            tabBarIcon: ({ focused }) => <TabItem icon={Repeat} label="Review" focused={focused} />,
-            tabBarBadge: dueCount > 0 ? (dueCount > 99 ? '99+' : dueCount) : undefined,
-            /*
-             * Nudged up and right so it clears the icon. The default position
-             * assumes the navigator's own icon-above-label layout; `TabItem`
-             * draws both itself, which sits lower in the bar.
-             */
-            tabBarBadgeStyle: {
-              backgroundColor: tabColors.coral,
-              fontSize: 10,
-              lineHeight: 14,
-              minWidth: 17,
-              height: 17,
-              top: -3,
-              marginLeft: 15,
-            },
-          }}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault()
-              tickHaptic()
-              setOpenSheet(null)
-              router.push('/review')
-            },
-          }}
-        />
-        <Tabs.Screen
-          name="dictionary-tab"
-          options={{
-            title: 'Dictionary',
-            /*
-             * Lit from `dictionarySection` rather than the navigator's own
-             * `focused`, so the standalone `/dictionary` route keeps the tab
-             * highlighted too. Filled when active, like Home — Lucide draws in
-             * strokes, so "filled" means painting the interior in the same
-             * green, which reads as a solid book rather than an outline of one.
-             */
-            tabBarIcon: () => (
-              <TabItem
-                icon={Library}
-                label="Dictionary"
-                focused={dictionarySection}
-                filled
-                badge={newlyAddedWordIds.length > 0}
-              />
-            ),
-          }}
-          listeners={{ tabPress: () => { tickHaptic(); setOpenSheet(null) } }}
-        />
-        <Tabs.Screen
-          name="settings"
-          options={{
-            title: 'Settings',
-            tabBarIcon: ({ focused }) => <TabItem icon={SettingsIcon} label="Settings" focused={focused} />,
-          }}
-          listeners={{ tabPress: () => { tickHaptic(); setOpenSheet(null) } }}
-        />
-      </Tabs>
-
-      <TabPickerSheet
-        visible={openSheet === 'lessons'}
-        title="What would you like to do?"
-        onClose={() => setOpenSheet(null)}
-        options={[
-          ...(FEATURES.lessons
-            ? [
-                {
-                  key: 'lessons',
-                  label: 'Lessons',
-                  description: 'Work through units, one skill at a time',
-                  icon: GraduationCap,
-                  onPress: () => router.push('/lessons'),
-                },
-              ]
-            : []),
-          { key: 'new-words', label: 'New Words', description: 'Flip through fresh vocabulary', icon: Sparkles, onPress: () => router.push('/new-words') },
-          { key: 'books', label: 'Books', description: 'Read short stories in Chinese', icon: Library, onPress: () => router.push('/books') },
-          {
-            key: 'writing-guide',
-            label: 'How to write Chinese',
-            description: 'Radicals, stroke order, and how characters are built',
-            icon: PenTool,
-            onPress: () => setShowGuide(true),
-          },
-        ]}
+        listeners={{ tabPress: () => tickHaptic() }}
       />
-
-      {showGuide && <WritingGuideModal onClose={() => setShowGuide(false)} />}
-    </>
+      {/*
+        This tab stays put even with Lessons switched off: it's the route to
+        the Learn screen, which is the only way to New Words and Books. With
+        Lessons hidden it's just relabelled, since "Lessons" would then name
+        the one thing that screen can't offer.
+      */}
+      <Tabs.Screen
+        name="lessons-tab"
+        options={{
+          title: FEATURES.lessons ? 'Lessons' : 'Learn',
+          tabBarIcon: ({ focused }) => (
+            <TourPulse target="learn-tab" radius={16} inset={3}>
+              <TabItem
+                icon={FEATURES.lessons ? GraduationCap : BookOpen}
+                label={FEATURES.lessons ? 'Lessons' : 'Learn'}
+                focused={focused}
+              />
+            </TourPulse>
+          ),
+        }}
+        listeners={{
+          tabPress: () => {
+            tickHaptic()
+            reportTourAction('learn:open')
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="review-tab"
+        options={{
+          title: 'Review',
+          tabBarIcon: ({ focused }) => <TabItem icon={Repeat} label="Review" focused={focused} />,
+          tabBarBadge: dueCount > 0 ? (dueCount > 99 ? '99+' : dueCount) : undefined,
+          /*
+           * Nudged up and right so it clears the icon. The default position
+           * assumes the navigator's own icon-above-label layout; `TabItem`
+           * draws both itself, which sits lower in the bar.
+           */
+          tabBarBadgeStyle: {
+            backgroundColor: tabColors.coral,
+            fontSize: 10,
+            lineHeight: 14,
+            minWidth: 17,
+            height: 17,
+            top: -3,
+            marginLeft: 15,
+          },
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault()
+            tickHaptic()
+            router.push('/review')
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="dictionary-tab"
+        options={{
+          title: 'Dictionary',
+          /*
+           * Lit from `dictionarySection` rather than the navigator's own
+           * `focused`, so the standalone `/dictionary` route keeps the tab
+           * highlighted too. Filled when active, like Home — Lucide draws in
+           * strokes, so "filled" means painting the interior in the same
+           * green, which reads as a solid book rather than an outline of one.
+           */
+          tabBarIcon: () => (
+            <TabItem
+              icon={Library}
+              label="Dictionary"
+              focused={dictionarySection}
+              filled
+              badge={newlyAddedWordIds.length > 0}
+            />
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            tickHaptic()
+            /*
+             * Tapping the tab while already inside it returns to the browse
+             * screen, rather than just refocusing the tab on whatever word or
+             * character screen a previous visit pushed onto the nested stack
+             * (see Routing in CLAUDE.md). The other tabs have no nested stack
+             * to leave stranded on, so this is the one place that needs it.
+             */
+            if (dictionarySection && pathname !== '/dictionary-tab') {
+              e.preventDefault()
+              router.navigate('/dictionary-tab')
+              return
+            }
+            /*
+             * Already sitting on the browse screen itself — the index route
+             * doesn't change, so the tab press above would otherwise be a
+             * no-op and a learner stuck three levels into HSK 3 vocabulary
+             * has no way back to the landing page except Back taps. `reload`
+             * is a param the screen itself doesn't use for anything but
+             * noticing it changed (see Dictionary.tsx) — bumping it is a
+             * signal to reset local state, not a real navigation.
+             */
+            if (dictionarySection && pathname === '/dictionary-tab') {
+              router.setParams({ reload: String(Date.now()) })
+            }
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ focused }) => <TabItem icon={SettingsIcon} label="Settings" focused={focused} />,
+        }}
+        listeners={{ tabPress: () => tickHaptic() }}
+      />
+    </Tabs>
   )
 }

@@ -54,6 +54,13 @@ export function NewWordCard({
       minHeight={dashHeights.word}
       onPress={onSeeAll}
       accessibilityLabel={`Learn a new word: ${displayWord(word, script)}. See all new words.`}
+      /*
+       * This card is also home to three of its own real buttons (See all, Not
+       * now, Add this word) — see `PressableScale`'s comment on why the outer
+       * card itself can't also claim the `button` role without nesting one
+       * `<button>` inside another on web.
+       */
+      accessibilityRole="none"
     >
       {/*
         The range fills the lower right and fades into the card's own near-white.

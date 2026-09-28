@@ -63,6 +63,8 @@ import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium'
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold'
 import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold'
 import { Lora_400Regular } from '@expo-google-fonts/lora/400Regular'
+import { Lora_400Regular_Italic } from '@expo-google-fonts/lora/400Regular_Italic'
+import { Lora_700Bold } from '@expo-google-fonts/lora/700Bold'
 import { AppProvider, useApp } from '../context/AppContext'
 import { AuthProvider, useAuth } from '../context/AuthContext'
 import { AdsProvider } from '../context/AdsContext'
@@ -109,6 +111,11 @@ function RootNavigator() {
     InterSemiBold: Inter_600SemiBold,
     InterBold: Inter_700Bold,
     Lora: Lora_400Regular,
+    // The dictionary's editorial headings ("Dictionary", "Recent", "Explore")
+    // and its one italic aside. A real bold, because a synthesised one does not
+    // exist on native.
+    LoraItalic: Lora_400Regular_Italic,
+    LoraBold: Lora_700Bold,
     // Noto *Sans* TC — the writing guide sets its Chinese UI text (part labels,
     // radical examples) in a sans to sit with Nunito, where the reader and
     // dictionary use the serif. A different typeface, so registered separately.

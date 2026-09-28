@@ -1,10 +1,11 @@
-import { View, Text } from 'react-native'
+import { View, Text, type ViewStyle } from 'react-native'
 import { Volume2, PencilLine, Plus, Check, Sparkles } from 'lucide-react-native'
 import { PressScale } from './PressScale'
 import { speak } from '../../lib/speech'
 import { playPositiveChime } from '../../lib/sound'
 import { tapHaptic, tickHaptic, successHaptic, sequence } from '../../lib/haptics'
 import { LOOKUP_HSK_LEVEL } from '../../data/lookupWords'
+import { DICT_BG, DICT_BUTTON_SHADOW } from './shadows'
 import type { EntryState } from '../../lib/dictionary'
 
 /*
@@ -84,6 +85,7 @@ export function FilterChip({
       /* Compact, so all six HSK levels reach the edge of a 390pt screen rather
          than trailing off it — the row scrolls, but a level the learner cannot
          see is a level they will not think to pick. */
+      style={[DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: selected ? DICT_BG.green : DICT_BG.card }]}
       className={`items-center justify-center rounded-full px-4 py-2.5 ${
         selected ? 'bg-dict-green' : 'border border-dict-line bg-dict-card'
       }`}
@@ -115,7 +117,7 @@ export function IconChip({
     <PressScale
       onPress={onPress}
       accessibilityLabel={label}
-      style={{ width: size, height: size }}
+      style={[{ width: size, height: size }, DICT_BUTTON_SHADOW, { borderRadius: size / 2, backgroundColor: DICT_BG.card }]}
       className="h-full w-full items-center justify-center rounded-full border border-dict-line bg-dict-card"
     >
       <Icon size={size * 0.45} color={color} strokeWidth={ICON_STROKE} />
@@ -140,16 +142,25 @@ export function SpeakChip({ text, size = 40 }: { text: string; size?: number }) 
 
 // --- Deck state ---------------------------------------------------------------
 
-const STATE_STYLES: Record<EntryState, { label: string; className: string; textClass: string }> = {
-  add: { label: 'Add', className: 'bg-dict-green', textClass: 'text-white' },
+/*
+ * Plain style objects rather than classes, deliberately. This is the control
+ * whose state flips when a word is added, and on native that flip was taking
+ * NativeWind-applied styles on the word screen down with it (see the comment
+ * over `HeroCard`'s button row). A state-dependent style here is just a
+ * different object, which React Native applies directly.
+ */
+const STATE_STYLES: Record<EntryState, { label: string; box: ViewStyle; text: string }> = {
+  add: { label: 'Add', box: { backgroundColor: DICT_BG.green }, text: '#ffffff' },
   'in-deck': {
     label: 'In Deck',
-    className: 'border border-dict-green bg-dict-card',
-    textClass: 'text-dict-green-dark',
+    box: { backgroundColor: DICT_BG.card, borderWidth: 1, borderColor: DICT_BG.green },
+    text: DICT_BG.greenDark,
   },
-  learning: { label: 'Learning', className: 'bg-[#dbeafe]', textClass: 'text-[#1d4ed8]' },
-  'new-from-story': { label: 'New from story', className: 'bg-dict-green-pale', textClass: 'text-dict-green-dark' },
+  learning: { label: 'Learning', box: { backgroundColor: '#dbeafe' }, text: '#1d4ed8' },
+  'new-from-story': { label: 'New from story', box: { backgroundColor: DICT_BG.greenPale }, text: DICT_BG.greenDark },
 }
+
+const PILL: ViewStyle = { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 999 }
 
 /**
  * The trailing control on a result row: adds the word, or reports where it
@@ -168,14 +179,18 @@ export function DeckStateButton({
   compact?: boolean
 }) {
   const meta = STATE_STYLES[state]
-  const padding = compact ? 'px-3.5 py-2' : 'px-6 py-3'
+  const padding: ViewStyle = compact
+    ? { paddingHorizontal: 14, paddingVertical: 8 }
+    : { paddingHorizontal: 24, paddingVertical: 12 }
 
   if (state !== 'add') {
     return (
-      <View className={`flex-row items-center gap-1.5 rounded-full ${padding} ${meta.className}`}>
+      <View style={[DICT_BUTTON_SHADOW, PILL, padding, meta.box]}>
         {state === 'in-deck' && <Check size={16} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />}
         {state === 'new-from-story' && <Sparkles size={14} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />}
-        <Text className={`font-dict-semibold text-[14px] leading-[18px] ${meta.textClass}`}>{meta.label}</Text>
+        <Text style={{ fontFamily: 'NunitoSansSemiBold', fontSize: 14, lineHeight: 18, color: meta.text }}>
+          {meta.label}
+        </Text>
       </View>
     )
   }
@@ -196,10 +211,11 @@ export function DeckStateButton({
         onAdd()
       }}
       accessibilityLabel="Add to deck"
-      className={`flex-row items-center justify-center gap-1.5 rounded-full ${padding} ${meta.className}`}
+      style={[DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
+      innerStyle={[PILL, padding, meta.box]}
     >
       {compact && <Plus size={16} color="#ffffff" strokeWidth={ICON_STROKE} />}
-      <Text className={`font-dict-bold text-[15px] leading-[19px] ${meta.textClass}`}>{meta.label}</Text>
+      <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: meta.text }}>{meta.label}</Text>
     </PressScale>
   )
 }
@@ -224,7 +240,7 @@ export function AddCircleButton({ onAdd, added }: { onAdd: () => void; added: bo
         onAdd()
       }}
       accessibilityLabel="Add to deck"
-      style={{ width: 28, height: 28 }}
+      style={[{ width: 28, height: 28 }, DICT_BUTTON_SHADOW, { borderRadius: 14, backgroundColor: DICT_BG.card }]}
       className="h-full w-full items-center justify-center rounded-full border-2 border-dict-green bg-dict-card"
     >
       <Plus size={15} color={ICON_GREEN} strokeWidth={2.5} />

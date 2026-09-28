@@ -1,5 +1,5 @@
 import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Platform, View, Text, ActivityIndicator, type LayoutChangeEvent } from 'react-native'
+import { Animated, Easing, Platform, View, Text, ActivityIndicator, type LayoutChangeEvent } from 'react-native'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import type { CharacterJson } from 'hanzi-writer'
 import { playStrokeSound, playGongSound } from '../../lib/sound'
@@ -26,7 +26,6 @@ export type HanziStageSpeed = 'normal' | 'slow'
 const CDN_VERSION = '2.0.1'
 const CDN_URL = (char: string) =>
   `https://cdn.jsdelivr.net/npm/hanzi-writer-data@${CDN_VERSION}/${encodeURIComponent(char)}.json`
-const GAP = 10
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -106,6 +105,15 @@ interface Props {
   revealKey?: number
   /** Bump to restart the demo animation or reset a quiz attempt for the same word. */
   resetKey?: number | string
+  /**
+   * Bump to clear only the character currently being written — its drawn
+   * strokes, its stroke count towards the word's progress, its hint state —
+   * without touching characters already finished or restarting the word from
+   * its first glyph. See "Reset" in `WritingPracticeModal`, which is the one
+   * control this exists for; `resetKey` above is still what restarts the
+   * whole word.
+   */
+  resetActiveKey?: number
   /** Demo playback speed. Ignored in quiz mode, which isn't animating anything. */
   speed?: HanziStageSpeed
   /**
@@ -115,14 +123,25 @@ interface Props {
    */
   holdCharacterOnComplete?: boolean
   /**
-   * Fired on every accepted stroke, with figures for the **whole word** — not
-   * for the character currently being written. A multi-character word is quizzed
-   * one glyph at a time, but a caller showing "7 / 12" means the word, so the
-   * per-glyph numbers are summed here rather than in each screen.
+   * Fired on every accepted stroke — and once more, immediately, whenever
+   * `resetActiveKey` clears the active glyph — with figures for the **whole
+   * word**, not the character currently being written. `done`/`total` rather
+   * than "remaining", and computed fresh each time from every glyph's own
+   * count rather than accumulated as strokes are drawn, is what lets a reset
+   * make the bar go backwards correctly instead of a caller having to guess
+   * how much to subtract.
    */
-  onQuizProgress?: (strokesRemaining: number, totalMistakes: number) => void
+  onQuizProgress?: (done: number, total: number, totalMistakes: number) => void
   onQuizComplete?: (totalMistakes: number) => void
   onDemoComplete?: () => void
+  /**
+   * Fired the moment any one character in the word is finished — including
+   * the last one, ahead of `onQuizComplete` for the word as a whole. This is
+   * what a caller drives a per-character progress indicator from (see
+   * `WritingPracticeModal`), since which glyphs are done otherwise lives only
+   * inside this component.
+   */
+  onCharacterComplete?: (index: number) => void
   maxSize?: number
 }
 
@@ -141,11 +160,13 @@ export function HanziStage({
   hintKey = 0,
   revealKey = 0,
   resetKey,
+  resetActiveKey = 0,
   speed = 'normal',
   holdCharacterOnComplete = false,
   onQuizProgress,
   onQuizComplete,
   onDemoComplete,
+  onCharacterComplete,
   maxSize = 360,
 }: Props) {
   const chars = useMemo(() => [...character].filter(Boolean), [character])
@@ -159,20 +180,17 @@ export function HanziStage({
     setBox((prev) => (prev && Math.abs(prev.w - w) < 4 && Math.abs(prev.h - h) < 4 ? prev : { w, h }))
   }
 
-  const perCharSize = box
-    ? Math.floor(Math.min(box.h, maxSize, (box.w - GAP * (chars.length - 1)) / chars.length))
-    : null
+  /*
+   * One character fills the whole stage — never divided by how many the word
+   * has. A multi-character word is written one glyph at a time (see
+   * `activeIndex` below), and the rest wait off to the side rather than
+   * sharing the drawing area with the active one.
+   */
+  const stageSize = box ? Math.floor(Math.min(box.w, box.h, maxSize)) : null
 
   // Multi-character words play/quiz one character at a time, left to right —
   // the second character only becomes active once the first is done.
   const [activeIndex, setActiveIndex] = useState(0)
-  /*
-   * Set once every character in the word is written. Purely presentational: the
-   * turn-taking dim would otherwise leave a finished multi-character word with
-   * only its last glyph lit and the rest at 20%, which is the opposite of what
-   * you want at the moment you've just written the whole thing.
-   */
-  const [wordComplete, setWordComplete] = useState(false)
   const completedIndexes = useRef(new Set<number>())
   const demoCompletedIndexes = useRef(new Set<number>())
   const totalMistakes = useRef(0)
@@ -195,7 +213,6 @@ export function HanziStage({
     totalMistakes.current = 0
     glyphDrawn.current = []
     setActiveIndex(0)
-    setWordComplete(false)
   }, [character, mode, resetKey])
 
   // Totals belong to the characters, not to an attempt, so they survive a reset
@@ -204,26 +221,66 @@ export function HanziStage({
     glyphTotals.current = []
   }, [character])
 
+  /*
+   * The word advances one glyph at a time, and this is what everything on
+   * screen actually slides against — a single value rather than one per
+   * glyph, so every glyph's position is just "how far am I from `position`"
+   * and the whole word can never disagree about where the seam is.
+   */
+  const position = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    Animated.timing(position, {
+      toValue: activeIndex,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: Platform.OS !== 'web',
+    }).start()
+  }, [activeIndex, position])
+
+  /** `done`/`total` strokes across the whole word, as of right now. */
+  const wordProgress = () => {
+    let done = 0
+    let total = 0
+    for (let i = 0; i < chars.length; i++) {
+      done += glyphDrawn.current[i] ?? 0
+      total += glyphTotals.current[i] ?? 0
+    }
+    return { done, total }
+  }
+
+  /*
+   * Resetting the active glyph only ever touches its own entry in
+   * `glyphDrawn` — the whole point is that a character already finished, and
+   * the word's position in the queue, are untouched. Skipped on the render
+   * that introduces a fresh key (0) so mounting never fires this.
+   */
+  const resetActiveKeyRef = useRef(resetActiveKey)
+  useEffect(() => {
+    if (resetActiveKey === resetActiveKeyRef.current) return
+    resetActiveKeyRef.current = resetActiveKey
+    glyphDrawn.current[activeIndex] = 0
+    const { done, total } = wordProgress()
+    onQuizProgress?.(done, total, totalMistakes.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetActiveKey])
+
   const handleGlyphProgress = (idx: number, strokesRemaining: number, mistakes: number) => {
     // Derive this glyph's total from its own first event if its stroke data
     // hasn't landed yet: what remains plus what has been drawn.
     glyphDrawn.current[idx] = (glyphDrawn.current[idx] ?? 0) + 1
     glyphTotals.current[idx] ??= strokesRemaining + glyphDrawn.current[idx]
 
-    let remaining = 0
-    for (let i = 0; i < chars.length; i++) {
-      remaining += Math.max(0, (glyphTotals.current[i] ?? 0) - (glyphDrawn.current[i] ?? 0))
-    }
+    const { done, total } = wordProgress()
     // Completed glyphs have already banked their mistakes; the active one is
     // still reporting a running count of its own.
-    onQuizProgress?.(remaining, totalMistakes.current + mistakes)
+    onQuizProgress?.(done, total, totalMistakes.current + mistakes)
   }
 
   const handleGlyphQuizComplete = (idx: number, mistakes: number) => {
     completedIndexes.current.add(idx)
     totalMistakes.current += mistakes
+    onCharacterComplete?.(idx)
     if (completedIndexes.current.size === chars.length) {
-      setWordComplete(true)
       onQuizComplete?.(totalMistakes.current)
     } else if (idx === activeIndex) {
       setActiveIndex(idx + 1)
@@ -240,33 +297,63 @@ export function HanziStage({
   }
 
   return (
-    <View className="absolute inset-0 flex-row items-center justify-center" style={{ gap: GAP }} onLayout={handleLayout}>
-      {perCharSize &&
-        chars.map((char, idx) => (
-          <SingleGlyphStage
-            // `speed` is in the key because the WebView is configured once, by the
-            // `init` message — there is no way to retune a live writer, so
-            // changing speed has to rebuild it.
-            key={`${idx}-${char}-${mode}-${speed}-${resetKey}-${Math.round(perCharSize / 4) * 4}-${showOutline}`}
-            char={char}
-            mode={mode}
-            speed={speed}
-            showOutline={showOutline}
-            showGuides={showGuides}
-            hintKey={hintKey}
-            revealKey={revealKey}
-            size={perCharSize}
-            holdCharacterOnComplete={holdCharacterOnComplete}
-            active={idx === activeIndex}
-            dimmed={!wordComplete && idx !== activeIndex}
-            onStrokeTotal={(total) => {
-              glyphTotals.current[idx] = total
-            }}
-            onQuizProgress={(remaining, mistakes) => handleGlyphProgress(idx, remaining, mistakes)}
-            onQuizComplete={(mistakes) => handleGlyphQuizComplete(idx, mistakes)}
-            onDemoComplete={() => handleGlyphDemoComplete(idx)}
-          />
-        ))}
+    <View className="absolute inset-0 items-center justify-center" onLayout={handleLayout}>
+      {stageSize != null && (
+        <View style={{ width: stageSize, height: stageSize }}>
+          {chars.map((char, idx) => {
+            /*
+             * This glyph's distance from the active one, as a single number:
+             * 0 while it's active, negative once a later glyph takes over
+             * (so it settles off to the left, already written), positive
+             * while its own turn hasn't arrived yet (waiting off to the
+             * right). Every glyph reads the same shared `position`, so a
+             * transition is one animation rather than a coordinated pair.
+             */
+            const offset = Animated.subtract(idx, position)
+            const translateX = offset.interpolate({
+              inputRange: [-1, 0, 1],
+              outputRange: [-stageSize, 0, stageSize],
+              extrapolate: 'clamp',
+            })
+            const opacity = offset.interpolate({
+              inputRange: [-1, -0.4, 0, 0.4, 1],
+              outputRange: [0, 0, 1, 0, 0],
+              extrapolate: 'clamp',
+            })
+            return (
+              <Animated.View
+                key={`${idx}-${char}-slot`}
+                pointerEvents={idx === activeIndex ? 'auto' : 'none'}
+                style={{ position: 'absolute', inset: 0, opacity, transform: [{ translateX }] }}
+              >
+                <SingleGlyphStage
+                  // `speed` is in the key because the WebView is configured once, by the
+                  // `init` message — there is no way to retune a live writer, so
+                  // changing speed has to rebuild it.
+                  key={`${idx}-${char}-${mode}-${speed}-${resetKey}-${Math.round(stageSize / 4) * 4}-${showOutline}`}
+                  char={char}
+                  mode={mode}
+                  speed={speed}
+                  showOutline={showOutline}
+                  showGuides={showGuides}
+                  hintKey={hintKey}
+                  revealKey={revealKey}
+                  restartKey={resetActiveKey}
+                  size={stageSize}
+                  holdCharacterOnComplete={holdCharacterOnComplete}
+                  active={idx === activeIndex}
+                  onStrokeTotal={(total) => {
+                    glyphTotals.current[idx] = total
+                  }}
+                  onQuizProgress={(remaining, mistakes) => handleGlyphProgress(idx, remaining, mistakes)}
+                  onQuizComplete={(mistakes) => handleGlyphQuizComplete(idx, mistakes)}
+                  onDemoComplete={() => handleGlyphDemoComplete(idx)}
+                />
+              </Animated.View>
+            )
+          })}
+        </View>
+      )}
     </View>
   )
 }
@@ -279,16 +366,12 @@ interface GlyphProps {
   showGuides: boolean
   hintKey: number
   revealKey: number
+  /** Bump to clear this glyph's own drawn strokes and re-quiz it in place. */
+  restartKey: number
   size: number
   holdCharacterOnComplete: boolean
   /** Whether it's this character's turn — only the active glyph takes input. */
   active: boolean
-  /**
-   * Faded back because another character has the turn. Separate from `active`
-   * so a finished word can show every glyph at full strength while the turn
-   * still nominally belongs to the last one.
-   */
-  dimmed: boolean
   /** This glyph's stroke count, as soon as its stroke data resolves. */
   onStrokeTotal: (total: number) => void
   /** Strokes remaining in *this* glyph. The parent sums them across the word. */
@@ -297,7 +380,7 @@ interface GlyphProps {
   onDemoComplete: () => void
 }
 
-function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey, revealKey, size, holdCharacterOnComplete, active, dimmed, onStrokeTotal, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
+function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey, revealKey, restartKey, size, holdCharacterOnComplete, active, onStrokeTotal, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
   const webviewRef = useRef<WebView>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const startedRef = useRef(false)
@@ -380,6 +463,15 @@ function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey])
 
+  // Same fire-and-forget shape as hint/reveal above, but restarts this
+  // glyph's own quiz in place — hanzi-writer's `.quiz()` can be called again
+  // on the same writer, so this never touches the WebView itself.
+  useEffect(() => {
+    if (!restartKey || !active || status !== 'ready') return
+    postToGlyph({ type: 'restart' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restartKey])
+
   const processMessage = (data: string) => {
     let msg: { type: string; strokesRemaining?: number; totalMistakes?: number }
     try {
@@ -454,7 +546,7 @@ function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey,
 
   return (
     <View
-      className={dimmed ? 'relative rounded-2xl opacity-20' : 'relative rounded-2xl opacity-100'}
+      className="relative rounded-2xl"
       style={{ width: size, height: size }}
       pointerEvents={active ? 'auto' : 'none'}
     >

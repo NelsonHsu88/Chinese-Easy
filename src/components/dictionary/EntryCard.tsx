@@ -3,6 +3,8 @@ import { Quote } from 'lucide-react-native'
 import { PressScale } from './PressScale'
 import { ReadingSentence } from './ReadingSentence'
 import { DeckStateButton, HskBadge, IconChip, SpeakChip, ICON_GREEN, ICON_STROKE } from './DictionaryControls'
+import { DICT_BG, DICT_CARD_SHADOW } from './shadows'
+import { useRevealedShadow } from '../shadowReveal'
 import type { EntryState } from '../../lib/dictionary'
 import { shortGloss } from '../../lib/definitions'
 import { tapHaptic } from '../../lib/haptics'
@@ -39,6 +41,7 @@ export function EntryCard({
   const example = expanded ? word.example : undefined
   const hanzi = displayWord(word, script)
   const exampleText = example ? displayExample(word, script) : ''
+  const shadow = useRevealedShadow(DICT_CARD_SHADOW)
 
   return (
     <PressScale
@@ -49,7 +52,16 @@ export function EntryCard({
       }}
       scaleTo={0.985}
       accessibilityLabel={`${hanzi}, ${pinyin}, ${shortGloss(word)}`}
-      className="rounded-dict bg-dict-card p-5 shadow-dict"
+      style={[shadow, { borderRadius: 20, backgroundColor: DICT_BG.card }]}
+      className="rounded-dict bg-dict-card p-5"
+      /*
+       * The card also holds its own real buttons (speaker, practice, add) —
+       * `accessibilityRole="button"` (PressScale's default) would render this
+       * as a literal `<button>` on web, nesting one `<button>` inside another,
+       * which is invalid HTML and throws React's DOM-nesting warning. `onPress`
+       * doesn't depend on the role, so this changes no behavior.
+       */
+      accessibilityRole="none"
     >
       <View className="flex-row items-start gap-3">
         <View className="flex-1">

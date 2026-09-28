@@ -19,6 +19,7 @@
     "android": {
       "package": "com.chineseeasy.app",
       "allowBackup": false,
+      "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "backgroundColor": "#1fb96d",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -90,13 +91,5 @@
         "projectId": "262b92d2-8981-40ca-a28e-e12f52a4cce8"
       }
     }
-  },
-  "react-native-google-mobile-ads": {
-    "android_app_id": "ca-app-pub-3940256099942544~3347511713",
-    "ios_app_id": "ca-app-pub-3940256099942544~1458002511",
-    "user_tracking_usage_description": "Chinese Easy asks so that the ads you see between lessons can be more relevant. Declining keeps every learning feature exactly as it is.",
-    "delay_app_measurement_init": true,
-    "optimize_initialization": true,
-    "optimize_ad_loading": true
   }
 }

@@ -21,6 +21,7 @@ import {
   dashRadius,
   dashMotion,
 } from './tokens'
+import { useRevealedShadow } from '../shadowReveal'
 import { tapHaptic } from '../../lib/haptics'
 
 /*
@@ -102,6 +103,7 @@ export function PressableScale({
   style,
   wrapperStyle,
   accessibilityLabel,
+  accessibilityRole = 'button',
   haptic = true,
   scaleTo = dashMotion.pressScale,
 }: {
@@ -120,6 +122,16 @@ export function PressableScale({
    */
   wrapperStyle?: StyleProp<ViewStyle>
   accessibilityLabel?: string
+  /**
+   * `'none'` for a card that is itself a tap target *and* holds further real
+   * buttons inside it (see `NewWordCard`) — react-native-web renders
+   * `accessibilityRole="button"` as a literal `<button>`, and a card built
+   * that way otherwise nests one `<button>` inside another. That's invalid
+   * HTML and React's dev-mode DOM validator says so loudly (the "cannot
+   * contain a nested <button>" warning); it doesn't affect `onPress`, which
+   * this component drives directly rather than through the role.
+   */
+  accessibilityRole?: 'button' | 'none'
   haptic?: boolean
   scaleTo?: number
 }) {
@@ -176,7 +188,7 @@ export function PressableScale({
         }}
         onPressIn={down}
         onPressOut={up}
-        accessibilityRole="button"
+        accessibilityRole={accessibilityRole}
         accessibilityLabel={accessibilityLabel}
         style={style}
       >
@@ -204,6 +216,8 @@ export function DashboardCard({
   minHeight,
   onPress,
   accessibilityLabel,
+  /** 'none' for a card that also holds its own real buttons — see `PressableScale`. */
+  accessibilityRole,
   children,
   style,
 }: {
@@ -212,12 +226,18 @@ export function DashboardCard({
   minHeight?: number
   onPress?: () => void
   accessibilityLabel?: string
+  accessibilityRole?: 'button' | 'none'
   children: ReactNode
   style?: StyleProp<ViewStyle>
 }) {
+  const shadow = useRevealedShadow(dashShadow)
+
   return (
-    <PressableScale onPress={onPress} accessibilityLabel={accessibilityLabel}>
-      <View
+    <PressableScale onPress={onPress} accessibilityLabel={accessibilityLabel} accessibilityRole={accessibilityRole}>
+      {/* `Animated.View` rather than `View`, so it can carry
+          `useRevealedShadow`'s interpolated `shadowOpacity`/`elevation` —
+          there's no `className` here for that to break. */}
+      <Animated.View
         style={[
           {
             backgroundColor: fill,
@@ -226,13 +246,13 @@ export function DashboardCard({
             borderRadius: dashRadius.card,
             minHeight,
             overflow: 'hidden',
-            ...dashShadow,
+            ...shadow,
           },
           style,
         ]}
       >
         {children}
-      </View>
+      </Animated.View>
     </PressableScale>
   )
 }

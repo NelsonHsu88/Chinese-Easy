@@ -68,32 +68,65 @@ const bareSyllable = (reading) =>
     .toLowerCase()
     .replace(/\s+/g, '')
 
-/** The bank's own lookup table — first entry wins, as in `textSegmentation.ts`. */
+/*
+ * The bank's own lookup table — first entry wins, as in `textSegmentation.ts`.
+ *
+ * **Keyed on both scripts, traditional inserted first**, which is not a detail:
+ * it is the whole reason this pass has to mirror the app rather than approximate
+ * it. `lib/textSegmentation.ts` builds one index over both forms, so a
+ * *simplified* form is a match even while traditional text is being segmented —
+ * and the sentences reaching this script are corpus text that is very often
+ * simplified in places.
+ *
+ * Keying on `traditional` alone made this script disagree with the app on 60
+ * sentences, every one of them in the direction that matters: the script saw the
+ * word survive and kept the sentence, while the app absorbed it into a longer
+ * *simplified* token and showed the learner an example that does not contain
+ * their word. 后 ("empress") kept 后退！, where 后退 is simplified 後退 and the
+ * entry's own sense is nowhere in the sentence — exactly the fault this pass
+ * exists to remove, waved through by the check meant to catch it.
+ */
 const byText = new Map()
 for (const word of words) if (!byText.has(word.traditional)) byText.set(word.traditional, word)
+for (const word of words) if (!byText.has(word.simplified)) byText.set(word.simplified, word)
 
-/** Greedy longest-match segmentation. Deliberately identical to the app's. */
+/**
+ * Greedy longest-match segmentation. Deliberately identical to the app's.
+ *
+ * Returns the matched *entries*, not the matched strings. Identity is the only
+ * sound test once the index is keyed on both scripts: a token matched through a
+ * simplified key does not equal the entry's `traditional`, so comparing strings
+ * would call a real match a miss.
+ */
 function segment(text) {
   const out = []
   let i = 0
   while (i < text.length) {
     let hit = null
+    let hitWord = null
     for (let len = Math.min(MAX_WORD_LEN, text.length - i); len >= 1; len--) {
       const candidate = text.slice(i, i + len)
-      if (byText.has(candidate)) {
+      const found = byText.get(candidate)
+      if (found) {
         hit = candidate
+        hitWord = found
         break
       }
     }
     if (hit) {
-      out.push(hit)
+      out.push({ text: hit, word: hitWord })
       i += hit.length
     } else {
-      out.push(text[i])
+      out.push({ text: text[i], word: null })
       i += 1
     }
   }
   return out
+}
+
+/** Does this sentence contain this entry as one of its tokens? */
+function contains(sentence, word) {
+  return segment(sentence).some((seg) => seg.word?.id === word.id)
 }
 
 /** Rule 2 — a multi-character word is not at meaningful risk of being a homograph. */
@@ -115,9 +148,11 @@ const bestFor = new Map()
 for (const word of words) {
   const example = word.example
   if (!example?.traditional) continue
-  for (const token of new Set(segment(example.traditional))) {
-    const held = bestFor.get(token)
-    if (!held || example.traditional.length < held.traditional.length) bestFor.set(token, example)
+  // Keyed by entry id rather than by token text, for the same reason `segment`
+  // returns entries: the token that matched may be either script's form.
+  for (const id of new Set(segment(example.traditional).map((seg) => seg.word?.id).filter(Boolean))) {
+    const held = bestFor.get(id)
+    if (!held || example.traditional.length < held.traditional.length) bestFor.set(id, example)
   }
 }
 
@@ -137,12 +172,12 @@ for (const word of words) {
     continue
   }
 
-  if (segment(word.example.traditional).includes(word.traditional)) {
+  if (contains(word.example.traditional, word)) {
     kept++
     continue
   }
 
-  const replacement = bestFor.get(word.traditional)
+  const replacement = bestFor.get(word.id)
   if (replacement && replacement.traditional !== word.example.traditional) {
     word.example = { ...replacement }
     swapped++

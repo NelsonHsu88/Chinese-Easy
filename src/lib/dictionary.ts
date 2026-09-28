@@ -4,7 +4,7 @@ import { lookupCandidates } from '../data/lookupWords'
 import { KANGXI_RADICALS } from '../data/kangxiRadicals'
 import { RADICALS } from '../data/radicals'
 import { displayExample, displayWord, foldPinyin } from './hanzi'
-import { contentRank, isTeachableWord, senses } from './definitions'
+import { contentRank, isFunctionWord, isTeachableWord, senses } from './definitions'
 import { proficiencyFor } from './proficiency'
 import type { KangxiRadical, Radical, ScriptMode, SrsCard, VocabWord } from '../types'
 
@@ -154,6 +154,44 @@ function placement(text: string, term: string): number {
 }
 
 /**
+ * Common English clipped forms, mapped to the word CC-CEDICT actually glosses
+ * with.
+ *
+ * "photo" is not a fragment of "photograph" the way "dumpl" is a fragment of
+ * "dumpling" — it is itself a complete, common word, and a learner who types it
+ * means the whole thing. But structurally the two look identical to
+ * `placement`: both are a prefix that stops short of a word boundary, and
+ * `placement` has to keep scoring that shape weakly in general, or "car"
+ * outranks 車 with "not to care" (an accidental prefix, not a clipping — see
+ * `placement`'s own doc comment). Nothing about string shape tells the two
+ * apart; only knowing they're the same word does. This table is a short,
+ * hand-picked list of that relationship for the clippings actually common
+ * enough to matter, not the crude substring rule that got it wrong.
+ */
+const CLIPPED_FORMS: Record<string, string> = {
+  photo: 'photograph',
+  phone: 'telephone',
+  bike: 'bicycle',
+  plane: 'airplane',
+  fridge: 'refrigerator',
+  ad: 'advertisement',
+  gym: 'gymnasium',
+  exam: 'examination',
+  math: 'mathematics',
+  gas: 'gasoline',
+  flu: 'influenza',
+  fax: 'facsimile',
+  demo: 'demonstration',
+  info: 'information',
+  lab: 'laboratory',
+  memo: 'memorandum',
+  mic: 'microphone',
+  pic: 'picture',
+  auto: 'automobile',
+  dorm: 'dormitory',
+}
+
+/**
  * How well an entry's English answers the query, and from how deep in the entry.
  *
  * Four tiers — the sense *is* the query, contains it as a word, contains a word
@@ -178,13 +216,15 @@ function placement(text: string, term: string): number {
  */
 function englishRelevance(all: string[], q: Query): { tier: number; senseIndex: number } {
   let best = { tier: 4, senseIndex: all.length }
+  const clipped = CLIPPED_FORMS[q.folded]
 
   for (let i = 0; i < all.length; i++) {
     const sense = all[i].toLowerCase()
     const normalised = normaliseSense(all[i])
     let tier: number
-    if (normalised === q.folded || normalised === q.singular) tier = 0
-    else {
+    if (normalised === q.folded || normalised === q.singular || (clipped !== undefined && normalised === clipped)) {
+      tier = 0
+    } else {
       /* Both forms of the query, best placement wins: the singular is a guess
          and must never make an entry rank worse than the letters typed would. */
       tier = 1 + Math.min(placement(sense, q.folded), placement(sense, q.singular))
@@ -747,4 +787,52 @@ export function starterList(bank: VocabWord[], hskLevel: number, size = 20): Voc
     .filter((w) => w.hskLevel === hskLevel && isTeachableWord(w))
     .sort((a, b) => contentRank(a) - contentRank(b) || a.traditional.length - b.traditional.length)
     .slice(0, size)
+}
+
+/**
+ * The single characters at one HSK level — the landing's "Characters" shelf.
+ *
+ * Same teachability gate and ordering as `starterList`, restricted to entries
+ * one character long, because that shelf is about what each character means
+ * on its own rather than about words.
+ */
+export function characterList(bank: VocabWord[], hskLevel: number, size = 40): VocabWord[] {
+  return bank
+    .filter((w) => w.hskLevel === hskLevel && [...w.traditional].length === 1 && isTeachableWord(w))
+    .sort((a, b) => contentRank(a) - contentRank(b))
+    .slice(0, size)
+}
+
+/**
+ * The landing's "Word to discover": one word per calendar day.
+ *
+ * Drawn from a stretch band — the learner's level up to two above it, never
+ * below HSK 2 — because a word of the day the learner already knows is not a
+ * discovery. Only two-character, teachable, non-function words that carry an
+ * example sentence qualify: the card is built around its example, and example
+ * sentences come from the corpus and are never generated, so a word without
+ * one is skipped rather than shown half-finished.
+ *
+ * Stable for the whole day (`dayISO` indexes a fixed ordering), so opening the
+ * dictionary twice does not change the word underneath the learner.
+ */
+export function wordToDiscover(bank: VocabWord[], hskLevel: number, dayISO: string): VocabWord | null {
+  const low = Math.max(2, hskLevel)
+  const high = Math.min(6, low + 2)
+  const pool = bank.filter(
+    (w) =>
+      !w.custom &&
+      w.hskLevel >= low &&
+      w.hskLevel <= high &&
+      [...w.traditional].length === 2 &&
+      Boolean(w.example?.traditional && w.example.translation) &&
+      isTeachableWord(w) &&
+      !isFunctionWord(w),
+  )
+  if (pool.length === 0) return null
+  const [y, m, d] = dayISO.split('-').map(Number)
+  const day = Math.floor(Date.UTC(y, m - 1, d) / 86_400_000)
+  // A multiplicative stride rather than `day % length`, so consecutive days
+  // land far apart in the pool instead of on its neighbouring entries.
+  return pool[(day * 7919) % pool.length]
 }

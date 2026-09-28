@@ -18,9 +18,13 @@ import { nativeAds } from './nativeModule'
  * anything.
  *
  * The **App ids** are not here. They belong to the native SDK and live in
- * app.json's top-level `react-native-google-mobile-ads` block, which currently
- * holds Google's published sample App ids. Replace those at the same time as
- * the unit ids below.
+ * app.json's `react-native-google-mobile-ads` **config-plugin entry** (inside
+ * `expo.plugins`, as `androidAppId`/`iosAppId`), which currently holds Google's
+ * published sample App ids. Replace those at the same time as the unit ids
+ * below. Note that a *top-level* `react-native-google-mobile-ads` block in
+ * app.json is silently ignored by Expo — it warns "Ignoring extra key in Expo
+ * config" and carries on — so the plugin entry is the only one that takes
+ * effect.
  */
 
 export type AdFormat = 'banner' | 'interstitial' | 'rewarded'

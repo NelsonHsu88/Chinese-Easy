@@ -252,7 +252,7 @@ export const WRITER_HTML = `<!doctype html>
       if (writer) writer.highlightStroke(strokeIndex);
     } else if (msg.type === 'reveal') {
       if (writer) writer.showCharacter();
-    } else if (msg.type === 'start') {
+    } else if (msg.type === 'start' || msg.type === 'restart') {
       if (!writer) return;
       if (mode === 'demo') {
         writer.animateCharacter({
@@ -271,6 +271,11 @@ export const WRITER_HTML = `<!doctype html>
         });
       } else {
         strokeIndex = 0;
+        hideHint();
+        // A restart calls into the exact same writer.quiz() a fresh start
+        // does -- hanzi-writer clears its own drawn strokes and mistake count
+        // each time this is called, which is the whole reason resetting the
+        // active glyph doesn't need to touch the WebView at all.
         writer.quiz({
           onMistake: function (strokeData) {
             /*
