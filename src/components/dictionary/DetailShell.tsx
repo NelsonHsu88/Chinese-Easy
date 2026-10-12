@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { View, Text, Pressable, ScrollView, Modal, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
+import { router, usePathname } from 'expo-router'
 import { ChevronLeft, X, Play, Pause, RotateCcw } from 'lucide-react-native'
 import { HanziStage, type HanziStageSpeed } from '../HanziStage'
 import { PressScale } from './PressScale'
@@ -10,6 +10,7 @@ import { ICON_GREEN, ICON_MUTED, ICON_STROKE } from './DictionaryControls'
 import { tapHaptic } from '../../lib/haptics'
 import { hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
+import { TourScrollContext } from '../tour/targets'
 
 /**
  * Page frame for the two detail screens: a hairline nav bar over the
@@ -22,7 +23,43 @@ import { useApp } from '../../context/AppContext'
  * peek through; the rounding here is what carries that same "card" feel on
  * Android and web, where a modal is otherwise just a full-bleed screen.
  */
+/**
+ * Whether this detail screen is inside the Dictionary tab's stack, or pushed
+ * standalone on top of another screen (`/word/[wordId]`, from My Words).
+ *
+ * The standalone routes exist so Back returns to the screen that opened the
+ * card: pushing the tab's route from My Words switches to the tabs underneath
+ * and takes My Words off the stack. Links onward from a detail screen stay in
+ * whichever of the two it is in, so a chain of words still unwinds to where
+ * it started.
+ */
+export function useInDictionaryTab(): boolean {
+  return usePathname().startsWith('/dictionary-tab')
+}
+
+export function openWordDetail(wordId: string, inTab: boolean) {
+  const id = encodeURIComponent(wordId)
+  if (inTab) router.push(`/dictionary-tab/word/${id}`)
+  else router.push(`/word/${id}`)
+}
+
+export function openCharacterDetail(character: string, inTab: boolean) {
+  const ch = encodeURIComponent(character)
+  if (inTab) router.push(`/dictionary-tab/character/${ch}`)
+  else router.push(`/character/${ch}`)
+}
+
 export function DetailShell({ title, children }: { title: string; children: ReactNode }) {
+  const inTab = useInDictionaryTab()
+  /* Shifu's word-card guide can ask for a scroll to reach a card below the
+     fold. The offset is tracked rather than read back, which a ScrollView
+     cannot do — the same arrangement as the Dashboard's. */
+  const scroll = useRef<ScrollView>(null)
+  const scrollY = useRef(0)
+  const tourScrollBy = useMemo(
+    () => (dy: number) => scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true }),
+    [],
+  )
   return (
     <SafeAreaView
       edges={['top']}
@@ -37,7 +74,7 @@ export function DetailShell({ title, children }: { title: string; children: Reac
             // `/dictionary` route, so a deep-linked detail screen lands
             // somewhere with the tab bar still under it.
             if (router.canGoBack()) router.back()
-            else router.replace('/dictionary-tab')
+            else router.replace(inTab ? '/dictionary-tab' : '/my-words')
           }}
           accessibilityRole="button"
           accessibilityLabel="Back"
@@ -50,8 +87,16 @@ export function DetailShell({ title, children }: { title: string; children: Reac
         <View className="h-10 w-10" />
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }} showsVerticalScrollIndicator={false}>
-        {children}
+      <ScrollView
+        ref={scroll}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y
+        }}
+        scrollEventThrottle={32}
+        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
+        showsVerticalScrollIndicator={false}
+      >
+        <TourScrollContext.Provider value={tourScrollBy}>{children}</TourScrollContext.Provider>
       </ScrollView>
     </SafeAreaView>
   )

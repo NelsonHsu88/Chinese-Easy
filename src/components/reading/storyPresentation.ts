@@ -61,3 +61,14 @@ export function progressPercent(story: Story, furthestPageIndex: number | undefi
   if (furthestPageIndex === undefined || story.pages.length === 0) return 0
   return Math.round(((furthestPageIndex + 1) / story.pages.length) * 100)
 }
+
+/**
+ * The reading band a story belongs to, as the library groups it: HSK 1–2 are
+ * Beginner, 3–4 Intermediate, 5–6 Advanced. `zh` is the reference's own
+ * section label (初級閱讀 and so on).
+ */
+export function levelBand(hskLevel: number): { id: 'beginner' | 'intermediate' | 'advanced'; en: string; zh: string } {
+  if (hskLevel <= 2) return { id: 'beginner', en: 'Beginner', zh: '初級' }
+  if (hskLevel <= 4) return { id: 'intermediate', en: 'Intermediate', zh: '中級' }
+  return { id: 'advanced', en: 'Advanced', zh: '高級' }
+}

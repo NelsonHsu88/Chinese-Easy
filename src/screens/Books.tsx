@@ -1,95 +1,312 @@
-import { useMemo, useState } from 'react'
-import { View, Text, Pressable, ScrollView, Animated } from 'react-native'
+import { useEffect, useMemo, useState } from 'react'
+import { View, Text, Pressable, ScrollView, Animated, Image, useWindowDimensions } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
-import { ChevronLeft, Star, Lock } from 'lucide-react-native'
+import { BookOpen, ChevronLeft, ChevronRight, Lock } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { STORIES } from '../data/stories'
-import type { Story } from '../types'
+import type { Story, StoryCollection } from '../types'
 import { hanziFont } from '../lib/hanzi'
 import { forScript } from '../lib/scriptConversion'
 import { playTapSound } from '../lib/sound'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
-import { BrushHighlight } from '../components/BrushHighlight'
-import { useScrollToTopOnFocus } from '../components/useScrollToTopOnFocus'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
-import { PageDecor } from '../components/reading/PageDecor'
-import { ReadingShell } from '../components/reading/ReadingShell'
+import { FIRE_ICON } from '../components/dashboard/art'
 import { StoryArt } from '../components/reading/StoryArt'
-import { COLLECTIONS, formatCount, paletteFor, progressPercent } from '../components/reading/storyPresentation'
+import { formatCount, levelBand, progressPercent } from '../components/reading/storyPresentation'
+import { bookColors as c, BOOK_CONTENT_MAX, COVER_RATIO } from '../components/book/tokens'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
+import { Asset } from 'expo-asset'
 
 /*
- * The Reading Library.
+ * The Reading Library, built to the Beta 2.1 reference
+ * (`SS103 Redesigned Library Cover Art.png`, minus the Chinese line under the
+ * title, by request): a painted header, one row of
+ * outlined shelf chips, then the library as three shelves — Beginner,
+ * Intermediate, Advanced — stacked so all three fit the screen at once. Each
+ * shelf swipes sideways through its books, a card at a time, with the next one
+ * peeking in from the right so it is plain there is more.
  *
- * Shelves, not a list: each collection is a horizontally swipeable row of poster
- * cards, so 46 stories stay browsable without a scroll of near-identical strips.
- * Cream paper, dark-ink type, restrained pastel accents — the colour lives in the
- * covers and the badges while everything structural stays warm neutral.
+ * Every book wears the same general cover (`StoryArt`); the title, reading and
+ * English beside it are what tell them apart.
  *
- * Deliberately light-only: the whole design rests on cream paper, and a dark
- * repaint would be a different design rather than a recolour of this one.
+ * Tapping a card opens the story on its cover (see StoryReader / BookCover).
+ * Light-only, like the rest of the reading design.
  */
 
-const LEVELS = [1, 2, 3, 4, 5, 6] as const
-type Filter = 'all' | (typeof LEVELS)[number]
+/** The shelves, short-labelled for the chip row. */
+const SHELVES: { id: StoryCollection | 'all'; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'everyday', label: 'Everyday' },
+  { id: 'folk-tales', label: 'Folk Tales' },
+  { id: 'chengyu', label: 'Chengyu' },
+  { id: 'festival-legends', label: 'Festival' },
+  { id: 'classical-myths', label: 'Myths' },
+]
 
-/*
- * Poster geometry. Two cards sit side by side inside the 430pt column and a
- * sliver of the third shows past the right edge. That peek is deliberate and
- * worth the few points it costs each card: with two cards fitting exactly, a
- * shelf looks like a finished pair and nobody thinks to swipe it.
- */
-const CARD_W = 174
+const BANDS = [
+  { id: 'beginner', hsk: 1 },
+  { id: 'intermediate', hsk: 3 },
+  { id: 'advanced', hsk: 5 },
+] as const
 
-/*
- * The library's arrival: the whole page rises a little and fades up.
- *
- * One beat rather than a staggered score — the Dashboard assembles itself
- * because it is six unrelated things, where this is one object being put in
- * front of the reader. The rise is short on purpose; past about 40pt the
- * movement stops reading as arrival and starts reading as a page turn, and this
- * screen is the destination rather than a step on the way somewhere.
- *
- * It replays on every focus, so backing out of a story hands the library back
- * the same way it was first opened.
- */
-const ENTER = { at: 0, for: 640, rise: 28 } as const
-/* 2:3, the native aspect of the cover artwork. Cropping these portrait paintings
- * into a squarer card cut the tops off compositions that run full height. */
-const CARD_H = 261
-const ROW_GAP = 11
 const EDGE = 18
+/** How much of the next card shows at the right edge of a shelf. */
+const PEEK = 34
+const CARD_GAP = 12
+const CARD_PAD = 10
 
-function HskChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+/**
+ * Everything above the shelves: top bar, title block, chip row. Estimated from
+ * the styles below — re-measure if the header changes height, or the shelves
+ * will over- or under-fill the screen.
+ */
+const TITLE_H = 58
+const CHROME = 44 + TITLE_H + 66
+/** A shelf's heading line, and the gap under its row of cards. */
+const HEADING_H = 34
+const ROW_GAP = 14
+/** Card heights: below MIN the screen scrolls rather than squeezing; above MAX the cover would dwarf the text. */
+const CARD_MIN = 108
+const CARD_MAX = 168
+
+/** The book-entry screen's room, preloaded here (see BookCover). */
+const BOOK_ROOM = require('../assets/images/library/book-room.jpg')
+/** The header painting, cropped from the reference by `processLibraryArt.mjs`. */
+const SCENERY = require('../assets/images/library/header-scenery.png')
+const SCENERY_RATIO = 351 / 245
+/** Its share of the column — the same share of the mockup's width it was cut from. */
+const SCENERY_SHARE = 351 / 941
+
+/** The arrival: the page rises a little and fades up, replayed each focus. */
+const ENTER = { at: 0, for: 640, rise: 28 } as const
+
+const cardShadow = {
+  shadowColor: '#3A2A14',
+  shadowOffset: { width: 0, height: 3 },
+  shadowRadius: 10,
+  shadowOpacity: 0.06,
+  elevation: 2,
+} as const
+
+export function Books() {
+  const { storyProgress, settings, streak } = useApp()
+  const script = settings.script
+  const [shelf, setShelf] = useState<StoryCollection | 'all'>('all')
+  const { width: winW, height: winH } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
+
+  /* Warm the book-entry room while the learner browses, so opening a book can fade straight in. */
+  useEffect(() => {
+    Asset.loadAsync(BOOK_ROOM).catch(() => {})
+  }, [])
+
+  const run = useEntranceRun()
+  const enter = useReveal({ from: 'bottom', ...ENTER, duration: ENTER.for, distance: ENTER.rise, run })
+
+  const column = Math.min(winW, BOOK_CONTENT_MAX)
+  const cardW = column - EDGE * 2 - PEEK
+  // Three shelves share whatever height the header leaves.
+  const shelfH = (winH - insets.top - insets.bottom - CHROME - 8) / 3
+  const cardH = Math.round(Math.max(CARD_MIN, Math.min(CARD_MAX, shelfH - HEADING_H - ROW_GAP)))
+
+  // Shelves keep their fixed order and stay put when a chip empties one, so the
+  // three rows never jump about.
+  const shelves = useMemo(
+    () =>
+      BANDS.map((band) => ({
+        band: band.id,
+        label: levelBand(band.hsk),
+        stories: STORIES.filter((s) => levelBand(s.hskLevel).id === band.id && (shelf === 'all' || s.collection === shelf)),
+      })),
+    [shelf],
+  )
+
   return (
-    <Pressable
-      onPress={() => {
-        tickHaptic()
-        onPress()
-      }}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      className="h-9 justify-center rounded-full px-[15px]"
-      style={{
-        backgroundColor: active ? '#d9f2e0' : 'rgba(255,255,255,0.7)',
-        borderWidth: 1,
-        borderColor: active ? 'transparent' : '#e4ded4',
-      }}
-    >
-      <Text
-        className={active ? 'font-inter-semibold text-sm' : 'font-inter-medium text-sm'}
-        style={{ color: active ? '#246847' : '#242430' }}
-      >
-        {label}
-      </Text>
-    </Pressable>
+    <SafeAreaView edges={['top']} style={{ flex: 1, alignItems: 'center', backgroundColor: c.library }}>
+      {/* The page's own fade-up is the arrival; the stack's push slide would run underneath it at another speed. */}
+      <Stack.Screen options={{ animation: 'none' }} />
+
+      <Animated.View style={[{ flex: 1, width: '100%', maxWidth: BOOK_CONTENT_MAX }, enter]}>
+        {/* Range, pagoda and sakura in the top-right corner, as the reference paints them.
+            `pointerEvents` on the wrapper: an Image does not take the prop. */}
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0 }}>
+          <Image
+            source={SCENERY}
+            style={{ width: column * SCENERY_SHARE * 1.12, height: (column * SCENERY_SHARE * 1.12) / SCENERY_RATIO }}
+            resizeMode="contain"
+            accessibilityIgnoresInvertColors
+          />
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: EDGE - 4, paddingTop: 6, height: 44 }}>
+          <Pressable
+            // Opened from the Learn tab; when there is no stack to pop (a reload,
+            // a deep link) the dashboard is where it belongs.
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            hitSlop={12}
+          >
+            <ChevronLeft size={28} color={c.teal} strokeWidth={2} />
+          </Pressable>
+          <StreakPill streak={streak} />
+        </View>
+
+        <View style={{ height: TITLE_H, paddingHorizontal: EDGE, justifyContent: 'center' }}>
+          {/* Sized to the column so "Library" clears the pagoda on a narrow phone. */}
+          <Text style={{ fontFamily: 'LoraBold', fontSize: Math.min(31, column * 0.075), lineHeight: 38, color: c.ink }}>Reading Library</Text>
+        </View>
+
+        {/* Shelf chips. Pinned to their own height: a horizontal ScrollView beside
+            the vertical one would otherwise be squeezed and crop them. */}
+        <View style={{ height: 66, flexGrow: 0, flexShrink: 0 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ flexGrow: 0 }}
+            contentContainerStyle={{ gap: 9, paddingHorizontal: EDGE, paddingVertical: 13, alignItems: 'center' }}
+          >
+            {SHELVES.map((s) => {
+              const active = shelf === s.id
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => {
+                    if (active) return
+                    tickHaptic()
+                    setShelf(s.id)
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <View
+                    style={{
+                      height: 38,
+                      paddingHorizontal: 19,
+                      borderRadius: 19,
+                      justifyContent: 'center',
+                      backgroundColor: active ? c.teal : c.card,
+                      borderWidth: 1,
+                      borderColor: active ? c.teal : c.chipBorder,
+                    }}
+                  >
+                    <Text style={{ fontFamily: active ? 'LoraBold' : 'Lora', fontSize: 15, color: active ? c.cream : c.ink }}>
+                      {s.label}
+                    </Text>
+                  </View>
+                </Pressable>
+              )
+            })}
+          </ScrollView>
+        </View>
+
+        {/* Fills the screen on any phone; only scrolls when even the smallest card would not fit three shelves. */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: 8 }} showsVerticalScrollIndicator={false}>
+          <View style={{ flexGrow: 1, justifyContent: 'space-between' }}>
+            {shelves.map((s) => (
+              <View key={s.band} style={{ marginBottom: ROW_GAP }}>
+                <View style={{ height: HEADING_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: EDGE }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                    <Text className={hanziFont(script, 'semibold')} style={{ fontSize: 20, lineHeight: 28, color: c.ink }}>
+                      {forScript(`${s.label.zh}閱讀`, script)}
+                    </Text>
+                    <Text style={{ fontFamily: 'LoraItalic', fontSize: 14, color: c.inkFaint }}>{s.label.en}</Text>
+                  </View>
+                  {s.stories.length > 0 && (
+                    <Text style={{ fontFamily: 'Lora', fontSize: 13.5, color: c.inkSoft }}>
+                      {s.stories.length} {s.stories.length === 1 ? 'book' : 'books'}
+                    </Text>
+                  )}
+                </View>
+
+                {s.stories.length === 0 ? (
+                  <View
+                    style={{
+                      height: cardH,
+                      marginHorizontal: EDGE,
+                      borderRadius: 16,
+                      borderWidth: 1,
+                      borderStyle: 'dashed',
+                      borderColor: c.chipBorder,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontFamily: 'LoraItalic', fontSize: 14, color: c.inkFaint }}>No {s.label.en.toLowerCase()} stories on this shelf yet</Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    // One card per swipe, landing flush with the left margin.
+                    snapToInterval={cardW + CARD_GAP}
+                    snapToAlignment="start"
+                    decelerationRate="fast"
+                    contentContainerStyle={{ gap: CARD_GAP, paddingHorizontal: EDGE, paddingVertical: 4 }}
+                    style={{ flexGrow: 0, marginVertical: -4 }}
+                  >
+                    {s.stories.map((story) => (
+                      <StoryCard
+                        key={story.id}
+                        story={story}
+                        width={cardW}
+                        height={cardH}
+                        percent={progressPercent(story, storyProgress[story.id])}
+                      />
+                    ))}
+                  </ScrollView>
+                )}
+              </View>
+            ))}
+          </View>
+
+          <View style={{ paddingHorizontal: EDGE }}>
+            <AppBannerAd placement="books" />
+          </View>
+        </ScrollView>
+      </Animated.View>
+    </SafeAreaView>
   )
 }
 
-function StoryPoster({ story, percent }: { story: Story; percent: number }) {
+/** The streak, in the reference's white pill with its painted flame. */
+function StreakPill({ streak }: { streak: number }) {
+  return (
+    <View
+      accessible
+      accessibilityLabel={`${streak} day streak`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        height: 36,
+        paddingHorizontal: 14,
+        borderRadius: 18,
+        backgroundColor: c.card,
+        borderWidth: 1,
+        borderColor: c.chipBorder,
+        ...cardShadow,
+      }}
+    >
+      <Image source={FIRE_ICON} style={{ width: 17, height: 17 }} resizeMode="contain" />
+      <Text style={{ fontFamily: 'LoraBold', fontSize: 15, color: c.ink }}>{streak}</Text>
+      <Text style={{ fontFamily: 'Lora', fontSize: 14, color: c.inkSoft }}>Streak</Text>
+    </View>
+  )
+}
+
+/**
+ * One story: the cover on the left, and beside it the title, its reading and
+ * English, a line about it, and its length and progress at the foot.
+ */
+function StoryCard({ story, width, height, percent }: { story: Story; width: number; height: number; percent: number }) {
   const script = useApp().settings.script
-  const palette = paletteFor(story)
   const available = story.pages.length > 0
+  const [pressed, setPressed] = useState(false)
+  const coverH = height - CARD_PAD * 2
+  // The blurb is what gives way on a short card: two lines, then one, then none.
+  const blurbLines = height >= 150 ? 2 : height >= 122 ? 1 : 0
 
   return (
     <Pressable
@@ -99,261 +316,67 @@ function StoryPoster({ story, percent }: { story: Story; percent: number }) {
         tapHaptic()
         router.push(`/story/${story.id}`)
       }}
+      onPressIn={() => setPressed(true)}
+      onPressOut={() => setPressed(false)}
       accessibilityRole="button"
       accessibilityLabel={`${story.titleEnglish}, HSK ${story.hskLevel}${available ? `, ${percent}% read` : ', coming soon'}`}
-      className="overflow-hidden rounded-[18px] shadow-paper"
-      style={{
-        width: CARD_W,
-        height: CARD_H,
-        borderWidth: 1,
-        borderColor: 'rgba(217,207,192,0.45)',
-        opacity: available ? 1 : 0.55,
-      }}
     >
-      <StoryArt story={story} width={CARD_W} height={CARD_H} radius={18} glyphScale={1.25} />
-
-      {/* Level badge, over the art in the top-left corner. */}
+      {/* The look lives on a View inside the Pressable — a style function on a
+          Pressable is dropped on native (CLAUDE.md, Styling). */}
       <View
-        className="absolute left-2 top-2 h-[22px] justify-center rounded-[8px] px-2"
-        style={{ backgroundColor: palette.soft }}
+        style={{
+          width,
+          height,
+          flexDirection: 'row',
+          gap: 13,
+          padding: CARD_PAD,
+          borderRadius: 16,
+          backgroundColor: c.card,
+          borderWidth: 1,
+          borderColor: c.cardBorder,
+          opacity: available ? (pressed ? 0.85 : 1) : 0.55,
+          transform: [{ scale: pressed ? 0.985 : 1 }],
+          ...cardShadow,
+        }}
       >
-        <Text className="font-inter-bold text-[10px]" style={{ color: palette.strong }}>
-          HSK {story.hskLevel}
-        </Text>
-      </View>
+        <StoryArt story={story} width={coverH * COVER_RATIO} height={coverH} radius={9} />
 
-      {available ? (
-        percent > 0 && (
-          // Hairline along the very bottom edge — the shelf layout has no room for
-          // a percentage label, but an unfinished story should still say so.
-          <View className="absolute inset-x-0 bottom-0 h-[3px]" style={{ backgroundColor: 'rgba(247,222,215,0.85)' }}>
-            <View className="h-full" style={{ width: `${percent}%`, backgroundColor: '#f46757' }} />
+        <View style={{ flex: 1, paddingTop: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+            <Text numberOfLines={1} className={hanziFont(script, 'semibold')} style={{ flex: 1, fontSize: 18, lineHeight: 25, color: c.ink }}>
+              {forScript(story.title, script)}
+            </Text>
+            {available ? (
+              <ChevronRight size={18} color={c.inkFaint} style={{ marginTop: 3 }} />
+            ) : (
+              <Lock size={14} color={c.inkFaint} style={{ marginTop: 5 }} />
+            )}
           </View>
-        )
-      ) : (
-        <View
-          className="absolute right-2 top-2 h-[22px] w-[22px] items-center justify-center rounded-full"
-          style={{ backgroundColor: 'rgba(255,255,255,0.85)' }}
-        >
-          <Lock size={11} color="#8a8a99" />
-        </View>
-      )}
+          <Text numberOfLines={1} style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 17, color: c.inkFaint }}>
+            {story.titlePinyin}
+          </Text>
+          <Text numberOfLines={1} style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 19, color: c.ink }}>
+            {story.titleEnglish}
+          </Text>
+          {blurbLines > 0 && (
+            <Text numberOfLines={blurbLines} style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 17, color: c.inkSoft, marginTop: 3 }}>
+              {available ? story.description : 'Coming soon'}
+            </Text>
+          )}
 
-      {/* Title band. Sits on a translucent cream wash so it stays readable over
-          whatever the cover happens to be. */}
-      <View
-        className="absolute inset-x-0 bottom-0 px-2.5 pb-3 pt-2"
-        style={{ backgroundColor: 'rgba(253,251,245,0.88)' }}
-      >
-        <Text
-          className={`text-center ${hanziFont(script, 'semibold')} text-[19px] leading-[25px]`}
-          style={{ color: '#16161e' }}
-          numberOfLines={1}
-        >
-          {forScript(story.title, script)}
-        </Text>
-        <Text
-          className="text-center font-inter-medium text-[11.5px] leading-[15px]"
-          style={{ color: '#3f3e49' }}
-          numberOfLines={2}
-        >
-          {story.titleEnglish}
-        </Text>
+          <View style={{ flex: 1 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <BookOpen size={13} color={c.inkFaint} />
+              <Text style={{ fontFamily: 'Lora', fontSize: 12, color: c.inkFaint }}>{formatCount(story.wordCount)} words</Text>
+            </View>
+            <View style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: c.track, overflow: 'hidden' }}>
+              <View style={{ width: `${percent}%`, height: '100%', borderRadius: 3, backgroundColor: c.teal }} />
+            </View>
+            <Text style={{ fontFamily: 'Lora', fontSize: 12, color: c.inkSoft, minWidth: 30, textAlign: 'right' }}>{percent}%</Text>
+          </View>
+        </View>
       </View>
     </Pressable>
-  )
-}
-
-function Shelf({
-  title,
-  tagline,
-  stories,
-  progressFor,
-}: {
-  title: string
-  tagline: string
-  stories: Story[]
-  progressFor: (story: Story) => number
-}) {
-  return (
-    <View className="mb-6">
-      <View className="mb-2.5 flex-row items-baseline gap-2.5" style={{ paddingHorizontal: EDGE }}>
-        <Text className="font-nunito-black text-[21px]" style={{ color: '#1a1a2e', letterSpacing: -0.4 }}>
-          {title}
-        </Text>
-        <Text className="font-handwriting-medium text-[16px]" style={{ color: '#8a7f6a' }} numberOfLines={1}>
-          {tagline}
-        </Text>
-      </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        decelerationRate="fast"
-        // Snapping to the card pitch makes the row feel like a shelf being
-        // flicked rather than a free-scrolling strip.
-        snapToInterval={CARD_W + ROW_GAP}
-        snapToAlignment="start"
-        contentContainerStyle={{ gap: ROW_GAP, paddingHorizontal: EDGE, paddingVertical: 3 }}
-      >
-        {stories.map((story) => (
-          <StoryPoster key={story.id} story={story} percent={progressFor(story)} />
-        ))}
-      </ScrollView>
-    </View>
-  )
-}
-
-export function Books() {
-  const { xp, storyProgress } = useApp()
-  const [filter, setFilter] = useState<Filter>('all')
-  const scroll = useScrollToTopOnFocus()
-
-  const run = useEntranceRun()
-  const enter = useReveal({ from: 'bottom', ...ENTER, duration: ENTER.for, distance: ENTER.rise, run })
-
-  // Shelves keep their fixed order; a level filter thins each row and drops any
-  // that empty out, rather than reshuffling the library under the learner.
-  const shelves = useMemo(
-    () =>
-      COLLECTIONS.map((collection) => ({
-        ...collection,
-        stories: STORIES.filter(
-          (s) => s.collection === collection.id && (filter === 'all' || s.hskLevel === filter),
-        ),
-      })).filter((shelf) => shelf.stories.length > 0),
-    [filter],
-  )
-
-  return (
-    <ReadingShell>
-      {/*
-        The navigator's own push transition is switched off for this route so
-        the fade-up is the only animation playing. Left on, a native build would
-        slide the whole page in from the right *and* run this one inside it —
-        two transitions at different speeds, which reads as a stutter rather
-        than as either one. Same call `DetailShell` makes, for the same reason.
-      */}
-      <Stack.Screen options={{ animation: 'none' }} />
-
-      {/*
-        Plain styles on the animated view with everything else in a plain View
-        inside it — NativeWind drops `className` on an `Animated.View` entirely,
-        and the cream page would go with it.
-      */}
-      <Animated.View style={[{ flex: 1 }, enter]}>
-        <View className="flex-1">
-          {/* Painted page. Spans the whole column — including behind the header and
-              chips — so the clouds can sit high on the page, and stays put while the
-              shelves scroll over it. */}
-          <PageDecor clouds />
-
-          <View className="h-[72px] flex-row items-center px-[18px] pb-2 pt-[18px]">
-            <Pressable
-              // The library is opened from the Lessons tab's picker sheet, so the
-              // dashboard is where it belongs when there is no stack to pop —
-              // reaching /books by its own URL otherwise leaves this button inert.
-              onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={12}
-              className="pr-1"
-            >
-              <ChevronLeft size={28} color="#1a1a2e" strokeWidth={2} />
-            </Pressable>
-
-            <Text
-              className="flex-1 text-center font-nunito-black text-[31px]"
-              style={{ color: '#1a1a2e', lineHeight: 36, letterSpacing: -0.8 }}
-            >
-              Reading Library
-            </Text>
-
-            <View
-              className="h-[38px] flex-row items-center gap-[7px] rounded-full px-3.5"
-              style={{ backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e7e1d7' }}
-            >
-              <Star size={15} color="#ffc414" fill="#ffc414" />
-              <Text className="font-nunito-bold text-sm" style={{ color: '#1a1a2e' }}>
-                {formatCount(xp)} XP
-              </Text>
-            </View>
-          </View>
-
-          {/*
-            Pinned to its content height. Left as a bare sibling of the vertical list
-            below, this horizontal ScrollView gets squeezed by the vertical one taking
-            the remaining space, which crops the chips.
-          */}
-          <View className="shrink-0 grow-0">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ flexGrow: 0 }}
-              contentContainerStyle={{ gap: 8, paddingHorizontal: 18, paddingVertical: 10, alignItems: 'center' }}
-            >
-              <HskChip label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
-              {LEVELS.map((level) => (
-                <HskChip
-                  key={level}
-                  label={`HSK ${level}`}
-                  active={filter === level}
-                  onPress={() => setFilter(level)}
-                />
-              ))}
-            </ScrollView>
-          </View>
-
-          <View className="flex-1">
-            {/* Back from a story is a return to the library, not to the shelf the
-                last scroll happened to stop on. */}
-            <ScrollView ref={scroll} contentContainerStyle={{ paddingTop: 8, paddingBottom: 28 }}>
-              {shelves.length === 0 ? (
-                <Text className="py-12 text-center font-inter text-sm" style={{ color: '#8a8a99' }}>
-                  No stories at this level yet.
-                </Text>
-              ) : (
-                shelves.map((shelf) => (
-                  <Shelf
-                    key={shelf.id}
-                    title={shelf.title}
-                    tagline={shelf.tagline}
-                    stories={shelf.stories}
-                    progressFor={(story) => progressPercent(story, storyProgress[story.id])}
-                  />
-                ))
-              )}
-
-              {/* One handwritten note per screen — the restraint is what makes it land.
-                  The inner wrapper is load-bearing: BrushHighlight aligns itself to the
-                  start of its parent, which would beat this row's centring on its own. */}
-              <View className="mt-1 items-center">
-                <View className="self-center">
-                  <BrushHighlight color="#f9e58c" bleedX={12} bleedTop={5} bleedBottom={1}>
-                    <Text className="font-handwriting-medium text-xl" style={{ color: '#1a1a2e' }}>
-                      Every story, a step closer.
-                    </Text>
-                  </BrushHighlight>
-                </View>
-              </View>
-
-              {/*
-                Below the handwritten note rather than above it, so the note
-                still closes the *library* — the shelves and their encouragement
-                are one thought, and an advert wedged between them would break
-                it. Down here the advert is something after the page has
-                finished, which is the honest place for it.
-
-                Padded to `EDGE` so it lines up with the shelf titles; the
-                ScrollView itself carries no horizontal padding.
-              */}
-              <View style={{ paddingHorizontal: EDGE }}>
-                <AppBannerAd placement="books" />
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Animated.View>
-    </ReadingShell>
   )
 }

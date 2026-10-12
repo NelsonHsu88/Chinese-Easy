@@ -4,7 +4,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
 import * as Linking from 'expo-linking'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase'
-import { deviceStore } from '../lib/storage'
+import { deviceStore, markAccountForPurge } from '../lib/storage'
 import { recordGuestAdoptionIntent } from '../lib/storageScope'
 
 /*
@@ -83,6 +83,16 @@ interface AuthContextValue {
    */
   signInWithGoogle: () => Promise<AuthResult>
   signOut: () => Promise<void>
+  /**
+   * Permanently deletes the signed-in account: the server deletes the user
+   * (every synced row goes with it, by `on delete cascade`), then this device
+   * signs out and erases its copy of that account's progress. Guest progress
+   * from before sign-in is left alone — it was never the account's.
+   *
+   * The work is done by the `delete-account` Edge Function, because deleting a
+   * user needs the service_role key, which never ships in the app.
+   */
+  deleteAccount: () => Promise<AuthResult>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -269,6 +279,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await getSupabase().auth.signOut()
   }, [])
 
+  const deleteAccount = useCallback(async (): Promise<AuthResult> => {
+    const userId = session?.user.id
+    if (!isSupabaseConfigured || !userId) return { error: 'You’re not signed in.' }
+    const supabase = getSupabase()
+
+    /* `invoke` sends the session's access token; the function reads whose
+       account to delete from that token alone. */
+    const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' })
+    if (error) {
+      if (__DEV__) console.warn('[auth] delete-account failed:', error.message)
+      return { error: 'Your account couldn’t be deleted. Check your connection and try again.' }
+    }
+
+    markAccountForPurge(userId)
+    /* Local only: the user no longer exists, so there is no server session left
+       to revoke, and a network sign-out would only fail. */
+    await supabase.auth.signOut({ scope: 'local' })
+    return { error: null }
+  }, [session])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       ready,
@@ -281,8 +311,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInWithEmail,
       signInWithGoogle,
       signOut,
+      deleteAccount,
     }),
-    [ready, session, signUpWithEmail, signInWithEmail, signInWithGoogle, signOut],
+    [ready, session, signUpWithEmail, signInWithEmail, signInWithGoogle, signOut, deleteAccount],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -13,10 +13,11 @@ import { Animated, Easing } from 'react-native'
  * which is what made a card's shadow appear to snap on abruptly partway
  * through an otherwise-smooth fade instead of growing in with it.
  *
- * This runs a second, always-JS-driven value on the same timing and curve as
- * the surrounding reveal, and lets a card's shadow ramp against *that* instead
- * — genuinely interpolated, frame by frame, rather than inheriting whatever
- * cadence Android happens to recompute elevation on.
+ * This runs a second, always-JS-driven value that starts with the surrounding
+ * reveal, and lets a card's shadow ramp against *that* instead — genuinely
+ * interpolated, frame by frame, rather than inheriting whatever cadence
+ * Android happens to recompute elevation on. It runs on its own slower curve
+ * (`SHADOW_EASING`, below), not the reveal's.
  */
 
 const ShadowRevealContext = createContext<Animated.Value | null>(null)
@@ -26,28 +27,44 @@ const ShadowRevealContext = createContext<Animated.Value | null>(null)
     shadow ramp without each one owning its own animation. */
 export const ShadowRevealProvider = ShadowRevealContext.Provider
 
-/** The "standard" curve this app's entrances already fade content on. */
-const DEFAULT_EASING = Easing.bezier(0.4, 0, 0.2, 1)
+/*
+ * Every shadow in the app arrives on this one curve, and deliberately *after*
+ * its card. The card lands on its own timing; the shadow starts with it but
+ * creeps in over `SHADOW_STRETCH` times as long, on a slow-in / slow-out
+ * bezier, so it reads as the surface settling onto the page rather than being
+ * switched on. Shared so a card on the Dashboard and one in Settings settle
+ * identically — change the feel here, not per screen.
+ */
+export const SHADOW_EASING = Easing.bezier(0.65, 0, 0.35, 1)
+const SHADOW_STRETCH = 2.5
+const SHADOW_MIN_DURATION = 900
+
+/** How long a shadow takes to arrive under a card that arrives in `duration`. */
+export function shadowDuration(duration: number): number {
+  return Math.max(SHADOW_MIN_DURATION, duration * SHADOW_STRETCH)
+}
 
 /**
- * A 0→1 value for a `ShadowRevealProvider`, timed exactly like the reveal it
- * sits alongside: same delay, same duration, replayed on the same `run`.
+ * A 0→1 value for a `ShadowRevealProvider`, starting with the reveal it sits
+ * alongside (same delay, replayed on the same `run`) but ramping over
+ * `shadowDuration(duration)` on `SHADOW_EASING`.
  */
 export function useShadowReveal({
   at = 0,
-  duration,
+  duration: cardDuration,
   run,
-  easing = DEFAULT_EASING,
   /** True to skip the ramp and sit at full strength immediately — a screen's
       very first section has nothing to catch up to (see `Dictionary.tsx`). */
   settled = false,
 }: {
   at?: number
+  /** The duration of the card's own reveal; the shadow's is derived from it. */
   duration: number
   run: number
-  easing?: (value: number) => number
   settled?: boolean
 }): Animated.Value {
+  const duration = shadowDuration(cardDuration)
+  const easing = SHADOW_EASING
   const progress = useRef(new Animated.Value(settled ? 1 : 0)).current
 
   useEffect(() => {
@@ -113,15 +130,13 @@ export function ShadowReveal({
   at,
   duration,
   run,
-  easing,
   children,
 }: {
   at?: number
   duration: number
   run: number
-  easing?: (value: number) => number
   children: ReactNode
 }) {
-  const progress = useShadowReveal({ at, duration, run, easing })
+  const progress = useShadowReveal({ at, duration, run })
   return <ShadowRevealProvider value={progress}>{children}</ShadowRevealProvider>
 }

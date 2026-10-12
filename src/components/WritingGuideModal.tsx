@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, Modal as RNModal, ScrollView, Animated, Platform, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ArrowLeft, Bookmark, Droplet, Pencil, Puzzle, Rocket, Star, Trophy } from 'lucide-react-native'
+import { ArrowLeft, Droplet, Pencil, Puzzle, Rocket, Star, Trophy } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { WritingPracticeModal } from './WritingPracticeModal'
 import { WritingGrid } from './writingGuide/WritingGrid'
@@ -13,11 +13,12 @@ import {
   PlainCard,
   TakeawayCard,
   CardText,
-  SpeedSegment,
   PrimaryButton,
+  GuideCompact,
+  useGuideCompact,
   type GuideSpeed,
 } from './writingGuide/parts'
-import { guideColors as c, spacing, rhythm, type as t, motion } from './writingGuide/tokens'
+import { guideColors as c, spacing, rhythm, rhythmCompact, type as t, motion } from './writingGuide/tokens'
 import { tickHaptic } from '../lib/haptics'
 import { playTapSound } from '../lib/sound'
 import type { VocabWord } from '../types'
@@ -80,25 +81,55 @@ const GRID_RATIO = 0.7
 /**
  * Chrome above and below the scrolling body, in points: the 50pt header, the
  * gap to the progress row, the row itself, the gap down to the heading, the
- * body's bottom padding, and the speed control plus button beneath it.
+ * body's bottom padding, and the button (now at the end of the scroll).
  *
- * Measured from the running app rather than derived from the styles — the same
- * call `pagination.ts` makes, and for the same reason: line heights and the
- * button's own padding do not add up to what the styles imply.
+ * Only the *first guess* at the character's size. The real fit is measured:
+ * see `overflow` below.
  */
-const CHROME = 260
+const CHROME = 210
 
 /**
- * How much of the leftover height each page can give its character, and the
- * smallest square still worth drawing one in.
+ * How much of the leftover height each page can give its character on the
+ * first guess, and the smallest square still worth drawing one in.
  *
  * Per page, because the pages are not equally full: page three carries five
  * rule rows and can spare far less than page four, which is a heading and a
- * single card. One shared ratio meant either a tiny character on page one or a
- * scrollbar on page three.
+ * single card.
  */
 const GRID_SHARE = [0.42, 0.34, 0.28, 0.5] as const
 const GRID_MIN = 128
+/**
+ * Where the measured fit may take the character on a short screen. Below
+ * `GRID_MIN` only when the page would otherwise scroll — a smaller character
+ * is a far better trade than a page the learner has to scroll to finish.
+ */
+const GRID_FLOOR = 80
+
+/**
+ * Screen height (inside the safe areas) below which the guide uses its compact
+ * vertical rhythm. Decided from the screen rather than from the measured
+ * viewport, because going compact shortens the header and so changes the
+ * viewport — deciding from that would flip back and forth.
+ */
+/* 800 takes in the 390pt iPhones (763pt inside the safe areas), whose page
+   three otherwise leaves the character at its floor. */
+const COMPACT_BELOW = 800
+/**
+ * Below this, even the compact rhythm leaves the character at its floor and the
+ * page still overflowing (an iPhone SE, 627pt inside the safe areas). There the
+ * step progress takes the header title's place instead of a row of its own —
+ * ~46pt back without shrinking any type. Every page has its own large heading,
+ * so the screen title is the one thing that can go.
+ */
+const TINY_BELOW = 680
+const HEADER = 50
+const HEADER_COMPACT = 44
+
+/** The vertical rhythm for whichever density the guide is drawn at. */
+const useRhythm = () => (useGuideCompact() ? rhythmCompact : rhythm)
+
+/** Narrowest text column the intro copy's authored line breaks fit in. */
+const COPY_BREAKS_MIN = 340
 
 export function WritingGuideModal({ onClose }: { onClose: () => void }) {
   const { wordBank } = useApp()
@@ -112,11 +143,46 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
    * safe areas. `useSafeAreaInsets` rather than `SafeAreaView`'s own padding,
    * because the number is needed here as arithmetic, not just as padding.
    */
+  const compact = windowHeight - insets.top - insets.bottom < COMPACT_BELOW
+  /* An iPhone SE-sized screen: the step progress moves up into the header. */
+  const tiny = windowHeight - insets.top - insets.bottom < TINY_BELOW
+  const r = compact ? rhythmCompact : rhythm
   const bodyHeight = windowHeight - CHROME - insets.top - insets.bottom
-  const gridSide = Math.round(
-    Math.max(GRID_MIN, Math.min(columnWidth * GRID_RATIO, bodyHeight * GRID_SHARE[page])),
-  )
-  const [speed, setSpeed] = useState<GuideSpeed>('normal')
+  const estimate = Math.max(GRID_MIN, Math.min(columnWidth * GRID_RATIO, bodyHeight * GRID_SHARE[page]))
+
+  /*
+   * **Every page fits the screen, measured rather than estimated.** The
+   * character is the only element with any give, so when a page's content runs
+   * past the viewport the grid gives up exactly the overrun — the type, cards,
+   * gaps and button all keep their designed sizes. `CHROME` and `GRID_SHARE`
+   * are a guess at a phone's proportions; this is the correction, per page,
+   * recomputed whenever the viewport changes. It only ever shrinks the grid
+   * from the estimate, never grows it past the design.
+   */
+  const [viewport, setViewport] = useState(0)
+  const [overflow, setOverflow] = useState<{ viewport: number; cut: Record<number, number> }>({ viewport: 0, cut: {} })
+  const cut = overflow.viewport === viewport ? overflow.cut[page] ?? 0 : 0
+  const gridSide = Math.round(Math.max(GRID_FLOOR, estimate - cut))
+  const [contentHeight, setContentHeight] = useState(0)
+  const onContentSize = (_w: number, h: number) => setContentHeight(Math.round(h))
+  /*
+   * An effect rather than the content-size callback itself: the content
+   * reports its size *before* the ScrollView reports its own, so a check made
+   * in the callback sees no viewport yet and never runs again.
+   */
+  useEffect(() => {
+    if (viewport === 0 || contentHeight <= viewport + 1 || gridSide <= GRID_FLOOR) return
+    const over = contentHeight - viewport
+    setOverflow((prev) => {
+      const base = prev.viewport === viewport ? prev.cut : {}
+      return { viewport, cut: { ...base, [page]: (base[page] ?? 0) + over } }
+    })
+    // gridSide is read, not watched: it changes *because* of this effect, and the
+    // new content height that follows is what decides whether to go round again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewport, contentHeight, page])
+  /* The speed toggle is gone; every page animates at normal speed. */
+  const speed: GuideSpeed = 'normal'
   /** Which stroke rule page 3 is demonstrating. */
   const [selectedRule, setSelectedRule] = useState(2)
   const [tracing, setTracing] = useState(false)
@@ -155,9 +221,20 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
     }).start()
   }, [page, enter])
 
+  /*
+   * The button sits at the end of the scroll, so a page is always left from its
+   * bottom — and one ScrollView serves every page, so without this the next page
+   * would open wherever the last one was left.
+   */
+  const scrollRef = useRef<ScrollView>(null)
+
   const goTo = (next: number) => {
     tickHaptic()
     setPage(Math.min(TOTAL - 1, Math.max(0, next)))
+    /* Cleared in the same batch as the page, so the fit effect never measures
+       the new page against the old page's height. */
+    setContentHeight(0)
+    scrollRef.current?.scrollTo({ y: 0, animated: false })
   }
 
   const handleCta = () => {
@@ -179,21 +256,28 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
 
   return (
     <RNModal animationType="slide" onRequestClose={onClose}>
+     <GuideCompact.Provider value={compact}>
       <SafeAreaView className="flex-1 items-center" style={{ backgroundColor: c.background }}>
        <View className="flex-1" style={{ width: columnWidth }}>
         {/*
-          The title is centred on the *screen*, not between the two icons — with
-          a back arrow on one side and a bookmark on the other it would
-          otherwise sit very slightly off-centre, which is the kind of thing
-          that reads as sloppy without being identifiable.
+          The title is centred on the *screen*, with the back arrow laid over
+          it — centred beside the arrow instead, it would sit visibly
+          off-centre. (The reference's bookmark was removed: it did nothing.)
         */}
-        <View className="justify-center" style={{ height: 50, paddingHorizontal: spacing.screen }}>
-          <Text
-            className="text-center font-nunito-extrabold"
-            style={{ fontSize: t.header.fontSize, color: c.navy }}
-          >
-            How to write Chinese
-          </Text>
+        <View className="justify-center" style={{ height: compact ? HEADER_COMPACT : HEADER, paddingHorizontal: spacing.screen }}>
+          {tiny ? (
+            /* Inset past the back arrow; the "n / 4" count closes the row on the right. */
+            <View style={{ paddingLeft: 36 }}>
+              <GuideProgress page={page} total={TOTAL} />
+            </View>
+          ) : (
+            <Text
+              className="text-center font-nunito-extrabold"
+              style={{ fontSize: t.header.fontSize, color: c.navy }}
+            >
+              How to write Chinese
+            </Text>
+          )}
           <View className="absolute inset-x-0 flex-row items-center justify-between" style={{ paddingHorizontal: spacing.screen }}>
             <Pressable
               onPress={() => (page === 0 ? onClose() : goTo(page - 1))}
@@ -204,8 +288,6 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
             >
               <ArrowLeft size={23} color={c.navy} strokeWidth={2.2} />
             </Pressable>
-            {/* Inert, matching the reference — bookmarking isn't a feature yet. */}
-            <Bookmark size={21} color={c.textMuted} strokeWidth={2} />
           </View>
         </View>
 
@@ -223,22 +305,33 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
           supporting line.
         */}
         <ScrollView
+          ref={scrollRef}
+          /* Remounted per page so each page reports its own content size, even
+             one that happens to be exactly as tall as the last. */
+          key={page}
+          onLayout={(e) => setViewport(Math.round(e.nativeEvent.layout.height))}
+          onContentSizeChange={onContentSize}
+          /* Fits by construction; scrolling is only the fallback at a large
+             accessibility text size, so a page that fits doesn't bounce. */
+          scrollEnabled={contentHeight > viewport + 1}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
           contentContainerStyle={{
             flexGrow: 1,
             paddingHorizontal: spacing.screen,
-            paddingTop: rhythm.headerToProgress,
-            paddingBottom: spacing.lg,
+            paddingTop: tiny ? 0 : r.headerToProgress,
+            paddingBottom: compact ? 10 : spacing.lg,
           }}
           showsVerticalScrollIndicator={false}
         >
-          <GuideProgress page={page} total={TOTAL} />
+          {!tiny && <GuideProgress page={page} total={TOTAL} />}
 
           <Animated.View
             style={{
               flex: 1,
               opacity: enter,
               transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }],
-              marginTop: rhythm.progressToHeading,
+              marginTop: tiny ? spacing.xs : r.progressToHeading,
             }}
           >
             <View className="flex-1" style={{ justifyContent: 'space-between' }}>
@@ -251,31 +344,32 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
               />
             </View>
           </Animated.View>
-        </ScrollView>
-
-        <View style={{ paddingHorizontal: spacing.screen, paddingBottom: spacing.lg, gap: rhythm.controlsToCta }}>
-          {/* On every page, including the rules one — it animates a character too. */}
-          <SpeedSegment speed={speed} onChange={(next) => { tickHaptic(); setSpeed(next) }} />
 
           {/*
+            The button is the last thing in the scroll, not pinned beneath it:
+            the learner reaches it by going through the whole page. On a page
+            that fits, the body's `flexGrow` still puts it at the foot of the
+            screen.
+
             The icon follows the label: a pencil only where the button actually
             opens the writing pad, a rocket on the last page, and nothing on the
             acknowledge pages — a pencil on "Got it" would promise a tracing
             step that no longer happens there.
           */}
-          <PrimaryButton
-            label={ctaLabel}
-            icon={
-              isLast ? (
-                <Rocket size={18} color="#ffffff" strokeWidth={2.5} />
-              ) : page === TRACING_PAGE ? (
-                <Pencil size={18} color="#ffffff" strokeWidth={2.5} />
-              ) : undefined
-            }
-            onPress={handleCta}
-          />
-
-        </View>
+          <View style={{ marginTop: r.controlsToCta }}>
+            <PrimaryButton
+              label={ctaLabel}
+              icon={
+                isLast ? (
+                  <Rocket size={18} color="#ffffff" strokeWidth={2.5} />
+                ) : page === TRACING_PAGE ? (
+                  <Pencil size={18} color="#ffffff" strokeWidth={2.5} />
+                ) : undefined
+              }
+              onPress={handleCta}
+            />
+          </View>
+        </ScrollView>
 
         {/*
           Page one only (`TRACING_PAGE`). Finishing the character closes
@@ -296,6 +390,7 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
         )}
        </View>
       </SafeAreaView>
+     </GuideCompact.Provider>
     </RNModal>
   )
 }
@@ -306,6 +401,16 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
  * look like a different design.
  */
 function Heading({ title, copy }: { title: string; copy: string }) {
+  const r = useRhythm()
+  /*
+   * The copy's line breaks are authored for a 390pt-plus phone. Narrower, its
+   * longest line no longer fits, so each authored line wraps on its own and
+   * leaves a one-word orphan under it ("drawings." alone, "written" alone).
+   * There the breaks are dropped and the paragraph wraps as one.
+   */
+  const { width } = useWindowDimensions()
+  const textWidth = Math.min(width, CONTENT_MAX) - spacing.screen * 2
+  const body = textWidth < COPY_BREAKS_MIN ? copy.replace(/\n/g, ' ') : copy
   // One View, not a fragment: the page body distributes leftover height between
   // its children, and a heading that is two separate children gets pulled apart
   // from the line explaining it.
@@ -317,9 +422,9 @@ function Heading({ title, copy }: { title: string; copy: string }) {
       {copy !== '' && (
         <Text
           className="text-center font-nunito-semibold"
-          style={{ ...t.intro, color: c.textSecondary, marginTop: rhythm.headingToCopy }}
+          style={{ ...t.intro, color: c.textSecondary, marginTop: r.headingToCopy }}
         >
-          {copy}
+          {body}
         </Text>
       )}
     </View>
@@ -345,8 +450,9 @@ function Grid({
   speed: GuideSpeed
   gridSide: number
 }) {
+  const r = useRhythm()
   return (
-    <View className="items-center" style={{ marginTop: rhythm.copyToCharacter }}>
+    <View className="items-center" style={{ marginTop: r.copyToCharacter }}>
       <WritingGrid character={character} speed={speed} width={gridSide} height={gridSide} />
     </View>
   )
@@ -354,10 +460,11 @@ function Grid({
 
 /** One line under the writing card, centred, naming what to watch for. */
 function Caption({ children }: { children: string }) {
+  const r = useRhythm()
   return (
     <Text
       className="text-center font-nunito-semibold"
-      style={{ ...t.intro, color: c.textSecondary, marginTop: rhythm.characterToExplanation }}
+      style={{ ...t.intro, color: c.textSecondary, marginTop: r.characterToExplanation }}
     >
       {children}
     </Text>
@@ -377,6 +484,7 @@ function PageBody({
   selectedRule: number
   onSelectRule: (index: number) => void
 }) {
+  const r = useRhythm()
   if (page === 0) {
     return (
       <>
@@ -388,7 +496,7 @@ They are built from smaller parts and written
 in a fixed order.`}
         />
         <Grid character="好" speed={speed} gridSide={gridSide} />
-        <View style={{ marginTop: rhythm.characterToExplanation }}>
+        <View style={{ marginTop: r.characterToExplanation }}>
           {/*
             Two lines that say the same thing twice, once in characters and once
             in English. Without the second line the equation is a shape puzzle:
@@ -407,7 +515,7 @@ in a fixed order.`}
             </Text>
           </ExampleCard>
         </View>
-        <View style={{ marginTop: rhythm.explanationToCard }}>
+        <View style={{ marginTop: r.explanationToCard }}>
           <TakeawayCard icon={<Star size={24} color="#ffffff" strokeWidth={2.4} fill="#ffffff" />}>
             <CardText>Learn the parts, and most characters become easier to remember.</CardText>
           </TakeawayCard>
@@ -425,7 +533,7 @@ in a fixed order.`}
 while another part may hint at sound.`}
         />
         <Grid character="媽" speed={speed} gridSide={gridSide} />
-        <View style={{ marginTop: rhythm.characterToExplanation }}>
+        <View style={{ marginTop: r.characterToExplanation }}>
           {/*
             The radical is labelled with what it *means*, not with the word
             "meaning". Writing 女 (meaning) named the job the part is doing while
@@ -439,7 +547,7 @@ while another part may hint at sound.`}
             </Text>
           </ExampleCard>
         </View>
-        <View style={{ marginTop: rhythm.explanationToCard }}>
+        <View style={{ marginTop: r.explanationToCard }}>
           <PlainCard
             title="Example: Water radical"
             icon={<Droplet size={19} color="#4E9BD6" strokeWidth={2.3} fill="#4E9BD6" />}
@@ -490,7 +598,7 @@ follows patterns`} copy="" />
           <Grid character={rule.character} speed={speed} gridSide={gridSide} />
           <Caption>{rule.caption}</Caption>
         </View>
-        <View style={{ marginTop: rhythm.explanationToCard }}>
+        <View style={{ marginTop: r.explanationToCard }}>
           <RuleList selected={selectedRule} onSelect={onSelectRule} />
         </View>
       </>
@@ -506,7 +614,7 @@ a direction`}
 Vertical strokes go top to bottom.`}
       />
       <Grid character="十" speed={speed} gridSide={gridSide} />
-      <View style={{ marginTop: rhythm.explanationToCard + spacing.sm }}>
+      <View style={{ marginTop: r.explanationToCard + spacing.sm }}>
         <TakeawayCard icon={<Trophy size={24} color="#ffffff" strokeWidth={2.2} />}>
           <CardText>
             If you can spot the parts and follow the order, you can write new characters with

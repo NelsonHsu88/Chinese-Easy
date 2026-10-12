@@ -109,10 +109,20 @@ export function pinyinSyllableToZhuyin(token: string): string {
   return tone === 5 ? TONE_MARKS[5] + zhuyin : zhuyin + TONE_MARKS[tone]
 }
 
+/**
+ * What goes between two zhuyin syllables: an en space, not a plain one.
+ *
+ * Bopomofo symbols are full-width, and at the small sizes readings are drawn
+ * at, an ordinary space between them is a sliver — "ㄒㄩㄝˊ ㄒㄧㄠˋ" read as one
+ * run, and the tone mark of one syllable sat hard against the next. Pinyin
+ * doesn't need this: its letters are narrow and its space is proportionate.
+ */
+export const ZHUYIN_SYLLABLE_GAP = ' '
+
 /** Converts space-separated pinyin (one syllable per token) to zhuyin. */
 export function pinyinToZhuyin(pinyin: string): string {
   return pinyin
     .split(' ')
     .map((token) => pinyinSyllableToZhuyin(token))
-    .join(' ')
+    .join(ZHUYIN_SYLLABLE_GAP)
 }

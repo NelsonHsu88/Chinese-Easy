@@ -26,6 +26,9 @@ import { useApp } from '../../context/AppContext'
  * - **Never over a lesson or a review.** Interrupting somebody mid-answer costs
  *   them the answer, and the subscription removes ads — it does not gate
  *   learning, so it has no business standing in front of it.
+ * - **Never during Shifu's tour.** A paywall landing on a spotlight would take
+ *   the learner out of the one walk-through meant to show them the app. The
+ *   clock is held while it runs, like on the subscription screen itself.
  *
  * The clock restarts from the moment the screen is closed rather than running
  * underneath it, so closing an offer always buys the full interval of quiet.
@@ -41,7 +44,7 @@ const PROMPT_INTERVAL = 5 * 60 * 1000
  * would be actively harmful. Prefix matches, so `/lesson/3` is covered by
  * `/lesson`.
  */
-const PROTECTED_ROUTES = [
+export const PROTECTED_ROUTES = [
   '/onboarding',
   '/review-session',
   '/lesson',
@@ -53,8 +56,12 @@ const PROTECTED_ROUTES = [
 const TICK = 15 * 1000
 
 export function useSubscribePrompt(): void {
-  const { ready, isAdFree, onboardingComplete } = useApp()
+  const { ready, isAdFree, onboardingComplete, tour } = useApp()
   const pathname = usePathname()
+
+  /* Read through a ref for the same reason as the route below. */
+  const touring = useRef(false)
+  touring.current = tour.status === 'in_progress'
 
   /*
    * The route is read through a ref rather than a dependency, so navigating
@@ -82,7 +89,7 @@ export function useSubscribePrompt(): void {
        * makes closing it buy a full interval of quiet rather than however much
        * of one happened to be left.
        */
-      if (onSubscribe) {
+      if (onSubscribe || touring.current) {
         lastShown.current = Date.now()
         return
       }

@@ -26,6 +26,7 @@ import {
   type VerdictKind,
 } from './tokens'
 import { tickHaptic } from '../../lib/haptics'
+import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { hanziFont } from '../../lib/hanzi'
 import type { ScriptMode } from '../../types'
 
@@ -307,7 +308,17 @@ export function OnbPageTransition({
         const node = isFront ? shown.current : leavingNode.current
         return (
           <Animated.View
-            key={slot}
+            /*
+             * Keyed by the page it holds, so an emptied slot is a fresh native
+             * view. The exit fades this view to opacity 0 on the native driver,
+             * and when the slot drops its animated style React does not restore
+             * it — its own props still say 1, so there is no diff to send. The
+             * next page mounted into that slot was then invisible: a blank
+             * screen from the second page change onwards, on native only. A
+             * page keeps its key from front to leaving, so it never remounts
+             * mid-change; the only remount is of an empty slot.
+             */
+            key={key ?? `empty-${slot}`}
             /*
              * Only the front slot takes touches, and only once the change has
              * settled: the outgoing page is a stale snapshot, and the incoming
@@ -443,7 +454,7 @@ export function OnbShell({
   )
 
   return (
-    <View className="flex-1" style={{ backgroundColor: c.page }}>
+    <View className="flex-1" style={{ backgroundColor: c.paper }}>
       <View className="flex-1 self-center overflow-hidden" style={{ width: columnWidth }}>
         {art}
         <SafeAreaView className="flex-1" edges={['top', 'bottom']}>
@@ -512,21 +523,48 @@ export function OnbSkip({ onPress }: { onPress: () => void }) {
 
 // --- Type ---------------------------------------------------------------------
 
-/** The page title. Centred on every screen in the reference. */
-export function OnbTitle({ children }: { children: ReactNode }) {
+/**
+ * The page title. Centred on every screen in the reference, and set in Lora
+ * Bold — the redesign's serif, the same heading face as Learn, Review and the
+ * Dictionary. `classic` keeps the pre-redesign Nunito title, which only the
+ * placement test uses: that page was asked to keep its size and change only its
+ * background.
+ */
+export function OnbTitle({
+  children,
+  hero = false,
+  classic = false,
+}: {
+  children: ReactNode
+  /** The welcome screen's wordmark, a step larger. */
+  hero?: boolean
+  classic?: boolean
+}) {
   return (
-    <Text className="text-center font-nunito-extrabold" style={{ ...t.title, color: c.navy }}>
+    <Text
+      className={classic ? 'text-center font-nunito-extrabold' : 'text-center font-lora-bold'}
+      accessibilityRole="header"
+      style={{ ...(classic ? t.titleClassic : hero ? t.titleHero : t.title), color: c.navy }}
+    >
       {children}
     </Text>
   )
 }
 
-/** The supporting line under a title. */
-export function OnbBody({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+/** The supporting line under a title. `classic`: see `OnbTitle`. */
+export function OnbBody({
+  children,
+  style,
+  classic = false,
+}: {
+  children: ReactNode
+  style?: StyleProp<ViewStyle>
+  classic?: boolean
+}) {
   return (
     <Text
       className="text-center font-nunito-semibold"
-      style={[{ ...t.body, color: c.textSecondary }, style as never]}
+      style={[{ ...(classic ? t.bodyClassic : t.body), color: c.textSecondary }, style as never]}
     >
       {children}
     </Text>
@@ -538,9 +576,10 @@ export function OnbBody({ children, style }: { children: ReactNode; style?: Styl
 /**
  * Full-width green pill, in the footer of every screen that has one.
  *
- * The press dip is a scale to 0.975 and a spring back, per the spec — small
- * enough to feel like the button gave way under a finger rather than like it
- * moved.
+ * The app's raised 3D button — the Dashboard's `LiftedFace` on a
+ * `PressableScale`, the same object as Start Review and the writing guide's
+ * "Got it" — so onboarding's first button already presses the way every
+ * later one does. Disabled, it has no press and simply dims.
  */
 export function OnbButton({
   label,
@@ -553,48 +592,51 @@ export function OnbButton({
   onPress: () => void
   disabled?: boolean
 }) {
-  const press = useRef(new Animated.Value(0)).current
-  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.975] })
-
-  const down = () =>
-    Animated.timing(press, {
-      toValue: 1,
-      duration: onbMotion.press,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start()
-
-  const up = () =>
-    Animated.spring(press, {
-      toValue: 0,
-      damping: 14,
-      stiffness: 320,
-      mass: 0.6,
-      useNativeDriver: USE_NATIVE_DRIVER,
-    }).start()
-
+  /*
+   * The paper backing is what a disabled button fades towards. The redesign
+   * paints scenery behind the footer, and a bare translucent button let the
+   * landscape show through it — a washed-out picture of a lake where a dimmed
+   * button should be.
+   *
+   * Only while disabled. Enabled, the backing is a box the button's full
+   * height, and pressing sinks the face `DASH_LIFT` into it — which uncovered
+   * a cream strip along the top, a white outline where the button had been.
+   * A disabled button never sinks, so that is the only state that needs it.
+   */
   return (
-    <Animated.View style={{ transform: [{ scale }], opacity: disabled ? 0.45 : 1 }}>
-      <Pressable
-        onPress={disabled ? undefined : onPress}
-        onPressIn={disabled ? undefined : down}
-        onPressOut={disabled ? undefined : up}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        accessibilityState={{ disabled: !!disabled }}
-        className="flex-row items-center justify-center"
-        style={{
-          height: onbCta.height,
-          borderRadius: onbCta.radius,
-          backgroundColor: c.green,
-          gap: s.sm,
-        }}
-      >
-        <Text className="font-nunito-extrabold text-white" style={{ fontSize: t.button.fontSize }}>
-          {label}
-        </Text>
-        {icon}
-      </Pressable>
-    </Animated.View>
+    <View
+      style={{ borderRadius: onbCta.radius, backgroundColor: disabled ? c.paper : undefined }}
+      accessibilityState={{ disabled: !!disabled }}
+    >
+      {/*
+        Dimmed, the button must fade as one piece. Android applies `opacity` to
+        each layer separately, so the dark shoulder and its shadow showed
+        through the translucent face as a smudge across the placement test's
+        Confirm (disabled until an answer is picked). Offscreen compositing
+        groups the fade, and a button that cannot be pressed casts no shadow.
+      */}
+      <View style={{ opacity: disabled ? 0.45 : 1 }} needsOffscreenAlphaCompositing={!!disabled}>
+        <PressableScale
+          onPress={disabled ? undefined : onPress}
+          scaleTo={1}
+          haptic={false}
+          accessibilityLabel={label}
+        >
+          <LiftedFace
+            height={onbCta.height}
+            radius={onbCta.radius}
+            fill={c.green}
+            shoulder={c.greenDark}
+            shadow={!disabled}
+          >
+            <Text className="font-nunito-extrabold text-white" style={{ fontSize: t.button.fontSize }}>
+              {label}
+            </Text>
+            {icon}
+          </LiftedFace>
+        </PressableScale>
+      </View>
+    </View>
   )
 }
 
@@ -644,6 +686,7 @@ export function OnbTextField({
   autoComplete,
   maxLength,
   hint,
+  icon,
 }: {
   label: string
   value: string
@@ -655,6 +698,8 @@ export function OnbTextField({
   maxLength?: number
   /** A quiet note under the box — why the field is being asked for. */
   hint?: string
+  /** Drawn at the left of the box behind a hairline, as the redesign has it. */
+  icon?: ReactNode
 }) {
   const [focused, setFocused] = useState(false)
 
@@ -662,11 +707,30 @@ export function OnbTextField({
     <View>
       <Text
         className="font-nunito-bold"
-        style={{ fontSize: 13, color: c.textSecondary, marginBottom: 6, marginLeft: 2 }}
+        style={{ fontSize: 14.5, color: c.navy, marginBottom: s.sm, marginLeft: 2 }}
       >
         {label}
       </Text>
-      <TextInput
+      {/* The border lives on this wrapper, not the input, so the icon sits
+          inside the same box and the whole thing greens on focus together. */}
+      <View
+        className="flex-row items-center"
+        style={{
+          height: 54,
+          borderRadius: onbRadius.cardLarge,
+          borderWidth: 1.5,
+          borderColor: focused ? c.green : c.border,
+          backgroundColor: c.card,
+          ...onbShadow,
+        }}
+      >
+        {icon ? (
+          <View className="flex-row items-center" style={{ paddingLeft: s.lg }}>
+            {icon}
+            <View style={{ width: 1, height: 24, backgroundColor: c.border, marginLeft: s.md }} />
+          </View>
+        ) : null}
+        <TextInput
         value={value}
         onChangeText={onChangeText}
         onFocus={() => setFocused(true)}
@@ -681,11 +745,8 @@ export function OnbTextField({
         accessibilityLabel={label}
         className="font-nunito-semibold"
         style={{
-          height: 52,
-          borderRadius: onbRadius.card,
-          borderWidth: 1.5,
-          borderColor: focused ? c.green : c.border,
-          backgroundColor: c.card,
+          flex: 1,
+          height: '100%',
           paddingHorizontal: s.lg,
           fontSize: 15.5,
           color: c.navy,
@@ -695,6 +756,7 @@ export function OnbTextField({
           ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
         }}
       />
+      </View>
       {hint ? (
         <Text
           className="font-nunito-semibold"
@@ -765,7 +827,7 @@ export function OnbChoiceCard({
   tone,
   selected,
   onPress,
-  height = 90,
+  height = 92,
 }: {
   title: string
   body: string
@@ -792,7 +854,7 @@ export function OnbChoiceCard({
   return (
     <Animated.View
       style={{
-        borderRadius: onbRadius.card,
+        borderRadius: onbRadius.cardLarge,
         borderWidth: 1.5,
         borderColor: borderColor as unknown as string,
         backgroundColor: c.card,
@@ -816,19 +878,19 @@ export function OnbChoiceCard({
       >
         <View
           className="items-center justify-center"
-          style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: TONE[tone].soft }}
+          style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: TONE[tone].soft }}
         >
           {icon}
         </View>
         <View className="flex-1">
-          <Text className="font-nunito-bold" style={{ ...t.cardTitle, color: c.navy }}>
+          <Text className="font-lora-bold" style={{ ...t.cardTitleSerif, color: c.navy }}>
             {title}
           </Text>
-          <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 2 }}>
+          <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 3 }}>
             {body}
           </Text>
         </View>
-        <Radio selected={selected} />
+        <Radio selected={selected} size={26} />
       </Pressable>
     </Animated.View>
   )
@@ -901,7 +963,7 @@ export function OnbScriptCard({
         accessibilityLabel={`${label} Chinese, ${selected ? 'selected' : 'not selected'}`}
         accessibilityHint={body}
         className="active:opacity-90"
-        style={{ paddingHorizontal: s.md, paddingTop: s.lg, paddingBottom: s.md }}
+        style={{ paddingHorizontal: s.md, paddingTop: s.xl, paddingBottom: s.md }}
       >
         {/*
           The glyph. Sized in the component rather than by the tile so the two
@@ -911,14 +973,14 @@ export function OnbScriptCard({
         */}
         <Text
           className={hanziFont(script)}
-          style={{ fontSize: 62, lineHeight: 78, color: c.navy, textAlign: 'center' }}
+          style={{ fontSize: 68, lineHeight: 84, color: c.navy, textAlign: 'center' }}
         >
           {glyph}
         </Text>
 
         <Text
-          className="font-nunito-bold"
-          style={{ ...t.cardTitle, color: selected ? c.greenDark : c.navy, textAlign: 'center', marginTop: s.sm }}
+          className="font-lora-bold"
+          style={{ fontSize: 19, lineHeight: 24, color: selected ? c.greenDark : c.navy, textAlign: 'center', marginTop: s.md }}
         >
           {label}
         </Text>
@@ -935,14 +997,14 @@ export function OnbScriptCard({
           <View
             className="items-center justify-center rounded-full"
             style={{
-              width: 26,
-              height: 26,
+              width: 28,
+              height: 28,
               borderWidth: selected ? 0 : 2,
               borderColor: c.dotInactive,
               backgroundColor: selected ? c.green : 'transparent',
             }}
           >
-            {selected && <Check size={15} color="#FFFFFF" strokeWidth={3} />}
+            {selected && <Check size={16} color="#FFFFFF" strokeWidth={3} />}
           </View>
         </View>
       </Pressable>

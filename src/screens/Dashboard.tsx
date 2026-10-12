@@ -17,16 +17,18 @@ import {
   dashColors as c,
   dashSpacing as s,
   dashEntrance as e,
+  dashRadius,
   DASH_CONTENT_MAX,
 } from '../components/dashboard/tokens'
 import { dueCountFor, newWordsPool } from '../lib/selectors'
 import { currentWeekActivity } from '../lib/progress'
 import { todayISO } from '../lib/date'
 import { devNow } from '../lib/devClock'
-import { CHALLENGE_DEFS, challengeInstanceId } from '../lib/challenges'
+import { claimableCount, offeredChallenges } from '../lib/challenges'
 import { carefulHaptic, tapHaptic } from '../lib/haptics'
 import { playTapSound } from '../lib/sound'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
+import { TourScrollContext, TourTarget } from '../components/tour/targets'
 
 /*
  * The Dashboard, built to the reference mockup.
@@ -83,6 +85,7 @@ export function Dashboard() {
     completedLessonIds,
     claimedChallengeIds,
     addToReviewDeck,
+    reportTourAction,
   } = useApp()
 
   const { width } = useWindowDimensions()
@@ -93,13 +96,16 @@ export function Dashboard() {
   const todayReviews = dailyProgress.find((d) => d.date === todayISO())?.reviewsCompleted ?? 0
 
   const claimableChallenges = useMemo(() => {
-    const ctx = { dailyProgress, streak, completedLessonCount: completedLessonIds.length, xp }
-    return CHALLENGE_DEFS.filter((def) => {
-      const id = challengeInstanceId(def)
-      if (claimedChallengeIds.includes(id)) return false
-      return def.progress(ctx) >= def.target
-    }).length
-  }, [dailyProgress, streak, completedLessonIds.length, xp, claimedChallengeIds])
+    const ctx = {
+      dailyProgress,
+      streak,
+      completedLessonCount: completedLessonIds.length,
+      xp,
+      dailyNewWordLimit: settings.dailyNewWordLimit,
+      dailyReviewLimit: settings.dailyReviewLimit,
+    }
+    return claimableCount(ctx, claimedChallengeIds)
+  }, [dailyProgress, streak, completedLessonIds.length, xp, claimedChallengeIds, settings.dailyNewWordLimit, settings.dailyReviewLimit])
 
   const week = useMemo(() => currentWeekActivity(dailyProgress), [dailyProgress])
 
@@ -148,6 +154,17 @@ export function Dashboard() {
   const scroll = useScrollToTopOnFocus()
 
   /*
+   * The guided tour spotlights cards on this screen, and on a short phone the
+   * word card starts below the fold — so the tour can ask for a scroll. The
+   * offset is tracked rather than read back, which a ScrollView cannot do.
+   */
+  const scrollY = useRef(0)
+  const tourScrollBy = useMemo(
+    () => (dy: number) => scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true }),
+    [scroll],
+  )
+
+  /*
    * The cards arrive in the order they are read, so their delays come from
    * their position rather than being written out per card — the word card is
    * conditional, and a hardcoded delay each would leave a hole in the rhythm on
@@ -163,6 +180,10 @@ export function Dashboard() {
           ref={scroll}
           className="flex-1"
           showsVerticalScrollIndicator={false}
+          onScroll={(e) => {
+            scrollY.current = e.nativeEvent.contentOffset.y
+          }}
+          scrollEventThrottle={32}
           contentContainerStyle={{
             alignItems: 'center',
             // Clears the tab bar with room to spare, so the last card is never
@@ -207,61 +228,68 @@ export function Dashboard() {
               which is why the spacing survives — a transform moves what is
               painted, not what is laid out.
             */}
-            <View style={{ gap: s.cardGap, marginTop: 14 }}>
-              <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
-                <ReviewCard dueCount={dueCount} onPress={() => router.push('/review')} />
-              </Reveal>
-
-              {showWordCard && (
+            <TourScrollContext.Provider value={tourScrollBy}>
+              <View style={{ gap: s.cardGap, marginTop: 14 }}>
                 <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
-                  <NewWordCard
-                    word={nextWord}
-                    script={settings.script}
-                    phoneticScript={settings.phoneticScript}
-                    added={addedWordId === nextWord.id}
-                    onSeeAll={() => {
-                      playTapSound()
-                      router.push('/new-words')
-                    }}
-                    onDismiss={() => setWordDismissed(true)}
-                    onAdd={() => {
-                      playTapSound()
-                      addToReviewDeck(nextWord.id)
-                      setAddedWordId(nextWord.id)
-                    }}
+                  <TourTarget id="dashboard-review" radius={dashRadius.card}>
+                    <ReviewCard dueCount={dueCount} onPress={() => router.navigate('/review-tab')} />
+                  </TourTarget>
+                </Reveal>
+
+                {showWordCard && (
+                  <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                    <TourTarget id="dashboard-new-word" radius={dashRadius.card}>
+                      <NewWordCard
+                        word={nextWord}
+                        script={settings.script}
+                        phoneticScript={settings.phoneticScript}
+                        added={addedWordId === nextWord.id}
+                        onSeeAll={() => {
+                          playTapSound()
+                          router.push('/new-words')
+                        }}
+                        onDismiss={() => setWordDismissed(true)}
+                        onAdd={() => {
+                          playTapSound()
+                          addToReviewDeck(nextWord.id)
+                          setAddedWordId(nextWord.id)
+                          reportTourAction('word:add')
+                        }}
+                      />
+                    </TourTarget>
+                  </Reveal>
+                )}
+
+                <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                  <ChallengesSummaryCard
+                    claimable={claimableChallenges}
+                    total={offeredChallenges().length}
+                    onPress={() => router.push('/challenges')}
                   />
                 </Reveal>
-              )}
 
-              <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
-                <ChallengesSummaryCard
-                  claimable={claimableChallenges}
-                  total={CHALLENGE_DEFS.length}
-                  onPress={() => router.push('/challenges')}
-                />
-              </Reveal>
+                <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                  {/* The week in summary; Progress is the same story over twelve
+                      weeks, so it is where this card leads. It arrives from the
+                      right on `DetailShell`'s own transition. */}
+                  <WeeklyActivityCard week={week} onPress={() => router.push('/settings/progress')} />
+                </Reveal>
 
-              <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
-                {/* The week in summary; Progress is the same story over twelve
-                    weeks, so it is where this card leads. It arrives from the
-                    right on `DetailShell`'s own transition. */}
-                <WeeklyActivityCard week={week} onPress={() => router.push('/settings/progress')} />
-              </Reveal>
+                {/*
+                  The one advert on this screen, and it is last on purpose.
+                  Everything the learner came here to do — what is due, the next
+                  word, the week — is above it, so the advert is something they
+                  scroll *past* rather than through. It renders nothing at all for
+                  an ad-free learner, and collapses silently if it fails to load;
+                  being the final element means either outcome moves nothing.
 
-              {/*
-                The one advert on this screen, and it is last on purpose.
-                Everything the learner came here to do — what is due, the next
-                word, the week — is above it, so the advert is something they
-                scroll *past* rather than through. It renders nothing at all for
-                an ad-free learner, and collapses silently if it fails to load;
-                being the final element means either outcome moves nothing.
-
-                Deliberately outside `Reveal`: the entrance score is the
-                Dashboard introducing itself, and an advert has no business
-                being choreographed into it.
-              */}
-              <AppBannerAd placement="dashboard" />
-            </View>
+                  Deliberately outside `Reveal`: the entrance score is the
+                  Dashboard introducing itself, and an advert has no business
+                  being choreographed into it.
+                */}
+                <AppBannerAd placement="dashboard" />
+              </View>
+            </TourScrollContext.Provider>
           </View>
         </ScrollView>
       </SafeAreaView>

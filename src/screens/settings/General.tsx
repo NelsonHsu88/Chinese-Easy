@@ -1,7 +1,9 @@
-import { View, Text, Platform, useColorScheme } from 'react-native'
+import { useState } from 'react'
+import { View, Text, Platform, ActivityIndicator, useColorScheme } from 'react-native'
 import { router } from 'expo-router'
-import { Volume2, Vibrate, Moon, Wrench, ChevronRight, History } from 'lucide-react-native'
+import { Volume2, Vibrate, Moon, Wrench, ChevronRight, History, Compass, Trash2 } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
+import { useAuth } from '../../context/AuthContext'
 import {
   DetailShell,
   ControlGroup,
@@ -11,6 +13,7 @@ import {
   PressRow,
   IconCircle,
   Hint,
+  ActionButton,
 } from '../../components/settings/parts'
 import { useLeave } from '../../components/settings/transition'
 import { setColors as c, setSpacing as s, setRow, setRadius } from '../../components/settings/tokens'
@@ -27,8 +30,15 @@ import { setColors as c, setSpacing as s, setRow, setRadius } from '../../compon
  * `lib/haptics.ts`.
  */
 export function General() {
-  const { settings, updateSettings, recoverableProgress, adoptRecoverableProgress, dismissRecoverableProgress } =
-    useApp()
+  const {
+    settings,
+    updateSettings,
+    recoverableProgress,
+    adoptRecoverableProgress,
+    dismissRecoverableProgress,
+    startTour,
+    replayScreenTours,
+  } = useApp()
   const scheme = useColorScheme()
   const leave = useLeave()
 
@@ -136,6 +146,28 @@ export function General() {
         </InlineRow>
       </ControlGroup>
 
+      {/*
+        The guided tour is offered once, after onboarding; this is the way back
+        to it for anyone who said "Maybe later" or wants it again. Starting it
+        is all this does — the tour takes the learner to the Dashboard itself.
+      */}
+      <ControlGroup title="Help">
+        <Hint>
+          A short walk-through with Shifu: learning new words, saving them, and reviewing. The guides on
+          Learn, Dictionary and Settings show again too, the next time you open each one.
+        </Hint>
+        <View style={{ marginTop: s.md }}>
+          <ActionButton
+            label="Replay the app tour"
+            icon={Compass}
+            onPress={() => {
+              replayScreenTours()
+              startTour()
+            }}
+          />
+        </View>
+      </ControlGroup>
+
       <ControlGroup title="Appearance">
         <View className="flex-row items-start" style={{ gap: s.md }}>
           <View
@@ -158,6 +190,8 @@ export function General() {
           </View>
         </View>
       </ControlGroup>
+
+      <AccountSection />
 
       {/*
         Developer is a row rather than a section, and it is the last thing on the
@@ -228,5 +262,139 @@ export function General() {
         </Hint>
       </View>
     </DetailShell>
+  )
+}
+
+/*
+ * Account deletion. Required by the App Store for any app that lets people
+ * create an account (guideline 5.1.1(v)), and two-step so a stray tap can't do
+ * it: the row opens a confirmation that says exactly what goes, and only the
+ * coral button on it deletes. No `Alert` — it does nothing on the web build.
+ *
+ * Shown only while signed in; a guest has no account to delete.
+ */
+function AccountSection() {
+  const { userId, email, deleteAccount } = useAuth()
+  const [stage, setStage] = useState<'idle' | 'confirm' | 'working'>('idle')
+  const [error, setError] = useState<string | null>(null)
+
+  if (!userId) return null
+
+  async function confirmDelete() {
+    setStage('working')
+    setError(null)
+    const result = await deleteAccount()
+    if (result.error) {
+      setError(result.error)
+      setStage('confirm')
+      return
+    }
+    /* Signed out now; the root layout decides where a guest belongs. */
+    router.replace('/')
+  }
+
+  const rowStyle = {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: setRow.minHeight,
+    paddingHorizontal: setRow.padding,
+  }
+
+  return (
+    <ControlGroup title="Account">
+      <Card>
+        {email ? (
+          <View style={{ padding: setRow.padding, paddingBottom: 0 }}>
+            <Hint>Signed in as {email}</Hint>
+          </View>
+        ) : null}
+
+        {stage === 'idle' ? (
+          <PressRow
+            onPress={() => setStage('confirm')}
+            accessibilityLabel="Delete account"
+            style={{ ...rowStyle, paddingVertical: s.md }}
+          >
+            <IconCircle icon={Trash2} tint={c.coralSoft} color={c.coralDark} />
+            <Text
+              className="font-nunito-bold"
+              style={{ flex: 1, marginLeft: setRow.iconGap, fontSize: 16, lineHeight: 21, color: c.coralDark }}
+            >
+              Delete account
+            </Text>
+            <ChevronRight size={20} color={c.textMuted} strokeWidth={2.2} />
+          </PressRow>
+        ) : (
+          <View style={{ padding: setRow.padding, paddingVertical: s.md }}>
+            <Text className="font-nunito-bold" style={{ fontSize: 16, lineHeight: 21, color: c.navy }}>
+              Delete your account?
+            </Text>
+            <Text
+              className="font-nunito-semibold"
+              style={{ fontSize: 13.5, lineHeight: 19, color: c.textSecondary, marginTop: s.xs }}
+            >
+              This permanently deletes your account and everything saved to it — your words, reviews,
+              streak and XP — on every device. It can’t be undone.
+            </Text>
+            {error ? (
+              <Text
+                className="font-nunito-semibold"
+                style={{ fontSize: 13.5, lineHeight: 19, color: c.coralDark, marginTop: s.sm }}
+              >
+                {error}
+              </Text>
+            ) : null}
+            <View style={{ flexDirection: 'row', gap: s.sm, marginTop: s.md }}>
+              <View style={{ flex: 1 }}>
+              <PressRow
+                onPress={
+                  stage === 'working'
+                    ? undefined
+                    : () => {
+                        setError(null)
+                        setStage('idle')
+                      }
+                }
+                accessibilityLabel="Keep my account"
+                style={{
+                  height: 44,
+                  borderRadius: 22,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1.5,
+                  borderColor: c.border,
+                }}
+              >
+                <Text className="font-nunito-bold" style={{ fontSize: 15, color: c.textSecondary }}>
+                  Cancel
+                </Text>
+              </PressRow>
+              </View>
+              <View style={{ flex: 1 }}>
+              <PressRow
+                onPress={stage === 'working' ? undefined : () => void confirmDelete()}
+                accessibilityLabel="Permanently delete my account"
+                style={{
+                  height: 44,
+                  borderRadius: 22,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: c.coralDark,
+                }}
+              >
+                {stage === 'working' ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text className="font-nunito-bold" style={{ fontSize: 15, color: '#FFFFFF' }}>
+                    Delete
+                  </Text>
+                )}
+              </PressRow>
+              </View>
+            </View>
+          </View>
+        )}
+      </Card>
+    </ControlGroup>
   )
 }

@@ -3,6 +3,7 @@ import type { KeyValueStore } from './keyValueStore'
 import {
   classifyKey,
   legacyKey,
+  PREFIX,
   sameScope,
   scopedKey,
   type StorageKey,
@@ -45,6 +46,45 @@ export const deviceStore: KeyValueStore = {
   async remove(key) {
     await AsyncStorage.removeItem(key)
   },
+}
+
+/*
+ * Accounts whose local copy is to be erased: an account that was deleted on
+ * the server. Erasing waits until AppContext has moved storage off that
+ * account (`purgeDeletedAccounts`), because until then its save effects are
+ * still pointed at the namespace and would write it straight back.
+ */
+const pendingPurge = new Set<string>()
+
+/** Marks a deleted account's on-device progress for erasure. */
+export function markAccountForPurge(userId: string): void {
+  pendingPurge.add(userId)
+}
+
+/**
+ * Erases every key under each marked account's namespace —
+ * `chinese-easy:<userId>:…`, review archive chunks included. Skips the account
+ * storage is currently pointed at, which keeps a purge from ever racing a
+ * live save. Failures leave the account marked, to be tried on the next switch.
+ */
+export async function purgeDeletedAccounts(): Promise<void> {
+  if (pendingPurge.size === 0) return
+  let keys: readonly string[]
+  try {
+    keys = await AsyncStorage.getAllKeys()
+  } catch {
+    return
+  }
+  for (const userId of [...pendingPurge]) {
+    if (activeScope?.kind === 'user' && activeScope.userId === userId) continue
+    const prefix = `${PREFIX}${userId}:`
+    try {
+      await AsyncStorage.multiRemove(keys.filter((key) => key.startsWith(prefix)))
+      pendingPurge.delete(userId)
+    } catch {
+      /* stays marked */
+    }
+  }
 }
 
 /**

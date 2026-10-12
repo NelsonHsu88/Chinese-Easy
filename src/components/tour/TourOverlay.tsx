@@ -1,227 +1,497 @@
-import { useEffect, useRef } from 'react'
-import { View, Text, Pressable, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from 'react'
+import {
+  View,
+  Text,
+  Animated,
+  Easing,
+  Platform,
+  AccessibilityInfo,
+  findNodeHandle,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+} from 'react-native'
 import { router, usePathname } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useApp } from '../../context/AppContext'
-import { TOUR_STEPS, hasTabBar, isGated } from '../../lib/tour'
-import { dashColors as c, dashShadow } from '../dashboard/tokens'
-import { Shifu } from '../onboarding/Shifu'
-import { useTourCardHosted } from './cardHost'
-import { tapHaptic, tickHaptic } from '../../lib/haptics'
+import {
+  SAVED_TOAST,
+  TOUR_STEPS,
+  WELCOME_COPY,
+  hasTabBar,
+  tourStepById,
+  type TourStep,
+  type TourStepId,
+} from '../../lib/tour'
+import { placeTooltip, type Bounds } from '../../lib/tourPlacement'
+import { tabBarHeight } from '../../lib/tabBar'
+import { successHaptic } from '../../lib/haptics'
+import { Spotlight } from './Spotlight'
+import { TourTooltip } from './TourTooltip'
+import { TourToast, toastLifetime } from './TourToast'
+import { useReduceMotion } from './useReduceMotion'
+import { useSettledTarget } from './useSettledTarget'
+import { tourCard, tourMotion, tourSpot } from './tokens'
 
 /*
- * Shifu, walking a new learner around the app.
+ * Shifu's guided tour, mounted once above the navigator in the root layout so
+ * it survives the moves between screens.
  *
- * **It sits beside the app, not over it.** The whole layer is `box-none`, so
- * every screen underneath stays live and the learner does the things Shifu is
- * describing — types in the real search box, taps the real Stroke order button.
- * A modal tour would have to fake all of that, and a learner who has only ever
- * seen the fake version has not actually been shown anything.
+ * It has four faces, and only ever shows one:
  *
- * `TourOverlay` is mounted once, above the navigator in the root layout, which
- * is what lets it survive the moves between screens the script asks for.
- * `TourCard` is the visible part on its own, exported because a React Native
- * `Modal` draws above *everything* — including this layer — so any sheet that
- * the tour talks about has to host its own copy or Shifu vanishes exactly when
- * he is mid-sentence. The steps themselves are data in `lib/tour.ts`.
+ * 1. **The welcome prompt** — a small, non-blocking card over the Dashboard,
+ *    once it has settled, asking whether the learner wants to be shown around.
+ * 2. **A step** — the screen dimmed, the target cut out of the dim, a tooltip
+ *    beside it. Taps outside the cut-out are swallowed; inside it, on a step
+ *    that wants the real control pressed, they reach the control.
+ * 3. **The saved-word toast** — after a word is added, before the tour moves
+ *    the learner on to Review.
+ * 4. **"Continue the tour"** — a non-blocking card when the learner has
+ *    wandered off the step's screen. The tour never drags anyone back.
+ *
+ * The steps are data in `lib/tour.ts`; placement is arithmetic in
+ * `lib/tourPlacement.ts`; the pieces it draws are siblings in this folder.
+ *
+ * **It must never leave the app unusable.** Every face that blocks touches
+ * carries a way out ("Skip tour"), a step whose target cannot be found falls
+ * back to a plain card with a button, and nothing is dimmed until there is
+ * something to show in the dim.
  */
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
-/** Matches the tab bar's own `70 + Math.max(insets.bottom, 12)` in (tabs)/_layout. */
-const TAB_BAR_BODY = 70
+/** How long the learner has to be off a step's screen before the "continue" card appears. */
+const WANDER_GRACE = 700
 
-/**
- * The bubble and the mascot, with no opinion about where they sit.
- *
- * Renders nothing when no tour is running, so a host can mount it
- * unconditionally.
- */
-export function TourCard() {
-  const { tourStep, advanceTour, endTour } = useApp()
-  const { width } = useWindowDimensions()
+/** How much a placed tooltip's height must change before it is re-placed. See `PlacedTooltip`. */
+const HEIGHT_TOLERANCE = 2
 
-  const step = tourStep === null ? null : TOUR_STEPS[tourStep]
+const SKIP_HINT = 'Ends the tour. You can replay it from Settings, General.'
 
-  const enter = useRef(new Animated.Value(0)).current
+export function TourOverlay() {
+  const { tour, onboardingComplete, startTour, endTour, advanceTour } = useApp()
+  const pathname = usePathname()
+  const insets = useSafeAreaInsets()
+  const { width: screenW, height: screenH } = useWindowDimensions()
+  const reduceMotion = useReduceMotion()
+
+  const step = tour.status === 'in_progress' ? tourStepById(tour.step) : null
+  const onScreen = step !== null && pathname === step.screen
+
+  const bounds: Bounds = {
+    top: insets.top + 8,
+    bottom: screenH - (hasTabBar(pathname) ? tabBarHeight(insets.bottom) : insets.bottom) - 10,
+    width: screenW,
+  }
+  const boundsRef = useRef(bounds)
+  boundsRef.current = bounds
+  const cardWidth = Math.min(screenW - tourCard.margin * 2, tourCard.maxWidth)
+
+  const pathRef = useRef(pathname)
+  pathRef.current = pathname
+
+  // --- 1. The welcome prompt ---------------------------------------------------
+
+  const welcomeEligible = tour.status === 'not_started' && onboardingComplete && pathname === '/'
+  const [welcomeReady, setWelcomeReady] = useState(false)
+  useEffect(() => {
+    if (!welcomeEligible) {
+      setWelcomeReady(false)
+      return
+    }
+    /* After the Dashboard's own entrance has landed, not on top of it. */
+    const timer = setTimeout(() => setWelcomeReady(true), tourMotion.welcomeDelay)
+    return () => clearTimeout(timer)
+  }, [welcomeEligible])
+
+  // --- 3. The saved-word toast -------------------------------------------------
+
+  const [celebrating, setCelebrating] = useState(false)
+  const prevStep = useRef<TourStepId | null>(tour.step)
+  /* Set by the fallback "Next" on Save, which moves on without a word saved. */
+  const skippedSave = useRef(false)
 
   useEffect(() => {
-    if (step === null) return
+    const prev = prevStep.current
+    prevStep.current = tour.step
+    if (tour.step !== 'review' || (prev !== 'save' && prev !== 'new-words')) return
+    if (skippedSave.current) {
+      skippedSave.current = false
+      return
+    }
+    successHaptic()
+    setCelebrating(true)
+    const timer = setTimeout(() => setCelebrating(false), toastLifetime)
+    /* Whatever ends the hold early — the tour skipped, a reset — ends the toast
+       too; a stranded `celebrating` would hide every later step. */
+    return () => {
+      clearTimeout(timer)
+      setCelebrating(false)
+    }
+  }, [tour.step])
+
+  // --- Going to each step's screen ---------------------------------------------
+
+  /*
+   * Once, as a step begins (or once the toast has finished) — deliberately not
+   * keyed on `pathname`, so a learner who wanders off is not dragged back.
+   */
+  const lastNavigatedFor = useRef<TourStepId | null>(null)
+  useEffect(() => {
+    if (!step || celebrating) return
+    if (lastNavigatedFor.current === step.id) return
+    lastNavigatedFor.current = step.id
+    if (pathRef.current !== step.screen) goToScreen(step)
+  }, [step?.id, celebrating])
+  useEffect(() => {
+    if (tour.status !== 'in_progress') lastNavigatedFor.current = null
+  }, [tour.status])
+
+  /* "Try New Words" is a real navigation; arriving there by any route finishes the step. */
+  useEffect(() => {
+    if (step?.id === 'new-words' && pathname === '/new-words') advanceTour('new-words')
+  }, [step?.id, pathname, advanceTour])
+
+  // --- 4. Wandered off ----------------------------------------------------------
+
+  const [wandered, setWandered] = useState(false)
+  useEffect(() => {
+    setWandered(false)
+    if (!step || onScreen || celebrating) return
+    const timer = setTimeout(() => setWandered(true), WANDER_GRACE)
+    return () => clearTimeout(timer)
+  }, [step?.id, onScreen, celebrating])
+
+  // --- 2. Measuring the target -------------------------------------------------
+
+  /*
+   * Measured live for as long as the step is up — the Dashboard's cards rise
+   * into place as it arrives, a screen can scroll, a font can load late — but
+   * the card only appears once the target has stopped moving, so it never
+   * lands beside something still sliding in. See `useSettledTarget`.
+   */
+  const { spot, missing, cardReady } = useSettledTarget({
+    targetId: step?.targetId,
+    stepKey: step?.id ?? null,
+    active: step !== null && onScreen && !celebrating,
+    boundsRef,
+    timeout: tourMotion.targetTimeout,
+    resetKey: pathname,
+  })
+
+  // --- Actions -----------------------------------------------------------------
+
+  const skip = () => endTour('dismissed')
+
+  const primaryFor = (s: TourStep, fallback: boolean): { label: string; onPress: () => void } | null => {
+    switch (s.id) {
+      case 'home':
+        return { label: s.primaryLabel ?? 'Next', onPress: () => advanceTour('home') }
+      case 'new-words':
+        return { label: s.primaryLabel ?? 'Next', onPress: () => router.push('/new-words') }
+      case 'save':
+        /* Only the real Add finishes this step — unless there is no Add to press. */
+        if (!fallback) return null
+        return {
+          label: 'Next',
+          onPress: () => {
+            skippedSave.current = true
+            advanceTour('save')
+          },
+        }
+      case 'review':
+        return {
+          label: s.primaryLabel ?? 'Got it',
+          onPress: () => {
+            successHaptic()
+            endTour('completed')
+          },
+        }
+    }
+  }
+
+  // --- Render ------------------------------------------------------------------
+
+  if (pathname.startsWith('/onboarding')) return null
+
+  const floatingBottom = screenH - bounds.bottom
+
+  if (welcomeReady && tour.status === 'not_started') {
+    return (
+      <Layer>
+        <Floating
+          id="welcome"
+          announce={`${WELCOME_COPY.title} ${WELCOME_COPY.body}`}
+          bottom={floatingBottom}
+          width={cardWidth}
+          screenW={screenW}
+          reduceMotion={reduceMotion}
+        >
+          {(titleRef) => (
+            <TourTooltip
+              ref={titleRef}
+              title={WELCOME_COPY.title}
+              body={WELCOME_COPY.body}
+              shifu="welcome"
+              large
+              primaryLabel={WELCOME_COPY.accept}
+              onPrimary={startTour}
+              secondaryLabel={WELCOME_COPY.decline}
+              secondaryHint="Closes this. You can start the tour later from Settings, General."
+              onSecondary={skip}
+              width={cardWidth}
+            />
+          )}
+        </Floating>
+      </Layer>
+    )
+  }
+
+  if (!step) return null
+
+  if (celebrating) {
+    return (
+      <Layer>
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', bottom: floatingBottom, left: (screenW - cardWidth) / 2 }}
+        >
+          <TourToast text={SAVED_TOAST} width={cardWidth} reduceMotion={reduceMotion} />
+        </View>
+      </Layer>
+    )
+  }
+
+  const progress = { index: TOUR_STEPS.findIndex((s) => s.id === step.id), count: TOUR_STEPS.length }
+
+  if (!onScreen) {
+    if (!wandered) return null
+    return (
+      <Layer>
+        <Floating
+          id={`away-${step.id}`}
+          announce={`Tour paused. ${step.title}.`}
+          bottom={floatingBottom}
+          width={cardWidth}
+          screenW={screenW}
+          reduceMotion={reduceMotion}
+        >
+          {(titleRef) => (
+            <TourTooltip
+              ref={titleRef}
+              title={step.title}
+              body="Want to pick up where we left off?"
+              shifu="thinking"
+              primaryLabel="Continue tour"
+              onPrimary={() => goToScreen(step)}
+              secondaryLabel="Skip tour"
+              secondaryHint={SKIP_HINT}
+              onSecondary={skip}
+              progress={progress}
+              width={cardWidth}
+            />
+          )}
+        </Floating>
+      </Layer>
+    )
+  }
+
+  /* Nothing is dimmed until there is something to show in the dim. */
+  if (!spot && !missing) return null
+
+  const padded = spot
+    ? {
+        x: spot.rect.x - tourSpot.padding,
+        y: spot.rect.y - tourSpot.padding,
+        width: spot.rect.width + tourSpot.padding * 2,
+        height: spot.rect.height + tourSpot.padding * 2,
+      }
+    : null
+  const primary = primaryFor(step, missing)
+
+  return (
+    <Layer>
+      <Spotlight
+        rect={padded}
+        radius={(spot?.radius ?? 0) + tourSpot.padding}
+        holeOpen={step.completion !== 'nextButton'}
+        reduceMotion={reduceMotion}
+      />
+      {(cardReady || (missing && !spot)) && (
+      <PlacedTooltip
+        key={step.id}
+        target={padded}
+        bounds={bounds}
+        width={cardWidth}
+        reduceMotion={reduceMotion}
+        tooltip={{
+          title: step.title,
+          body: step.body,
+          shifu: step.shifu,
+          primaryLabel: primary?.label,
+          onPrimary: primary?.onPress,
+          secondaryLabel: 'Skip tour',
+          secondaryHint: SKIP_HINT,
+          onSecondary: skip,
+          progress,
+          width: cardWidth,
+        }}
+      />
+      )}
+    </Layer>
+  )
+}
+
+/** The route a step lives on. Back to the Dashboard is a pop where there is one to pop. */
+function goToScreen(step: TourStep) {
+  if (step.screen === '/') {
+    router.navigate('/')
+    return
+  }
+  router.push(step.screen)
+}
+
+/** The full-screen layer. Touches pass through anything it does not draw. */
+export function Layer({ children }: { children: ReactNode }) {
+  return (
+    <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+      {children}
+    </View>
+  )
+}
+
+type TitleRef = RefObject<Text | null>
+
+/**
+ * A card's arrival — a short fade and an 8pt rise, or a fade alone under
+ * Reduce Motion — plus handing screen-reader focus to its title.
+ */
+function useArrival(id: string, reduceMotion: boolean, ready: boolean, announce: string) {
+  const enter = useRef(new Animated.Value(0)).current
+  const titleRef = useRef<Text>(null)
+
+  useEffect(() => {
+    if (!ready) return
     enter.setValue(0)
-    const animation = Animated.timing(enter, {
+    const anim = Animated.timing(enter, {
       toValue: 1,
-      duration: 260,
+      duration: tourMotion.card,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: USE_NATIVE_DRIVER,
     })
-    animation.start()
-    /*
-     * The standing backstop for every non-native animation in this app: without
-     * the native driver this runs on requestAnimationFrame, which a browser
-     * stops dead for a hidden tab, and Shifu would be parked at opacity 0 with
-     * the tour apparently frozen.
-     */
-    const settle = setTimeout(() => enter.setValue(1), 340)
+    anim.start()
+    const settle = setTimeout(() => enter.setValue(1), tourMotion.card + 80)
+
+    /* Announce, then move focus to the title — so a screen-reader user hears
+       the card and is standing on it, not left on whatever was underneath. */
+    if (Platform.OS !== 'web') {
+      AccessibilityInfo.announceForAccessibility(announce)
+      const node = titleRef.current ? findNodeHandle(titleRef.current) : null
+      if (node) setTimeout(() => AccessibilityInfo.setAccessibilityFocus(node), 250)
+    }
+
     return () => {
-      animation.stop()
+      anim.stop()
       clearTimeout(settle)
     }
-  }, [tourStep, step, enter])
+  }, [id, ready])
 
-  if (step === null) return null
+  const style = {
+    opacity: enter,
+    transform: reduceMotion
+      ? []
+      : [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [tourMotion.rise, 0] }) }],
+  }
+  return { style, titleRef }
+}
 
-  const bubbleWidth = Math.min(width - 28, 320)
-  const isLast = tourStep === TOUR_STEPS.length - 1
-  /*
-   * A step waiting on the learner offers no way past itself. The instruction is
-   * the only thing on screen that moves the tour, which is the whole point — a
-   * Next button beside "type water into the search box" makes not typing it the
-   * quicker option, and then the tour has taught nothing.
-   */
-  const gated = isGated(step)
-
+/** A card pinned above the tab bar, blocking nothing around it. */
+function Floating({
+  id,
+  announce,
+  bottom,
+  width,
+  screenW,
+  reduceMotion,
+  children,
+}: {
+  id: string
+  bottom: number
+  width: number
+  screenW: number
+  reduceMotion: boolean
+  announce: string
+  children: (titleRef: TitleRef) => ReactNode
+}) {
+  const { style, titleRef } = useArrival(id, reduceMotion, true, announce)
   return (
-    /*
-      Plain styles on the animated view and the Tailwind classes on a plain view
-      inside it — NativeWind drops `className` on an `Animated.View` entirely,
-      taking the radius, padding and background with it.
-    */
     <Animated.View
-      style={{
-        alignItems: 'flex-end',
-        opacity: enter,
-        transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
-      }}
+      accessibilityViewIsModal={false}
+      style={[{ position: 'absolute', bottom, left: (screenW - width) / 2, width }, style]}
     >
-      <View
-        style={{
-          width: bubbleWidth,
-          backgroundColor: c.card,
-          borderColor: c.border,
-          borderWidth: 1,
-          borderRadius: 18,
-          paddingHorizontal: 16,
-          paddingTop: 14,
-          paddingBottom: 12,
-          ...dashShadow,
-        }}
-      >
-        <Text className="font-nunito-semibold" style={{ fontSize: 14.5, lineHeight: 21, color: c.navy }}>
-          {step.body}
-        </Text>
-
-        <View className="flex-row items-center justify-between" style={{ marginTop: 14 }}>
-          <Pressable
-            onPress={() => {
-              tickHaptic()
-              endTour()
-            }}
-            accessibilityRole="button"
-            hitSlop={10}
-            className="active:opacity-60"
-          >
-            <Text className="font-nunito-bold" style={{ fontSize: 13, color: c.textMuted }}>
-              {isLast ? 'Close' : 'Skip tour'}
-            </Text>
-          </Pressable>
-
-          <View className="flex-row items-center" style={{ gap: 12 }}>
-            <Text className="font-nunito-semibold" style={{ fontSize: 12, color: c.textMuted }}>
-              {(tourStep ?? 0) + 1} of {TOUR_STEPS.length}
-            </Text>
-            {!gated && (
-              <Pressable
-                onPress={() => {
-                  tapHaptic()
-                  advanceTour()
-                }}
-                accessibilityRole="button"
-                className="items-center justify-center active:opacity-90"
-                style={{ backgroundColor: c.green, borderRadius: 14, paddingHorizontal: 16, height: 34 }}
-              >
-                <Text className="font-nunito-extrabold text-white" style={{ fontSize: 13.5 }}>
-                  {step.cta ?? 'Next'}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-      </View>
-
-      {/*
-        Shifu tucks under the bubble's right edge, overlapping it slightly so the
-        two read as one object rather than a picture with a notice above it. He
-        is decoration here, so he takes no touches — the bubble is the only thing
-        on this layer anyone needs to hit.
-      */}
-      <View pointerEvents="none" style={{ marginTop: -10, marginRight: 6 }}>
-        <Shifu pose="wave" width={104} />
-      </View>
+      {children(titleRef)}
     </Animated.View>
   )
 }
 
-export function TourOverlay() {
-  const { tourStep, advanceTour } = useApp()
-  const pathname = usePathname()
-  const insets = useSafeAreaInsets()
-  const hostedElsewhere = useTourCardHosted()
-
-  const step = tourStep === null ? null : TOUR_STEPS[tourStep]
-
+/** A step's tooltip, measured once and then placed beside its target. */
+export function PlacedTooltip({
+  target,
+  bounds,
+  width,
+  reduceMotion,
+  tooltip,
+}: {
+  target: { x: number; y: number; width: number; height: number } | null
+  bounds: Bounds
+  width: number
+  reduceMotion: boolean
+  tooltip: ComponentProps<typeof TourTooltip>
+}) {
   /*
-   * Take the learner to the section this step is about — once, as the step
-   * begins. Deliberately not keyed on `pathname`: re-running it whenever the
-   * route changes would drag anyone who wandered off straight back, and this is
-   * a tour, not a cage.
+   * The height is only taken up when it changes by more than a couple of
+   * points. A card placed *above* its target is positioned by its own height,
+   * and Android snaps each edge of a view to a physical pixel separately — so
+   * moving the card by a fraction of a pixel changes its measured height by a
+   * pixel, which moves it again, which changes the height again. Accepting
+   * every reading kept that loop going for as long as the step was up: the
+   * New Words step's card (the first one placed above) trembled continuously.
+   * A real change in height — a font arriving late, text wrapping — is far
+   * larger than the threshold.
    */
-  useEffect(() => {
-    if (!step?.goTo) return
-    const target = String(step.goTo)
-    if (pathname === target || pathname.startsWith(`${target}/`)) return
-    router.push(step.goTo)
-    // `pathname` is read but deliberately not a dependency — see above.
-  }, [tourStep, step])
+  const [height, setHeight] = useState(0)
+  const onLayout = (e: LayoutChangeEvent) => {
+    const h = Math.round(e.nativeEvent.layout.height)
+    if (height === 0 || Math.abs(h - height) > HEIGHT_TOLERANCE) setHeight(h)
+  }
 
-  /** Steps that ask for a move forward themselves, so Shifu keeps up. */
-  useEffect(() => {
-    if (step?.advanceOn?.(pathname)) advanceTour()
-  }, [pathname, step, advanceTour])
+  const placed = placeTooltip({
+    target,
+    card: { width, height },
+    bounds,
+    gap: tourCard.targetGap,
+    margin: tourCard.margin,
+  })
+  /* Whole points, so the card never lands between two pixels to begin with. */
+  placed.x = Math.round(placed.x)
+  placed.y = Math.round(placed.y)
 
-  /*
-   * One nudge as a step that wants something arrives — a tap on the wrist to
-   * send the eye looking for the ring, not a metronome. Repeating it while the
-   * learner works out what to do would be nagging, and the pulse is already
-   * doing the pointing. Lives here rather than in `TourCard` because this
-   * component is mounted exactly once; the card is not.
-   */
-  useEffect(() => {
-    if (step?.highlight) tickHaptic()
-  }, [tourStep, step])
-
-  /*
-   * Onboarding runs its own flow and has its own mascot; two Shifus arguing on
-   * one screen is nobody's idea of a warm welcome.
-   *
-   * The same goes for the sheet steps, and that one was a real defect: a `Modal`
-   * draws above this layer, so the Learn sheet hosts its own copy of the card —
-   * and this one carried on drawing underneath it. The modal is transparent
-   * above its panel, so both were visible, the card rising with the sheet and
-   * the previous one still sitting at the bottom of the page. Standing down on
-   * the *claim* rather than on `step.inSheet` is deliberate: those two steps
-   * have a Next button, and hiding on the step alone would leave a learner who
-   * dismissed the sheet with no card anywhere and no way forward.
-   */
-  if (step === null || hostedElsewhere || pathname.startsWith('/onboarding')) return null
-
-  const barInset = Math.max(insets.bottom, 12)
-  const bottom = (hasTabBar(pathname) ? TAB_BAR_BODY + barInset : barInset) + 14
+  const { style, titleRef } = useArrival(
+    tooltip.title,
+    reduceMotion,
+    height > 0,
+    `${tooltip.title}. ${tooltip.body}`,
+  )
 
   return (
-    <View pointerEvents="box-none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
-      <View pointerEvents="box-none" style={{ position: 'absolute', right: 14, left: 14, bottom }}>
-        <TourCard />
-      </View>
-    </View>
+    <Animated.View
+      onLayout={onLayout}
+      style={[
+        { position: 'absolute', left: placed.x, top: placed.y, width },
+        /* Invisible until measured, so it never flashes in the wrong place. */
+        height > 0 ? style : { opacity: 0 },
+      ]}
+    >
+      <TourTooltip ref={titleRef} {...tooltip} />
+    </Animated.View>
   )
 }

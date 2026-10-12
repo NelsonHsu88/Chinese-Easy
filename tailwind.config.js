@@ -80,10 +80,6 @@ module.exports = {
           indigo: '#597895',
           'nav-inactive': '#65656e',
         },
-        // Challenges: the palette lives in src/components/challenges/tokens.ts,
-        // not here. Almost all of it is consumed by animated or state-dependent
-        // styles rather than class names, and two sources for one palette is
-        // exactly how a screen ends up with five slightly different greens.
         // The dictionary's own scale.
         //
         // Originally a cool-grey system on #F8FAFC with pure white cards, built
@@ -223,12 +219,6 @@ module.exports = {
         // Dictionary cards. Tinted with the slate the page is built from rather
         // than black, so a white card reads as raised without a visible edge —
         // the borders in this system are for dividers, not card outlines.
-        // Challenges. Its spec asks for one very soft shadow and nothing else —
-        // no shadow on icon tiles, XP chips or progress bars, which is what
-        // keeps a screen this dense from reading as generic app chrome.
-        chal: '0 5px 20px rgba(60,48,30,0.06)',
-        'chal-tabs': '0 3px 12px rgba(60,48,30,0.07)',
-        'chal-claim': '0 4px 14px rgba(206,150,60,0.35)',
         dict: '0 1px 2px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.05)',
         'dict-lifted': '0 2px 4px rgba(15,23,42,0.05), 0 10px 24px rgba(15,23,42,0.07)',
       },

@@ -1,6 +1,7 @@
 import { View, Text, type ViewStyle } from 'react-native'
-import { Volume2, PencilLine, Plus, Check, Sparkles } from 'lucide-react-native'
+import { Volume2, PencilLine, Plus, Check, Sparkles, Star, Trash2 } from 'lucide-react-native'
 import { PressScale } from './PressScale'
+import { PressableScale, LiftedFace, DASH_LIFT } from '../dashboard/parts'
 import { speak } from '../../lib/speech'
 import { playPositiveChime } from '../../lib/sound'
 import { tapHaptic, tickHaptic, successHaptic, sequence } from '../../lib/haptics'
@@ -33,6 +34,8 @@ export const ICON_STROKE = 2
 export const ICON_MUTED = '#8290A6'
 export const ICON_GREEN = '#4AA54B'
 export const ICON_GREEN_DARK = '#3E9845'
+/** A favourite's star — the same gold My Words uses (`mwColors.star`). */
+export const ICON_STAR = '#E3A93A'
 
 // --- Small pieces -------------------------------------------------------------
 
@@ -179,13 +182,17 @@ export function DeckStateButton({
   compact?: boolean
 }) {
   const meta = STATE_STYLES[state]
-  const padding: ViewStyle = compact
-    ? { paddingHorizontal: 14, paddingVertical: 8 }
-    : { paddingHorizontal: 24, paddingVertical: 12 }
+  const faceHeight = compact ? 36 : 44
+  const paddingHorizontal = compact ? 14 : 24
 
+  /*
+   * A status sits where a pressed Add would have landed — flush on the page,
+   * `DASH_LIFT` lower than a raised face — so adding a word reads as the
+   * button going down and staying down rather than being swapped for a label.
+   */
   if (state !== 'add') {
     return (
-      <View style={[DICT_BUTTON_SHADOW, PILL, padding, meta.box]}>
+      <View style={[PILL, { height: faceHeight, marginTop: DASH_LIFT, paddingHorizontal }, meta.box]}>
         {state === 'in-deck' && <Check size={16} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />}
         {state === 'new-from-story' && <Sparkles size={14} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />}
         <Text style={{ fontFamily: 'NunitoSansSemiBold', fontSize: 14, lineHeight: 18, color: meta.text }}>
@@ -195,8 +202,12 @@ export function DeckStateButton({
     )
   }
 
+  /*
+   * Raised: the Dashboard's `LiftedFace`, standing on a darker shoulder and
+   * sinking flush onto it on press — the same 3D object as Start Review.
+   */
   return (
-    <PressScale
+    <PressableScale
       onPress={() => {
         /*
          * The one place in the dictionary that makes a sound. Adding a word is
@@ -210,13 +221,118 @@ export function DeckStateButton({
         playPositiveChime()
         onAdd()
       }}
+      scaleTo={1}
+      haptic={false}
       accessibilityLabel="Add to deck"
-      style={[DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
-      innerStyle={[PILL, padding, meta.box]}
     >
-      {compact && <Plus size={16} color="#ffffff" strokeWidth={ICON_STROKE} />}
-      <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: meta.text }}>{meta.label}</Text>
+      <LiftedFace height={faceHeight} fill={DICT_BG.green} shoulder={DICT_BG.greenShoulder}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal }}>
+          {compact && <Plus size={16} color="#ffffff" strokeWidth={ICON_STROKE} />}
+          <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: meta.text }}>{meta.label}</Text>
+        </View>
+      </LiftedFace>
+    </PressableScale>
+  )
+}
+
+/**
+ * The favourite star beside the deck button. A toggle, so it ticks rather than
+ * chimes — sound in the dictionary is reserved for adding to the deck.
+ */
+export function FavoriteButton({ favorite, onToggle }: { favorite: boolean; onToggle: () => void }) {
+  return (
+    <PressScale
+      onPress={() => {
+        tickHaptic()
+        onToggle()
+      }}
+      accessibilityLabel={favorite ? 'Remove from favorites' : 'Add to favorites'}
+      style={[DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.card }]}
+      innerStyle={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+    >
+      <Star
+        size={22}
+        color={favorite ? ICON_STAR : ICON_MUTED}
+        fill={favorite ? ICON_STAR : 'transparent'}
+        strokeWidth={ICON_STROKE}
+      />
     </PressScale>
+  )
+}
+
+/**
+ * Taking a word back out of My Words, shown only when the card was opened from
+ * My Words.
+ *
+ * Two steps rather than one: removing drops the card's whole review history,
+ * so weeks of scheduling can go on a mis-tap — and a native `Alert` renders as a
+ * blocking browser dialog on web. Arming in place costs one extra tap.
+ */
+export function RemoveFromDeckButton({
+  armed,
+  onArm,
+  onCancel,
+  onConfirm,
+}: {
+  armed: boolean
+  onArm: () => void
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  if (!armed) {
+    return (
+      <PressScale
+        onPress={() => {
+          tickHaptic()
+          onArm()
+        }}
+        accessibilityLabel="Remove from My Words"
+        style={{ borderRadius: 999 }}
+        innerStyle={[PILL, { paddingVertical: 12 }]}
+      >
+        <Trash2 size={16} color={DICT_BG.coral} strokeWidth={ICON_STROKE} />
+        <Text style={{ fontFamily: 'NunitoSansSemiBold', fontSize: 15, lineHeight: 19, color: DICT_BG.coral }}>
+          Remove from My Words
+        </Text>
+      </PressScale>
+    )
+  }
+
+  return (
+    <View style={{ borderRadius: 20, backgroundColor: DICT_BG.coralPale, padding: 14, gap: 10 }}>
+      <Text
+        style={{ fontFamily: 'NunitoSans', fontSize: 14, lineHeight: 19, color: DICT_BG.coral, textAlign: 'center' }}
+      >
+        Remove this word? Its review progress goes with it.
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <PressScale
+          onPress={() => {
+            tickHaptic()
+            onCancel()
+          }}
+          accessibilityLabel="Keep word"
+          outerStyle={{ flex: 1 }}
+          style={{ borderRadius: 999, backgroundColor: DICT_BG.card }}
+          innerStyle={[PILL, { paddingVertical: 12 }]}
+        >
+          <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: ICON_MUTED }}>Keep</Text>
+        </PressScale>
+        <PressScale
+          onPress={() => {
+            tapHaptic()
+            onConfirm()
+          }}
+          accessibilityLabel="Confirm remove"
+          outerStyle={{ flex: 1 }}
+          style={{ borderRadius: 999, backgroundColor: DICT_BG.coral }}
+          innerStyle={[PILL, { paddingVertical: 12 }]}
+        >
+          <Trash2 size={16} color="#ffffff" strokeWidth={ICON_STROKE} />
+          <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: '#ffffff' }}>Remove</Text>
+        </PressScale>
+      </View>
+    </View>
   )
 }
 

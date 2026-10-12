@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { View, Text } from 'react-native'
+import { View, Text, TextInput } from 'react-native'
 import { Redirect, router } from 'expo-router'
 import { RotateCcw } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
@@ -14,6 +14,10 @@ import {
   Hint,
 } from '../../components/settings/parts'
 import { setColors as c, setSpacing as s, setRadius } from '../../components/settings/tokens'
+import { getLevelFromXp, levelTitle, xpAtLevelStart } from '../../lib/progression/levels'
+
+/** Upper bound for the level stepper — past every level title and reward. */
+const MAX_DEV_LEVEL = 99
 
 /*
  * The developer controls, moved out of the main screen but otherwise untouched.
@@ -58,7 +62,20 @@ export function Developer() {
     isAdFree,
     applyEntitlement,
     clearEntitlement,
+    xp,
+    devSetXp,
   } = useApp()
+
+  const level = getLevelFromXp(xp)
+  /* The typed XP is a draft until committed, so a half-typed "1" on the way
+     to "1500" doesn't drop the learner to level 1 and fire nothing useful. */
+  const [xpDraft, setXpDraft] = useState(String(xp))
+  useEffect(() => setXpDraft(String(xp)), [xp])
+  const commitXpDraft = () => {
+    const parsed = Number.parseInt(xpDraft.replace(/[^0-9]/g, ''), 10)
+    if (Number.isFinite(parsed)) devSetXp(parsed)
+    else setXpDraft(String(xp))
+  }
 
   /** Second tap arms the reset; it disarms itself so it can't sit primed. */
   const [armed, setArmed] = useState(false)
@@ -146,6 +163,63 @@ export function Developer() {
             <ActionButton label="Reset to real time" onPress={() => updateDevClockOverride(null)} />
           </>
         )}
+      </ControlGroup>
+
+      {/*
+        XP and level. The level is derived from XP, so setting a level sets XP
+        to where that level begins. Lowering it rewinds the level-up mark (see
+        `devSetXp`), so climbing back replays the celebration.
+      */}
+      <ControlGroup title="Level and XP">
+        <View style={{ padding: s.md, borderRadius: setRadius.inner, backgroundColor: c.greenSoft }}>
+          <Text
+            className="font-nunito-bold"
+            style={{ fontSize: 13.5, lineHeight: 19, color: c.greenDark, textAlign: 'center' }}
+          >
+            Level {level} · {levelTitle(level)} · {xp.toLocaleString()} XP
+          </Text>
+        </View>
+
+        <Field label="Level">
+          <NumberField
+            label="level"
+            value={level}
+            onChange={(v) => devSetXp(xpAtLevelStart(v))}
+            min={1}
+            max={MAX_DEV_LEVEL}
+          />
+        </Field>
+
+        <Field label="XP">
+          <NumberField label="XP" value={xp} onChange={devSetXp} min={0} max={9_999_999} step={50} unit="XP" />
+          <TextInput
+            value={xpDraft}
+            onChangeText={setXpDraft}
+            onSubmitEditing={commitXpDraft}
+            onBlur={commitXpDraft}
+            keyboardType="number-pad"
+            returnKeyType="done"
+            accessibilityLabel="Exact XP total"
+            placeholder="Exact XP total"
+            placeholderTextColor={c.textMuted}
+            className="font-nunito-bold"
+            style={{
+              fontSize: 16,
+              color: c.navy,
+              textAlign: 'center',
+              paddingVertical: 10,
+              borderRadius: setRadius.inner,
+              borderWidth: 1,
+              borderColor: c.border,
+              backgroundColor: c.card,
+            }}
+          />
+        </Field>
+        <Hint>
+          Type an exact total and press done, or step by 50. Setting a level puts XP at the start of
+          that level. Rewards already unlocked are kept when you go down. While signed in, sync keeps
+          the higher of this device’s and the cloud’s XP, so lowering it may not stick.
+        </Hint>
       </ControlGroup>
 
       {/*

@@ -248,14 +248,15 @@ export function Reveal({
 
   /*
    * The card's `elevation` shadow can't ride the native driver `reveal` above
-   * runs on, so it gets a second, always-JS value on the same timing — the
+   * runs on, so it gets a second, always-JS value — starting with the card,
+   * then creeping in on the shared slow shadow curve (`shadowReveal.tsx`). The
    * card underneath (see `DashboardCard`) reads this through
    * `useRevealedShadow` instead of a fixed shadow constant, so the shadow
-   * visibly grows in with the card rather than snapping to full strength
+   * visibly settles in under the card rather than snapping to full strength
    * partway through, which is what Android did left to its own schedule for
    * recomputing `elevation`.
    */
-  const shadowProgress = useShadowReveal({ at, duration, run, easing: ARRIVE })
+  const shadowProgress = useShadowReveal({ at, duration, run })
 
   return (
     /*

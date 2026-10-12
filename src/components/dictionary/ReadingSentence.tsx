@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { View, Text } from 'react-native'
+import { View, Text, Animated } from 'react-native'
 import { useApp } from '../../context/AppContext'
+import { useReadingFade } from '../readingFade'
 import { displayPinyin, hanziFont } from '../../lib/hanzi'
 import { readingForText } from '../../lib/characterReading'
 import { segmentText } from '../../lib/textSegmentation'
@@ -81,12 +82,20 @@ export function ReadingSentence({
   onPressWord?: (word: VocabWord) => void
 }) {
   const { wordBank, settings } = useApp()
+  const fade = useReadingFade()
   const face = hanziFont(script ?? settings.script)
   const segments = useMemo(() => segmentText(text, wordBank), [text, wordBank])
 
   const palette = TONES[tone]
   const hanzi = size === 'compact' ? 'text-[17px] leading-[24px]' : 'text-[19px] leading-[26px]'
   const reading = size === 'compact' ? 'text-[10px] leading-[14px]' : 'text-[11px] leading-[15px]'
+  /*
+   * Room either side of each word. A word's column is as wide as the wider of
+   * its hanzi and its reading, and a zhuyin reading is nearly always the wider —
+   * full-width symbols plus tone marks — so at pinyin's 1pt the readings of
+   * neighbouring words ran into each other and read as one.
+   */
+  const columnPad = settings.phoneticScript === 'zhuyin' ? 4 : 1
 
   return (
     <View className="flex-row flex-wrap items-start">
@@ -103,7 +112,7 @@ export function ReadingSentence({
         const tappable = !!onPressWord && !!segment.word && !isTerm
 
         const column = (
-          <View className="items-center px-[1px]">
+          <View className="items-center" style={{ paddingHorizontal: columnPad }}>
             <Text className={`${face} ${hanzi} ${isTerm ? palette.term : palette.hanzi}`}>
               {segment.display}
             </Text>
@@ -112,9 +121,13 @@ export function ReadingSentence({
               do have a reading sit lower than the ones that don't, and the
               sentence develops a wobble.
             */}
-            <Text numberOfLines={1} className={`font-inter ${reading} ${isTerm ? palette.term : palette.reading}`}>
-              {sound || ' '}
-            </Text>
+            {/* Faded rather than removed when readings are switched off, so
+                no character moves (see `useReadingFade`). */}
+            <Animated.View style={{ opacity: fade.opacity }} accessibilityElementsHidden={fade.hidden}>
+              <Text numberOfLines={1} className={`font-inter ${reading} ${isTerm ? palette.term : palette.reading}`}>
+                {sound || ' '}
+              </Text>
+            </Animated.View>
           </View>
         )
 

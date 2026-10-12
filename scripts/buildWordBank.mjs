@@ -140,6 +140,14 @@ function cleanGloss(defs) {
     .filter(Boolean)
     // Drop cross-reference and metadata glosses that read as noise to a learner.
     .filter((d) => !/^(CL:|Taiwan pr\.|see |variant of|old variant|abbr\. for|also pr\.)/i.test(d))
+    // "(bound form) Afghanistan (abbr. for 阿富汗[...])" is a sense that only
+    // exists inside compounds. The parenthetical stripping below would leave it
+    // as a bare "Afghanistan", and 阿 glossed as Afghanistan — which it never
+    // means on its own. Both markers are required: "abbr. for" alone also tags
+    // real standalone words (超市 "supermarket (abbr. for 超級市場)"). And only a
+    // lone name: 僧's sole sense is "(bound form) Buddhist monk (abbr. …)", and
+    // dropping that would delete a real word.
+    .filter((d) => !/^\(bound form\) [A-Z][a-z]+ \(abbr\. for\b/.test(d))
     .map((d) =>
       d
         // Inline pinyin keys and 傳統|简体 pairs, e.g. 皮革的[pi2 ge2 de5]

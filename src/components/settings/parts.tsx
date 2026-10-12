@@ -1,4 +1,4 @@
-import { useRef, type ComponentType, type ReactNode } from 'react'
+import { useMemo, useRef, type ComponentType, type ReactNode } from 'react'
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
 import { ArrowLeft, ChevronRight, Check } from 'lucide-react-native'
 import { useScreenTransition, LeaveProvider } from './transition'
+import { ShadowRevealProvider, useRevealedShadow } from '../shadowReveal'
 import {
   setColors as c,
   setSpacing as s,
@@ -27,6 +28,7 @@ import {
 } from './tokens'
 import { tapHaptic, tickHaptic } from '../../lib/haptics'
 import { useScrollToTopOnFocus } from '../useScrollToTopOnFocus'
+import { TourScrollContext } from '../tour/targets'
 
 /*
  * The Settings screen's building blocks.
@@ -40,10 +42,10 @@ import { useScrollToTopOnFocus } from '../useScrollToTopOnFocus'
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
+/** Cropped from the SS104 reference by `scripts/processSettingsArt.mjs`. */
 export const SETTINGS_ART = {
-  sakura: { source: require('../../assets/images/onboarding/sakura-branch.png'), ratio: 560 / 318 },
-  mountains: { source: require('../../assets/images/onboarding/mountains-panorama.png'), ratio: 880 / 326 },
-  bonsai: { source: require('../../assets/images/dashboard/bonsai.png'), ratio: 290 / 197 },
+  sakura: { source: require('../../assets/images/settings/sakura.png'), ratio: 301 / 222 },
+  foot: { source: require('../../assets/images/settings/foot.png'), ratio: 941 / 220 },
 } as const
 
 // --- Press response -----------------------------------------------------------
@@ -110,26 +112,35 @@ export function PressRow({
 // --- Page shells --------------------------------------------------------------
 
 /**
- * The ivory page every Settings screen sits on.
+ * The ivory page the Settings hub sits on.
  *
  * The column is capped at the design width and centred, matching `ReadingShell`
  * and the Dashboard — uncapped, a desktop browser stretches a settings row until
  * its value chip is half a metre from the label it belongs to.
+ *
+ * The hub scrolls. It used to squeeze its rows to fit one screen, which on a
+ * phone left everything cramped; now every row and gap keeps its designed size
+ * and the page simply scrolls when it is taller than the viewport. `foot` is
+ * laid out in flow after the content, behind a flexible spacer, so on a tall
+ * screen it still lands at the bottom of the page rather than mid-way down.
  */
 export function SettingsShell({
   children,
-  bottomInset = s.xxxl,
   transitionStyle,
+  shadow,
+  foot,
 }: {
   children: ReactNode
-  /** Extra room under the last element, above the tab bar. */
-  bottomInset?: number
   /**
    * The transition style from `useScreenTransition`, applied to the content
    * only. The ivory page and the tab bar stay put — that is what makes opening
    * a category read as this screen rearranging rather than as a page turn.
    */
   transitionStyle?: Animated.WithAnimatedObject<ViewStyle>
+  /** `useScreenTransition`'s shadow value — the cards' shadows settle in on it. */
+  shadow?: Animated.Value
+  /** Decoration that ends the page (the foot range), pushed to the bottom on a tall screen. */
+  foot?: ReactNode
 }) {
   const { width } = useWindowDimensions()
   const column = Math.min(width, SET_CONTENT_MAX)
@@ -139,12 +150,28 @@ export function SettingsShell({
      scroll ended rather than to the top of Settings. */
   const scroll = useScrollToTopOnFocus()
 
+  /* Shifu's Settings guide points at the lower cards, which start below the
+     fold on a short phone — so it can ask for a scroll. Tracked, not read back. */
+  const scrollY = useRef(0)
+  const tourScrollBy = useMemo(
+    () => (dy: number) => scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true }),
+    [scroll],
+  )
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
       <ScrollView
         ref={scroll}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y
+        }}
+        scrollEventThrottle={32}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ alignItems: 'center', paddingBottom: bottomInset }}
+        /* iOS bounces a vertical ScrollView even when its content fits, which
+           makes a page that fits feel like one that scrolls. */
+        alwaysBounceVertical={false}
+        overScrollMode="never"
+        contentContainerStyle={{ flexGrow: 1, alignItems: 'center' }}
       >
         {/* Plain styles on the animated view, content in a plain View inside it
             — NativeWind drops `className` on an `Animated.View` entirely.
@@ -153,8 +180,16 @@ export function SettingsShell({
             each one's shadow and its fill as separate overlapping layers —
             the shadow reads as arriving before the card. See the same fix on
             Dictionary's `FadeSection` and the Dashboard's `Reveal`. */}
-        <Animated.View style={[{ width: column }, transitionStyle]} needsOffscreenAlphaCompositing>
-          <View>{children}</View>
+        <Animated.View style={[{ width: column, flexGrow: 1 }, transitionStyle]} needsOffscreenAlphaCompositing>
+          <ShadowRevealProvider value={shadow ?? null}>
+            <TourScrollContext.Provider value={tourScrollBy}>
+              <View style={{ flexGrow: 1 }}>
+                {children}
+                <View style={{ flexGrow: 1 }} />
+                {foot}
+              </View>
+            </TourScrollContext.Provider>
+          </ShadowRevealProvider>
         </Animated.View>
       </ScrollView>
     </SafeAreaView>
@@ -172,7 +207,7 @@ export function SettingsShell({
 export function DetailShell({ title, children }: { title: string; children: ReactNode }) {
   const { width } = useWindowDimensions()
   const column = Math.min(width, SET_CONTENT_MAX)
-  const { style, leave } = useScreenTransition()
+  const { style, shadow, leave } = useScreenTransition()
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
@@ -221,7 +256,9 @@ export function DetailShell({ title, children }: { title: string; children: Reac
             {/* Anything nested that navigates on further reaches the same exit
                 through here, rather than cutting straight to the next screen. */}
             <LeaveProvider value={leave}>
-              <View style={{ marginTop: s.xl, gap: s.xl }}>{children}</View>
+              <ShadowRevealProvider value={shadow}>
+                <View style={{ marginTop: s.xl, gap: s.xl }}>{children}</View>
+              </ShadowRevealProvider>
             </LeaveProvider>
           </View>
         </Animated.View>
@@ -233,24 +270,20 @@ export function DetailShell({ title, children }: { title: string; children: Reac
 // --- Decoration ---------------------------------------------------------------
 
 /**
- * The sakura branch in the top-right corner.
+ * The sakura branch in the top-right corner, cropped from the reference.
  *
  * Absolutely positioned and `pointerEvents="none"`: decoration must cost no
  * layout height, or the title below it walks down the page, and it must never
- * swallow a tap meant for the card it overhangs. The render grows
- * left-to-right from a trunk at its bottom-left, so it is mirrored to put the
- * trunk at the screen edge rather than shipping a second copy of the asset.
+ * swallow a tap meant for the card it overhangs. It bleeds off the column's
+ * right edge, as the reference's does.
  *
  * Its height is derived from the source ratio. React Native does not size an
  * `Image` from its intrinsic dimensions the way a browser does — a width with
  * no height lays out at zero and the artwork silently vanishes.
  */
-export function SakuraCorner({ width = 152 }: { width?: number }) {
+export function SakuraCorner({ width }: { width: number }) {
   return (
-    <View
-      pointerEvents="none"
-      style={{ position: 'absolute', top: -6, right: -26, transform: [{ scaleX: -1 }] }}
-    >
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: -s.screen }}>
       <Image
         source={SETTINGS_ART.sakura.source}
         style={{ width, height: width / SETTINGS_ART.sakura.ratio }}
@@ -260,29 +293,25 @@ export function SakuraCorner({ width = 152 }: { width?: number }) {
   )
 }
 
+/** Height of the foot painting at a given column width. */
+export function footHeight(column: number) {
+  return column / SETTINGS_ART.foot.ratio
+}
+
 /**
- * The ink-wash range along the foot of the page.
+ * The misty range and trees along the foot of the page, cropped from the
+ * reference with the last card's edge faded out of it.
  *
- * In normal flow rather than absolutely positioned, which is the opposite of
- * every other piece of decoration here and is deliberate: this page scrolls, and
- * a range pinned to the bottom of the *viewport* would ride up over the cards on
- * the way past. In flow it stays where the reference puts it — under the last
- * card, above the tab bar — and can never cover a word.
- *
- * It bleeds past the page margin on both sides, because a mountain range that
- * stops 20pt short of the screen edge reads as a picture of one.
+ * In flow at the end of the page (`SettingsShell`'s `foot`), so it scrolls
+ * with the content and can never sit underneath a card.
  */
-export function FootRange({ opacity = 0.5 }: { opacity?: number }) {
+export function FootRange() {
   const { width } = useWindowDimensions()
   const column = Math.min(width, SET_CONTENT_MAX)
 
   return (
-    <View pointerEvents="none" style={{ opacity, marginTop: s.xl }}>
-      <Image
-        source={SETTINGS_ART.mountains.source}
-        style={{ width: column, height: column / SETTINGS_ART.mountains.ratio }}
-        resizeMode="contain"
-      />
+    <View pointerEvents="none" style={{ width: column, height: footHeight(column) }}>
+      <Image source={SETTINGS_ART.foot.source} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
     </View>
   )
 }
@@ -292,7 +321,7 @@ export function FootRange({ opacity = 0.5 }: { opacity?: number }) {
 /** "Study", "Account & App". Aligned to the same margin as the cards under it. */
 export function SectionHeading({ children }: { children: ReactNode }) {
   return (
-    <Text className="font-nunito-extrabold" style={{ ...t.section, color: c.navy }}>
+    <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, fontFamily: 'LoraBold', color: c.navy }}>
       {children}
     </Text>
   )
@@ -317,8 +346,11 @@ export function Hint({ children }: { children: ReactNode }) {
  * cannot do on its own.
  */
 export function Card({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+  /* Settles in on the shell's transition — see `useScreenTransition`'s `shadow`.
+     An `Animated.View` so it can carry the interpolated values. */
+  const shadow = useRevealedShadow(setShadow)
   return (
-    <View
+    <Animated.View
       style={[
         {
           backgroundColor: c.card,
@@ -326,13 +358,13 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
           borderWidth: 1,
           borderColor: c.border,
           overflow: 'hidden',
-          ...setShadow,
+          ...shadow,
         },
         style,
       ]}
     >
       {children}
-    </View>
+    </Animated.View>
   )
 }
 
@@ -341,8 +373,8 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
  *
  * The separators are drawn here rather than by each row, so the last row cannot
  * end up with a trailing line under it — the single most common way a grouped
- * list ends up looking almost right. They start after the icon column, which is
- * what stops the card reading as a table.
+ * list ends up looking almost right. They start at the rows' text margin and
+ * run to the card's edge, as the reference draws them.
  */
 export function GroupCard({ children }: { children: ReactNode }) {
   const rows = Array.isArray(children) ? children.filter(Boolean) : [children]
@@ -355,7 +387,7 @@ export function GroupCard({ children }: { children: ReactNode }) {
             <View
               style={{
                 height: 1,
-                marginLeft: setRow.padding + setRow.icon + setRow.iconGap,
+                marginLeft: HUB_ROW_PADDING,
                 backgroundColor: c.separator,
               }}
             />
@@ -389,32 +421,43 @@ export function IconCircle({
   )
 }
 
+/** A hub row's horizontal padding: 44 of the reference's 941px. */
+export const HUB_ROW_PADDING = 20
 /**
- * One navigation row: circle, title over description, an optional summary of
- * the current state, and a chevron.
+ * On a phone narrower than 400pt the full padding leaves "Script, phonetics and
+ * study options" no room beside its "Pinyin" summary and it ends in an
+ * ellipsis; there the padding and the description step down a little instead.
+ */
+const HUB_NARROW_BELOW = 400
+const HUB_ROW_PADDING_NARROW = 16
+
+/**
+ * One navigation row on the hub: title over description, an optional summary
+ * of the current state, and a chevron. No icon — the reference dropped them, and
+ * the serif titles carry the row on their own.
  *
  * The summary is the reason this screen can be this quiet. A row that says
- * "Reminders · Daily at 7:00 PM · On" has already answered the question most
- * people opened Settings to ask, so the detail screen behind it is for changing
- * the answer rather than for finding it.
+ * "Reminders · Notifications are off · Off" has already answered the question
+ * most people opened Settings to ask, so the detail screen behind it is for
+ * changing the answer rather than for finding it.
+ *
+ * `height` is the hub's fixed row height.
  */
 export function NavRow({
-  icon,
-  tint,
-  iconColor,
   title,
   subtitle,
   value,
+  height,
   onPress,
 }: {
-  icon: ComponentType<{ color: string; size: number; strokeWidth: number }>
-  tint: string
-  iconColor: string
   title: string
   subtitle: string
   value?: string
+  height: number
   onPress: () => void
 }) {
+  const { width } = useWindowDimensions()
+  const narrow = Math.min(width, SET_CONTENT_MAX) < HUB_NARROW_BELOW
   return (
     <PressRow
       onPress={onPress}
@@ -423,21 +466,33 @@ export function NavRow({
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        minHeight: setRow.minHeight,
-        paddingHorizontal: setRow.padding,
-        paddingVertical: s.md,
+        height,
+        paddingHorizontal: narrow ? HUB_ROW_PADDING_NARROW : HUB_ROW_PADDING,
       }}
     >
-      <IconCircle icon={icon} tint={tint} color={iconColor} />
-
-      <View style={{ flex: 1, marginLeft: setRow.iconGap, marginRight: s.sm }}>
-        <Text className="font-nunito-bold" style={{ ...t.rowTitle, color: c.navy }}>
+      {/* Families in the style objects as well as the classes: on Android
+          NativeWind can drop a class-derived style from some rows and not
+          others, and a row that loses it falls back to the system face — the
+          hub's rows came out in visibly different fonts. A style object is
+          applied by React Native itself. */}
+      <View style={{ flex: 1, marginRight: s.sm }}>
+        <Text
+          className="font-lora-bold"
+          numberOfLines={1}
+          style={{ ...t.rowTitle, fontFamily: 'LoraBold', color: c.navy }}
+        >
           {title}
         </Text>
         <Text
           className="font-nunito-semibold"
           numberOfLines={1}
-          style={{ ...t.rowSubtitle, color: c.textSecondary, marginTop: 1 }}
+          style={{
+            ...t.rowSubtitle,
+            ...(narrow ? { fontSize: 12.5 } : null),
+            fontFamily: 'NunitoSemiBold',
+            color: c.textSecondary,
+            marginTop: 2,
+          }}
         >
           {subtitle}
         </Text>
@@ -446,7 +501,7 @@ export function NavRow({
       {value ? (
         <Text
           className="font-nunito-bold"
-          style={{ ...t.rowValue, color: c.greenDark, marginRight: s.sm }}
+          style={{ ...t.rowValue, fontFamily: 'NunitoBold', color: c.greenDark, marginRight: narrow ? s.sm : s.md }}
         >
           {value}
         </Text>

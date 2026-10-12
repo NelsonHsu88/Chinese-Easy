@@ -6,12 +6,12 @@ import { router } from 'expo-router'
 import { ArrowLeft, Lock, Star } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { TOWN_BUILDINGS } from '../data/townBuildings'
-import { canAfford, levelForXp, XP_PER_LEVEL } from '../lib/townEconomy'
+import { canAfford, levelForXp } from '../lib/townEconomy'
 import { playTapSound } from '../lib/sound'
 
 export function MyTown() {
   const { xp, unlockedBuildingIds, unlockBuilding } = useApp()
-  const { level, xpIntoLevel, levelPct } = levelForXp(xp)
+  const { level, xpIntoLevel, xpForLevel, levelPct } = levelForXp(xp)
 
   const unlocked = useMemo(
     () => TOWN_BUILDINGS.filter((b) => unlockedBuildingIds.includes(b.id)),
@@ -49,7 +49,7 @@ export function MyTown() {
               <View className="h-full rounded-full bg-brand-500" style={{ width: `${levelPct}%` }} />
             </View>
             <Text className="mt-1 text-[11px] text-slate-400">
-              {xpIntoLevel} / {XP_PER_LEVEL} XP
+              {xpIntoLevel} / {xpForLevel} XP
             </Text>
           </View>
           <Image source={TOWN_BUILDINGS[8].image} style={{ width: 64, height: 64 }} resizeMode="contain" />

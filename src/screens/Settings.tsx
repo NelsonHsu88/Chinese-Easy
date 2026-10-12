@@ -1,9 +1,7 @@
-import { useMemo } from 'react'
-import { View, Text } from 'react-native'
+import { View, Text, useWindowDimensions } from 'react-native'
 import { router } from 'expo-router'
-import { BookOpen, Bell, Target, BarChart3, Settings2, Info, Sparkles } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { currentWeekActivity } from '../lib/progress'
+import { getLevelFromXp, levelTitle } from '../lib/progression/levels'
 import {
   SettingsShell,
   SakuraCorner,
@@ -12,9 +10,10 @@ import {
   GroupCard,
   NavRow,
 } from '../components/settings/parts'
-import { ProfileCard, StreakCard } from '../components/settings/cards'
+import { ProfileCard } from '../components/settings/cards'
+import { TourTarget } from '../components/tour/targets'
 import { useScreenTransition } from '../components/settings/transition'
-import { setColors as c, setSpacing as s, setType as t } from '../components/settings/tokens'
+import { setColors as c, setSpacing as s, setType as t, setRadius, SET_CONTENT_MAX } from '../components/settings/tokens'
 
 /** Everything this screen can open. Typed so a renamed route fails the build. */
 type SettingsHref =
@@ -31,7 +30,7 @@ type SettingsHref =
  * Settings, as an index rather than a control panel.
  *
  * Everything the old screen showed is still here and still writes to the same
- * persisted fields — it is one level down, behind six rows. The reason is not
+ * persisted fields — it is one level down, behind seven rows. The reason is not
  * tidiness: the old screen put eight segmented controls, two sliders, a
  * stepper, three toggles and a date picker on one scroll, and a learner
  * arriving to turn reminders off had to read all of it to find the one they
@@ -41,7 +40,31 @@ type SettingsHref =
  * The detail screens live in `src/screens/settings/`, reached through
  * `/settings/<name>` — a directory with no `index`, so `/settings` itself stays
  * owned by the tab route and expo-router has no path to loop on.
+ *
+ * Built to the Beta 2.1 reference "SS104 Setting UI Redesign.png": Lora
+ * headings and row titles, no row icons, the reference's own sakura branch and
+ * foot range (`processSettingsArt.mjs`). The streak card the previous design
+ * carried went with it — the Dashboard's This Week card shows the same week.
+ *
+ * **The hub scrolls, and nothing on it is squeezed.** It used to size its rows
+ * to fit one screen, which on a phone pressed them to ~50pt and tightened every
+ * gap around them until the page read as crammed. Every size below is now fixed
+ * at a comfortable value and the page scrolls when it runs past the viewport;
+ * on a tall screen the foot painting still ends the page (`SettingsShell`).
  */
+
+/** A row with room for its two lines to breathe. */
+const ROW_HEIGHT = 72
+/** Between the profile card and each section. */
+const SECTION_GAP = 32
+/** Between a section heading and its card. */
+const HEADING_GAP = 12
+/**
+ * The sakura branch's width as a share of the column. The reference's is 0.32
+ * (301 of 941px), but its subtitle is set smaller; at the app's `t.subtitle` a branch
+ * that wide drops petals onto "experience.".
+ */
+const SAKURA_SHARE = 0.26
 
 /** How the four learning goals are named to the learner. */
 const GOAL_LABELS: Record<string, string> = {
@@ -62,10 +85,12 @@ function formatTime(time: string): string {
 }
 
 export function Settings() {
-  const { settings, streak, dailyProgress, isAdFree } = useApp()
-  const week = useMemo(() => currentWeekActivity(dailyProgress), [dailyProgress])
-
+  const { settings, isAdFree, xp } = useApp()
+  const level = getLevelFromXp(xp)
   const phonetics = settings.phoneticScript === 'pinyin' ? 'Pinyin' : 'Zhuyin'
+
+  const { width } = useWindowDimensions()
+  const column = Math.min(width, SET_CONTENT_MAX)
 
   /*
    * This screen drops away downwards and rises back from below; a category
@@ -73,55 +98,59 @@ export function Settings() {
    * calling `router.push` directly — pushing straight away would mount the next
    * screen over an exit animation nobody ever sees.
    */
-  const { style, leave } = useScreenTransition()
+  const { style, shadow, leave } = useScreenTransition()
   const open = (href: SettingsHref) => () => leave(() => router.push(href))
 
+
   return (
-    <SettingsShell bottomInset={0} transitionStyle={style}>
-      <View style={{ paddingHorizontal: s.screen }}>
+    <SettingsShell
+      transitionStyle={style}
+      shadow={shadow}
+      foot={<FootRange />}
+    >
+      <View style={{ paddingHorizontal: s.screen, paddingBottom: s.xxl }}>
         {/*
           The branch is drawn before the title and sits behind it in paint order,
-          but it is out of flow, so the title's own box is untouched. It is
-          sized to clear "Settings" rather than to fill the corner — the word is
-          the largest type on the screen and must not have petals in it.
+          but it is out of flow, so the title's own box is untouched.
         */}
-        <View style={{ paddingTop: s.sm }}>
-          <SakuraCorner />
-          <Text className="font-nunito-extrabold" style={{ ...t.title, color: c.navy }}>
+        <View style={{ paddingTop: s.lg }}>
+          <SakuraCorner width={column * SAKURA_SHARE} />
+          <Text
+            className="font-lora-bold"
+            accessibilityRole="header"
+            style={{ ...t.title, color: c.navy }}
+          >
             Settings
           </Text>
-          <Text
-            className="font-nunito-semibold"
-            style={{ ...t.subtitle, color: c.textSecondary, marginTop: s.xs }}
-          >
+          <Text className="font-lora" style={{ ...t.subtitle, color: c.textSecondary, marginTop: s.xs }}>
             Personalise your learning experience.
           </Text>
         </View>
 
-        <View style={{ marginTop: s.xxl }}>
-          <ProfileCard
-            name={settings.username}
-            email={settings.email}
-            onPress={open('/profile')}
-          />
+        <View style={{ marginTop: s.xxxl }}>
+          <TourTarget id="settings-profile" radius={setRadius.card}>
+            <ProfileCard
+              name={settings.username}
+              photo={settings.avatarUri}
+              detail={`Level ${level} · ${levelTitle(level)}`}
+              height={84}
+              onPress={open('/profile')}
+            />
+          </TourTarget>
         </View>
 
-        <View style={{ marginTop: s.xl, gap: s.md }}>
+        <View style={{ marginTop: SECTION_GAP, gap: HEADING_GAP }}>
           <SectionHeading>Study</SectionHeading>
+          <TourTarget id="settings-study" radius={setRadius.card}>
           <GroupCard>
             <NavRow
-              icon={BookOpen}
-              tint={c.greenSoft}
-              iconColor={c.greenDark}
               title="Learning preferences"
               subtitle="Script, phonetics and study options"
               value={phonetics}
+              height={ROW_HEIGHT}
               onPress={open('/settings/learning')}
             />
             <NavRow
-              icon={Bell}
-              tint={c.coralSoft}
-              iconColor={c.coralDark}
               title="Reminders"
               subtitle={
                 settings.notificationsEnabled
@@ -129,22 +158,23 @@ export function Settings() {
                   : 'Notifications are off'
               }
               value={settings.notificationsEnabled ? 'On' : 'Off'}
+              height={ROW_HEIGHT}
               onPress={open('/settings/reminders')}
             />
             <NavRow
-              icon={Target}
-              tint={c.goldSoft}
-              iconColor={c.gold}
               title="My goal"
               subtitle={`${GOAL_LABELS[settings.learningGoal] ?? 'Daily life'} · HSK ${settings.hskLevel}`}
               value={`${settings.dailyNewWordLimit} words`}
+              height={ROW_HEIGHT}
               onPress={open('/settings/goal')}
             />
           </GroupCard>
+          </TourTarget>
         </View>
 
-        <View style={{ marginTop: s.xxl, gap: s.md }}>
+        <View style={{ marginTop: SECTION_GAP, gap: HEADING_GAP }}>
           <SectionHeading>Account &amp; App</SectionHeading>
+          <TourTarget id="settings-app" radius={setRadius.card}>
           <GroupCard>
             {/*
               The way in to the subscription, and the only permanent one — the
@@ -154,58 +184,41 @@ export function Settings() {
               it, which for a subscriber is the only question this row answers.
             */}
             <NavRow
-              icon={Sparkles}
-              tint={c.greenSoft}
-              iconColor={c.greenDark}
               title="Ad-free"
-              subtitle={
-                isAdFree
-                  ? 'Thank you for supporting Chinese Easy'
-                  : 'Study without interruptions'
-              }
+              subtitle={isAdFree ? 'Thank you for supporting Chinese Easy' : 'Study without interruptions'}
               value={isAdFree ? 'Active' : undefined}
+              height={ROW_HEIGHT}
               onPress={open('/subscribe')}
             />
             <NavRow
-              icon={BarChart3}
-              tint={c.blueSoft}
-              iconColor={c.blueGray}
               title="Progress"
               subtitle="Track your learning journey"
+              height={ROW_HEIGHT}
               onPress={open('/settings/progress')}
             />
             <NavRow
-              icon={Settings2}
-              tint={c.slateSoft}
-              iconColor={c.slate}
               title="General"
               subtitle="Sounds, appearance, advanced"
+              height={ROW_HEIGHT}
               onPress={open('/settings/general')}
             />
             {/*
-              Where the reference puts "Offline". The app has no download
+              Where an earlier reference put "Offline". The app has no download
               feature — every character's stroke data, all 46 stories and the
               whole word bank are compiled into the bundle — so a row offering
               to fetch them would be a button that does nothing. About is a real
               obligation instead: CC-CEDICT is CC BY-SA and has to be credited.
             */}
             <NavRow
-              icon={Info}
-              tint={c.lavenderSoft}
-              iconColor={c.lavender}
               title="About"
               subtitle="Version, licences and credits"
+              height={ROW_HEIGHT}
               onPress={open('/settings/about')}
             />
           </GroupCard>
-        </View>
-
-        <View style={{ marginTop: s.xl }}>
-          <StreakCard streak={streak} week={week} />
+          </TourTarget>
         </View>
       </View>
-
-      <FootRange />
     </SettingsShell>
   )
 }

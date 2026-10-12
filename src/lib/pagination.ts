@@ -125,6 +125,7 @@ export function packSentences(
   sentences: string[],
   budget: number,
   minSentences: number = MIN_SENTENCES,
+  maxChars: number = MAX_SCREEN_CHARS,
 ): string[] {
   const limit = Math.max(MIN_BUDGET, budget)
   const chunks: string[] = []
@@ -141,12 +142,12 @@ export function packSentences(
   }
 
   for (const sentence of sentences) {
-    for (const piece of breakLongSentence(sentence, MAX_SCREEN_CHARS)) {
+    for (const piece of breakLongSentence(sentence, maxChars)) {
       const over = current.length + piece.length
       /* Two ways a screen ends: it has its minimum and the next sentence would
          overrun the measured area, or it would overrun the ceiling whether or
          not it has its minimum. */
-      if (current && ((held >= minSentences && over > limit) || over > MAX_SCREEN_CHARS)) close()
+      if (current && ((held >= minSentences && over > limit) || over > maxChars)) close()
       current += piece
     }
     held += 1
@@ -218,11 +219,26 @@ export interface StoryScreen {
  * any more, so carrying a slice of it here would mean splitting a string that
  * nothing reads.
  */
-export function paginateStory(pages: StoryPage[], budget: number): StoryScreen[] {
+export function paginateStory(
+  pages: StoryPage[],
+  budget: number,
+  options: {
+    /**
+     * Whole sentences a screen must hold before `budget` may close it. The
+     * scrolling reader keeps `MIN_SENTENCES`; the book passes 1, because a
+     * book page cannot scroll and must end where its paper does.
+     */
+    minSentences?: number
+    /** The hard ceiling on a screen. The book passes its own `budget`. */
+    maxChars?: number
+  } = {},
+): StoryScreen[] {
   const screens: StoryScreen[] = []
+  const minSentences = options.minSentences ?? MIN_SENTENCES
+  const maxChars = options.maxChars ?? MAX_SCREEN_CHARS
 
   pages.forEach((page, sourcePage) => {
-    const chunks = packSentences(splitChineseSentences(page.chinese), budget)
+    const chunks = packSentences(splitChineseSentences(page.chinese), budget, minSentences, maxChars)
     if (chunks.length === 0) return
 
     const english = splitEnglishSentences(page.translation)
@@ -269,8 +285,13 @@ const CELL_WIDTH = 43
 const CELL_HEIGHT = 77
 
 /** How many characters comfortably fit in a reading area of this size. */
-export function budgetForArea(width: number, height: number): number {
-  const perRow = Math.max(1, Math.floor(width / CELL_WIDTH))
-  const rows = Math.max(1, Math.floor(height / CELL_HEIGHT))
+export function budgetForArea(
+  width: number,
+  height: number,
+  /** A layout whose word cells differ from the scrolling reader's (the book's) passes its own. */
+  cell: { width: number; height: number } = { width: CELL_WIDTH, height: CELL_HEIGHT },
+): number {
+  const perRow = Math.max(1, Math.floor(width / cell.width))
+  const rows = Math.max(1, Math.floor(height / cell.height))
   return Math.max(MIN_BUDGET, perRow * rows)
 }

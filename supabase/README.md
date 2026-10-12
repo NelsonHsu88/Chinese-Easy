@@ -17,6 +17,8 @@ Chinese Easy behaves today.
 | `migrations/0001_schema.sql` | Nine tables, keys, indexes, `updated_at` triggers |
 | `migrations/0002_rls.sql` | Row Level Security + 36 policies + role grants |
 | `migrations/0003_constraints.sql` | Length/size bounds, value domains, `search_path` pin |
+| `migrations/0004_row_limits.sql` | Per-account row-count caps (one statement-level trigger per table) |
+| `functions/delete-account/` | Edge Function behind Settings → General → Delete account |
 
 `0003` is the answer to a question `0002` does not address. RLS decides *whose*
 rows a client may write; nothing decided what could be in them. `custom_words`
@@ -48,7 +50,23 @@ npx supabase link --project-ref <your-project-ref>
 npx supabase db push
 ```
 
-Both files are re-runnable: every object uses `if not exists`, and every policy
+`0004` caps how many rows one account may hold, since `0003` only capped how big
+each row is. The limits sit far above real use (50,000 cards against a 25,180-word
+bank; 500,000 review events); a statement over a limit is rolled back and
+`push.ts` leaves that table queued, so nothing on the device is lost.
+
+The account-deletion function is deployed separately:
+
+```
+npx supabase functions deploy delete-account
+```
+
+It needs no secrets of its own — Supabase injects `SUPABASE_URL` and
+`SUPABASE_SERVICE_ROLE_KEY` into every function. It reads whose account to
+delete from the caller's verified token and takes no other input; every table's
+`on delete cascade` removes the synced rows with the user.
+
+All the migration files are re-runnable: every object uses `if not exists`, and every policy
 is dropped before being recreated.
 
 ## Verifying isolation

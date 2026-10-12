@@ -1,6 +1,16 @@
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
 import { pinyinToZhuyin } from './zhuyin'
 
+/**
+ * The phonetic system a script comes with by default: zhuyin beside
+ * traditional, as it is taught in Taiwan, and pinyin beside simplified. Applied
+ * when the learner *picks* a script (onboarding, Learning preferences); the
+ * phonetic system stays its own setting and can be changed independently after.
+ */
+export function defaultPhoneticFor(script: ScriptMode): PhoneticScript {
+  return script === 'traditional' ? 'zhuyin' : 'pinyin'
+}
+
 export function displayWord(word: VocabWord, script: ScriptMode): string {
   return script === 'simplified' ? word.simplified : word.traditional
 }

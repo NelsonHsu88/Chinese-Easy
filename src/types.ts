@@ -101,6 +101,16 @@ export interface DailyProgress {
   date: string // yyyy-mm-dd
   wordsLearned: number
   reviewsCompleted: number
+  /**
+   * Characters written to completion in a stroke-order quiz today, and
+   * listening questions answered. Optional because they arrived after the
+   * other two: stored days from before them simply read as zero. Device-only
+   * for now — the cloud `daily_activity` table has no columns for them, so
+   * sync carries them through a merge (`mergeDailyActivity`) but never uploads
+   * them.
+   */
+  charactersWritten?: number
+  listeningAnswered?: number
 }
 
 export type ReviewDirection = 'recognition' | 'production' | 'mixed'
@@ -132,6 +142,23 @@ export interface AppSettings {
    */
   soundEnabled: boolean
   hapticsEnabled: boolean
+  /**
+   * Whether pinyin/zhuyin shows under running Chinese text — example
+   * sentences, book pages, Fill the Gap. Settings → Learning preferences, and
+   * the 注/拼 button in the story reader. Off hides the readings without
+   * moving a character (`useReadingFade`). A word's own reading on a card is
+   * not affected. Device-only, like sound and haptics.
+   */
+  showReadings: boolean
+  /**
+   * The learner's profile picture, chosen from their photo library in Edit
+   * Profile — a file in the app's document directory on native, a small JPEG
+   * data URL on web (`lib/avatarPhoto.ts`). Absent means "draw the initial".
+   *
+   * Device-only on purpose: it is not in `ACCOUNT_SETTING_FIELDS`, because a
+   * path into one phone's sandbox means nothing on another device.
+   */
+  avatarUri?: string
 }
 
 export interface PlacementAnswer {

@@ -350,7 +350,7 @@ export function PlanCard({
   accessibilityLabel,
 }: {
   title: string
-  /** Store-formatted, e.g. "$36" or "¥3,800" — split for display, never parsed. */
+  /** Store-formatted, e.g. "$15" or "¥3,800" — split for display, never parsed. */
   price: string
   unit: string
   savings?: string

@@ -8,7 +8,7 @@ import { UNITS } from '../data/units'
 import { lessonsForUnit } from '../data/lessons'
 import { TOWN_BUILDINGS } from '../data/townBuildings'
 import { playTapSound } from '../lib/sound'
-import { levelForXp, XP_PER_LEVEL } from '../lib/townEconomy'
+import { levelForXp } from '../lib/townEconomy'
 
 const CLOUDS = require('../assets/images/icons/lessons-clouds.png')
 // Cropped to its own content by scripts/processCloudOverlay.mjs, so the sprite's
@@ -64,7 +64,7 @@ export function Lessons() {
   const cloudsHeight = containerWidth / CLOUDS_ASPECT
 
   const sortedUnits = [...UNITS].sort((a, b) => a.order - b.order)
-  const { level, xpIntoLevel, levelPct } = levelForXp(xp)
+  const { level, xpIntoLevel, xpForLevel, levelPct } = levelForXp(xp)
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-canvas dark:bg-slate-950">
@@ -106,7 +106,7 @@ export function Lessons() {
             <View className="mt-1 flex-row items-baseline justify-between pr-3">
               <Text className="text-[19px] font-extrabold text-brand-600">Level {level}</Text>
               <Text className="text-[13px] font-medium text-slate-400">
-                {xpIntoLevel} / {XP_PER_LEVEL} XP
+                {xpIntoLevel} / {xpForLevel} XP
               </Text>
             </View>
             <View className="mt-2.5 mr-3 h-3 overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-800">

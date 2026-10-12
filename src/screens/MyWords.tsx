@@ -1,377 +1,749 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { View, Text, Pressable, ScrollView } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from 'react'
+import { View, Text, Pressable, ScrollView, TextInput, Image, useWindowDimensions } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
-import { ArrowLeft, PenLine, Trash2 } from 'lucide-react-native'
-import { useApp } from '../context/AppContext'
-import { displayWord, displayPinyin, displayExample } from '../lib/hanzi'
-import { ReadingSentence } from '../components/dictionary/ReadingSentence'
-import { Modal } from '../components/Modal'
-import { WritingPracticeModal } from '../components/WritingPracticeModal'
-import { SpeakButton } from '../components/SpeakButton'
-import { PROFICIENCY_META, ProficiencyChip, TIER_ORDER } from '../components/ProficiencyChip'
-import { CATEGORY_META } from '../lib/categories'
 import {
-  DEMOTE_LAPSES,
-  PROFICIENT_REPS,
-  proficiencyFor,
-  proficiencyProgress,
-  proficiencyTotals,
-  type Proficiency,
-} from '../lib/proficiency'
+  ArrowLeft,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Clock3,
+  Search,
+  SlidersHorizontal,
+  Star,
+  X,
+} from 'lucide-react-native'
+import { useApp } from '../context/AppContext'
+import { displayWord, displayPinyin, foldPinyin, hanziFont } from '../lib/hanzi'
+import { PressableScale } from '../components/dashboard/parts'
+import { ReviewButton } from '../components/review/parts'
+import { TIER_ORDER } from '../components/ProficiencyChip'
+import { proficiencyFor, type Proficiency } from '../lib/proficiency'
+import { isCardDue } from '../lib/srs'
 import type { SrsCard, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 import { FEATURES } from '../lib/features'
-import { tapHaptic, tickHaptic } from '../lib/haptics'
-import { CHIP_SHADOW } from '../components/chipShadow'
+import { LOOKUP_HSK_LEVEL } from '../data/lookupWords'
+import { playTapSound } from '../lib/sound'
+import { tapHaptic, thunkHaptic, tickHaptic } from '../lib/haptics'
+import {
+  mwColors as c,
+  mwHsk,
+  mwHskOther,
+  mwTiers,
+  mwSpacing as sp,
+  mwType as t,
+  mwRadius,
+  mwCard,
+  MW_BAMBOO_RATIO,
+  MW_BLOSSOM_RATIO,
+  MW_CONTENT_MAX,
+} from '../components/myWords/tokens'
+
+/*
+ * My Words, built to the Beta 2.1 reference (`SS928 Mywords Redesigned
+ * Screen.png`) over `components/myWords/tokens.ts`: search, a chip row, a
+ * Saved / Due today / Favorites panel, and plain white word cards.
+ *
+ * The chip row is All · Favorites · HSK — three, so none of them ever has to
+ * truncate. HSK opens the filter panel beneath it, which holds everything
+ * narrower: Due today, the HSK levels, and the learning stage (New / Still
+ * learning / Proficient). The HSK chip lights whenever anything in the panel is
+ * set, so a filter is never active without the row saying so.
+ *
+ * Each card carries its HSK level and its learning stage, plus "Favorite" when
+ * starred. Favourites are `favoriteWordIds` in AppContext, starred from the New
+ * Words card or the dictionary card.
+ *
+ * Tapping a card opens the word's dictionary card on the standalone
+ * `/word/[wordId]` route, pushed over this screen — so Back returns here, not
+ * to the Dictionary tab. That card is also where a word is removed.
+ */
+
+type IconType = ComponentType<{ size: number; color: string; strokeWidth?: number; fill?: string }>
+
+const bambooArt = require('../assets/images/my-words/bamboo.png')
+const blossomArt = require('../assets/images/my-words/blossom.png')
 
 interface LearnedWord {
   word: VocabWord
   card: SrsCard
   level: Proficiency
+  due: boolean
+  favorite: boolean
 }
 
-interface Group {
-  label: string
-  words: LearnedWord[]
-}
+type LevelFilter = 'all' | 'custom' | number
 
-type LevelFilter = 'all' | number
+const LEVELS: LevelFilter[] = ['all', 1, 2, 3, 4, 5, 6]
+
+/** Start Review's face, plus its shoulder. The list is padded clear of it. */
+const FOOTER_BUTTON = 58
+
+function hskLabel(word: VocabWord): string {
+  if (word.custom) return 'Custom'
+  if (word.hskLevel === LOOKUP_HSK_LEVEL) return 'Rare'
+  return `HSK ${word.hskLevel}`
+}
 
 export function MyWords() {
-  const { deck, getWord, settings, clearNewWordFlags, removeFromReviewDeck } = useApp()
-  const [selected, setSelected] = useState<LearnedWord | null>(null)
-  const [practiceWord, setPracticeWord] = useState<VocabWord | null>(null)
+  const { deck, getWord, settings, clearNewWordFlags, favoriteWordIds } = useApp()
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [dueOnly, setDueOnly] = useState(false)
   const [levelFilter, setLevelFilter] = useState<LevelFilter>('all')
   const [tierFilter, setTierFilter] = useState<Proficiency | 'all'>('all')
-  /** Whether the open word's remove button has been armed — see `RemoveWord`. */
-  const [confirmRemove, setConfirmRemove] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const { width } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
+  const column = Math.min(width, MW_CONTENT_MAX)
+  const footerBottom = Math.max(sp.lg, insets.bottom + sp.sm)
 
   useEffect(() => {
     clearNewWordFlags()
   }, [clearNewWordFlags])
+
+  const favorites = useMemo(() => new Set(favoriteWordIds), [favoriteWordIds])
 
   const learned = useMemo<LearnedWord[]>(() => {
     return deck
       .map((card) => {
         const word = getWord(card.wordId)
         if (!word) return null
-        return { word, card, level: proficiencyFor(card) }
+        return {
+          word,
+          card,
+          level: proficiencyFor(card),
+          due: card.practiceQueue === 0 && isCardDue(card),
+          favorite: favorites.has(word.id),
+        }
       })
       .filter((x): x is LearnedWord => x !== null)
-  }, [deck, getWord])
+      .sort(
+        (a, b) =>
+          Number(!!a.word.custom) - Number(!!b.word.custom) ||
+          a.word.hskLevel - b.word.hskLevel ||
+          a.word.simplified.localeCompare(b.word.simplified),
+      )
+  }, [deck, getWord, favorites])
 
-  const filtered = useMemo(
-    () =>
-      learned.filter(
-        (x) =>
-          (levelFilter === 'all' || x.word.hskLevel === levelFilter) &&
-          (tierFilter === 'all' || x.level === tierFilter),
-      ),
-    [learned, levelFilter, tierFilter],
-  )
+  const dueTotal = useMemo(() => learned.filter((x) => x.due).length, [learned])
+  const favoriteTotal = useMemo(() => learned.filter((x) => x.favorite).length, [learned])
+  const hasCustom = useMemo(() => learned.some((x) => x.word.custom), [learned])
 
-  const totals = useMemo(() => proficiencyTotals(learned.map((x) => x.card)), [learned])
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    const folded = foldPinyin(q).replace(/\s+/g, '')
+    return learned.filter(({ word, due, favorite, level }) => {
+      if (favoritesOnly && !favorite) return false
+      if (dueOnly && !due) return false
+      if (tierFilter !== 'all' && level !== tierFilter) return false
+      if (levelFilter === 'custom' && !word.custom) return false
+      if (typeof levelFilter === 'number' && (word.custom || word.hskLevel !== levelFilter)) return false
+      if (!q) return true
+      return (
+        word.simplified.includes(q) ||
+        word.traditional.includes(q) ||
+        (folded.length > 0 && foldPinyin(word.pinyin).replace(/\s+/g, '').includes(folded)) ||
+        word.definition.toLowerCase().includes(q)
+      )
+    })
+  }, [learned, query, favoritesOnly, dueOnly, tierFilter, levelFilter])
 
-  const groups = useMemo<Group[]>(() => {
-    const byLevel = new Map<number | 'custom', LearnedWord[]>()
-    for (const entry of filtered) {
-      const key = entry.word.custom ? 'custom' : entry.word.hskLevel
-      const list = byLevel.get(key) ?? []
-      list.push(entry)
-      byLevel.set(key, list)
-    }
-    const levels = [...byLevel.keys()].filter((k): k is number => k !== 'custom').sort((a, b) => a - b)
-    const ordered: Group[] = levels.map((level) => ({
-      label: `HSK ${level}`,
-      words: [...(byLevel.get(level) ?? [])].sort((a, b) => a.word.simplified.localeCompare(b.word.simplified)),
-    }))
-    const custom = byLevel.get('custom')
-    if (custom && custom.length > 0) ordered.push({ label: 'Custom words', words: custom })
-    return ordered
-  }, [filtered])
+  /** Anything set inside the panel — what lights the HSK chip. */
+  const panelFilters = Number(dueOnly) + Number(levelFilter !== 'all') + Number(tierFilter !== 'all')
+  const showingAll = !favoritesOnly && panelFilters === 0
 
-  // The sheet is reused for every word, so the armed state has to be cleared on
-  // the way in as well as out — otherwise closing a sheet mid-confirm would leave
-  // the next word opening with its remove button already primed.
-  const openEntry = (entry: LearnedWord) => {
-    setConfirmRemove(false)
-    setSelected(entry)
+  const levelLabel = (lvl: LevelFilter) => (lvl === 'all' ? 'All levels' : lvl === 'custom' ? 'Custom' : `HSK ${lvl}`)
+  const hskChipLabel = typeof levelFilter === 'number' ? `HSK ${levelFilter}` : levelFilter === 'custom' ? 'Custom' : 'HSK'
+
+  const clearAll = () => {
+    setFavoritesOnly(false)
+    setDueOnly(false)
+    setLevelFilter('all')
+    setTierFilter('all')
   }
 
-  const closeEntry = () => {
-    setConfirmRemove(false)
-    setSelected(null)
-  }
-
-  const removeSelected = () => {
-    if (!selected) return
-    // Light impact, not a success: a word left the deck, which isn't a win.
+  const openWord = (entry: LearnedWord) => {
     tapHaptic()
-    removeFromReviewDeck([selected.word.id])
-    closeEntry()
+    router.push(`/word/${encodeURIComponent(entry.word.id)}`)
   }
+
+  const bambooWidth = column * 0.46
+  const blossomWidth = column * 0.26
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <View className="px-4 pt-2">
-        <View className="mb-4 flex-row items-center gap-3">
-          <Pressable
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900"
-          >
-            <ArrowLeft size={20} color="#64748b" />
-          </Pressable>
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-slate-400 dark:text-slate-500">Chinese Easy</Text>
-            <Text className="text-lg font-bold text-slate-900 dark:text-white">My Words</Text>
-          </View>
-          <Text className="text-xs font-bold text-slate-400">{learned.length} words</Text>
-        </View>
-
-        {/* The three tiers, doubling as filters. Tap one to see only those words. */}
-        <View className="mb-3 flex-row gap-2">
-          {TIER_ORDER.map((tier) => {
-            const meta = PROFICIENCY_META[tier]
-            const Icon = meta.icon
-            const active = tierFilter === tier
-            return (
-              <Pressable
-                key={tier}
-                onPress={() => setTierFilter((prev) => (prev === tier ? 'all' : tier))}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`${totals[tier]} ${meta.label}`}
-                className={`flex-1 items-center gap-0.5 rounded-2xl py-2.5 ${meta.chip} ${active ? 'border-2 border-slate-900/20 dark:border-white/30' : ''}`}
-              >
-                <Icon size={15} color={meta.iconColor} />
-                <Text className={`text-[19px] font-extrabold leading-[23px] ${meta.text}`}>{totals[tier]}</Text>
-                <Text className={`text-[11px] font-bold ${meta.text}`}>{meta.label}</Text>
-              </Pressable>
-            )
-          })}
-        </View>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 16 }}>
-          <FilterChip active={levelFilter === 'all'} onPress={() => setLevelFilter('all')} label="All levels" />
-          {[1, 2, 3, 4, 5, 6].map((lvl) => (
-            <FilterChip key={lvl} active={levelFilter === lvl} onPress={() => setLevelFilter(lvl)} label={`HSK ${lvl}`} />
-          ))}
-        </ScrollView>
-      </View>
-
-      <ScrollView contentContainerStyle={{ gap: 24, paddingHorizontal: 16, paddingBottom: 32 }}>
-        {learned.length === 0 && (
-          <Text className="py-12 text-center text-sm text-slate-400">
-            No words learned yet — add some from {FEATURES.lessons ? 'New Words, Lessons, or Books' : 'New Words or Books'}.
-          </Text>
-        )}
-        {learned.length > 0 && groups.length === 0 && (
-          <Text className="py-12 text-center text-sm text-slate-400">No words match this filter.</Text>
-        )}
-        {groups.map((group) => (
-          <View key={group.label}>
-            <Text className="mb-2 text-sm font-semibold text-slate-500 dark:text-slate-400">{group.label}</Text>
-            <View className="gap-2.5">
-              {group.words.map((entry) => (
-                <Pressable
-                  key={entry.word.id}
-                  onPress={() => openEntry(entry)}
-                  className="flex-row items-center gap-3 rounded-2xl bg-white p-3.5 shadow-card dark:bg-slate-900"
-                >
-                  <Text className="font-hanzi text-2xl font-bold text-slate-900 dark:text-white">
-                    {displayWord(entry.word, settings.script)}
-                  </Text>
-                  <View className="flex-1">
-                    <Text className="text-xs text-slate-400">{displayPinyin(entry.word, settings.phoneticScript)}</Text>
-                    <Text numberOfLines={1} className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                      {shortGloss(entry.word)}
-                    </Text>
-                  </View>
-                  <ProficiencyChip level={entry.level} />
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ))}
-      </ScrollView>
-
-      {selected && (
-        <Modal title={displayWord(selected.word, settings.script)} onClose={closeEntry}>
-          <View className="items-center gap-3">
-            <View className="flex-row items-center gap-2">
-              <Text className="font-hanzi text-6xl font-bold text-slate-900 dark:text-white">
-                {displayWord(selected.word, settings.script)}
-              </Text>
-              <SpeakButton text={displayWord(selected.word, settings.script)} />
-            </View>
-            <Text className="text-lg font-medium text-slate-400">{displayPinyin(selected.word, settings.phoneticScript)}</Text>
-            <Text className="text-xl font-semibold text-slate-900 dark:text-white">{shortGloss(selected.word)}</Text>
-
-            {selected.word.example && displayExample(selected.word, settings.script) && (
-              <View className="w-full border-t border-slate-100 pt-3 dark:border-slate-800">
-                <ReadingSentence
-                  text={displayExample(selected.word, settings.script)}
-                  term={displayWord(selected.word, settings.script)}
-                  tone="card"
-                  size="compact"
-                />
-                <Text className="text-sm italic text-slate-400">{selected.word.example.translation}</Text>
-              </View>
-            )}
-
-            <View className="flex-row flex-wrap items-center justify-center gap-2">
-              <Text className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-400 dark:bg-slate-800">
-                {selected.word.custom ? 'Custom word' : `HSK ${selected.word.hskLevel}`}
-              </Text>
-              <View className="flex-row items-center gap-1 rounded-full bg-slate-100 px-2.5 py-0.5 dark:bg-slate-800">
-                {(() => {
-                  const Icon = CATEGORY_META[selected.word.category].icon
-                  return <Icon size={12} color="#94a3b8" />
-                })()}
-                <Text className="text-xs font-bold text-slate-400">{CATEGORY_META[selected.word.category].label}</Text>
-              </View>
-              <ProficiencyChip level={selected.level} compact />
-            </View>
-
-            <ProficiencyDetail entry={selected} />
-
-            <Pressable
-              onPress={() => setPracticeWord(selected.word)}
-              className="mt-1 w-full flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-3.5 shadow-card"
-            >
-              <PenLine size={18} color="white" />
-              <Text className="text-lg font-bold text-white">Practice Writing</Text>
-            </Pressable>
-
-            <RemoveWord
-              armed={confirmRemove}
-              onArm={() => {
-                tickHaptic()
-                setConfirmRemove(true)
-              }}
-              onCancel={() => {
-                tickHaptic()
-                setConfirmRemove(false)
-              }}
-              onConfirm={removeSelected}
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{
+          flexGrow: 1,
+          alignItems: 'center',
+          paddingBottom: FOOTER_BUTTON + footerBottom + sp.xl,
+        }}
+      >
+        <View style={{ width: column, flexGrow: 1, paddingHorizontal: sp.screen }}>
+          {/* Behind the title, against the top right. `Image` takes no
+              pointerEvents, so the wrapper carries it. */}
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0 }}>
+            <Image
+              source={bambooArt}
+              resizeMode="contain"
+              style={{ width: bambooWidth, height: bambooWidth / MW_BAMBOO_RATIO }}
             />
           </View>
-        </Modal>
-      )}
 
-      {practiceWord && <WritingPracticeModal word={practiceWord} onClose={() => setPracticeWord(null)} />}
+          <View style={{ height: 44, justifyContent: 'center' }}>
+            {/* Guarded: reached by deep link there is nothing to pop. */}
+            <Pressable
+              onPress={() => (router.canGoBack() ? router.back() : router.navigate('/review-tab'))}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={12}
+              className="active:opacity-60"
+              style={{ width: 40, height: 44, justifyContent: 'center', marginLeft: -4 }}
+            >
+              <ArrowLeft size={26} color={c.navy} strokeWidth={2} />
+            </Pressable>
+          </View>
+
+          <Text
+            className="font-lora-bold"
+            accessibilityRole="header"
+            style={{ ...t.title, color: c.navy, marginTop: -sp.xs }}
+          >
+            My Words
+          </Text>
+          <Text className="font-sans" style={{ ...t.subtitle, color: c.slate, marginTop: 2 }}>
+            Review and organize your saved vocabulary.
+          </Text>
+
+          <SearchField value={query} onChange={setQuery} />
+
+          {/* All · Favorites · HSK. "All" clears every filter, the panel's included. */}
+          <View className="flex-row" style={{ gap: sp.sm, marginTop: sp.md }}>
+            <Chip
+              label="All"
+              active={showingAll}
+              onPress={() => {
+                clearAll()
+                setPanelOpen(false)
+              }}
+            />
+            <Chip
+              label="Favorites"
+              icon={Star}
+              active={favoritesOnly}
+              grow
+              onPress={() => setFavoritesOnly((v) => !v)}
+            />
+            <Chip
+              label={hskChipLabel}
+              icon={SlidersHorizontal}
+              trailing={panelOpen ? ChevronUp : ChevronDown}
+              active={panelFilters > 0}
+              badge={panelFilters > (typeof levelFilter === 'number' || levelFilter === 'custom' ? 1 : 0)}
+              grow
+              onPress={() => setPanelOpen((v) => !v)}
+            />
+          </View>
+
+          {panelOpen && (
+            <FilterPanel
+              dueOnly={dueOnly}
+              dueTotal={dueTotal}
+              onToggleDue={() => setDueOnly((v) => !v)}
+              levels={[...LEVELS, ...(hasCustom ? (['custom'] as LevelFilter[]) : [])]}
+              level={levelFilter}
+              levelLabel={levelLabel}
+              onLevel={setLevelFilter}
+              tier={tierFilter}
+              onTier={setTierFilter}
+              canClear={panelFilters > 0}
+              onClear={() => {
+                setDueOnly(false)
+                setLevelFilter('all')
+                setTierFilter('all')
+              }}
+              onDone={() => setPanelOpen(false)}
+            />
+          )}
+
+          <StatsPanel
+            saved={learned.length}
+            due={dueTotal}
+            favorites={favoriteTotal}
+            onSaved={clearAll}
+            onDue={() => setDueOnly((v) => !v)}
+            onFavorites={() => setFavoritesOnly((v) => !v)}
+          />
+
+          <View style={{ gap: sp.md, marginTop: sp.md }}>
+            {learned.length === 0 && (
+              <EmptyNote>
+                No words saved yet — add some from{' '}
+                {FEATURES.lessons ? 'New Words, Lessons, or Books' : 'New Words or Books'}.
+              </EmptyNote>
+            )}
+            {learned.length > 0 && filtered.length === 0 && (
+              <EmptyNote>
+                {favoritesOnly && favoriteTotal === 0
+                  ? 'No favorites yet — tap the star on a word to keep it here.'
+                  : 'No words match this filter.'}
+              </EmptyNote>
+            )}
+            {filtered.map((entry) => (
+              <WordRow
+                key={entry.word.id}
+                entry={entry}
+                hanzi={displayWord(entry.word, settings.script)}
+                reading={displayPinyin(entry.word, settings.phoneticScript)}
+                hanziClass={hanziFont(settings.script, 'semibold')}
+                onPress={() => openWord(entry)}
+              />
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+
+      {/*
+        The foot: the blossom in the corner and Start Review, over a fade so the
+        list slides under the button rather than being cut off by a hard edge.
+      */}
+      <View
+        pointerEvents="box-none"
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' }}
+      >
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: FOOTER_BUTTON + footerBottom + 40 }}
+        >
+          <LinearGradient
+            colors={[c.backgroundClear, c.background]}
+            locations={[0, 0.5]}
+            style={{ flex: 1 }}
+          />
+        </View>
+        <View pointerEvents="box-none" style={{ width: column, paddingHorizontal: sp.screen, paddingBottom: footerBottom }}>
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, bottom: 0 }}>
+            <Image
+              source={blossomArt}
+              resizeMode="contain"
+              style={{ width: blossomWidth, height: blossomWidth / MW_BLOSSOM_RATIO }}
+            />
+          </View>
+          <View style={{ marginLeft: column * 0.2 }}>
+            <ReviewButton
+              label="Start Review"
+              tone="primary"
+              onPress={() => {
+                thunkHaptic()
+                playTapSound()
+                router.push('/review-session?mode=full')
+              }}
+            />
+          </View>
+        </View>
+      </View>
     </SafeAreaView>
   )
 }
 
+function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <View
+      className="flex-row items-center"
+      style={{
+        marginTop: sp.xl,
+        height: 52,
+        borderRadius: mwRadius.pill,
+        borderWidth: 1,
+        borderColor: c.fieldBorder,
+        backgroundColor: c.field,
+        paddingLeft: sp.lg,
+        paddingRight: sp.sm,
+        gap: sp.md,
+      }}
+    >
+      <Search size={21} color={c.slate} strokeWidth={2} />
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        placeholder="Search your words…"
+        placeholderTextColor={c.placeholder}
+        autoCorrect={false}
+        autoCapitalize="none"
+        returnKeyType="search"
+        accessibilityLabel="Search your words"
+        style={{ flex: 1, ...t.search, fontFamily: 'Nunito', color: c.navy, paddingVertical: 0 }}
+      />
+      {value.length > 0 && (
+        <Pressable
+          onPress={() => onChange('')}
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
+          hitSlop={10}
+          style={{ padding: sp.xs }}
+        >
+          <X size={18} color={c.slate} strokeWidth={2} />
+        </Pressable>
+      )}
+    </View>
+  )
+}
+
 /**
- * Taking a word back out of My Words.
+ * A filter pill, flat and outlined like the reference; the active one fills
+ * with jade. Only colour varies with `active` — no shadow is toggled, so the
+ * NativeWind conditional-shadow crash cannot reach it.
  *
- * Two steps rather than one. Removing drops the card's whole review history
- * along with it (see `removeFromReviewDeck`), so weeks of scheduling can go on a
- * mis-tap — but a native `Alert` isn't an option here either, since the app also
- * runs on web where it renders as a blocking browser dialog. Arming the button
- * in place costs one extra tap and keeps the confirmation inside the sheet.
- *
- * Shaped to match Practice Writing above it — same full-width rounded rectangle,
- * same height — so the sheet ends in two clear choices rather than a button and
- * a scrap of grey text. Colour carries the difference in weight, not size.
+ * The label never truncates: the top row holds three chips precisely so each
+ * has room for its whole word, and the panel's chips wrap onto a new line.
  */
-function RemoveWord({
-  armed,
-  onArm,
-  onCancel,
-  onConfirm,
+function Chip({
+  label,
+  icon: Icon,
+  trailing: Trailing,
+  active,
+  onPress,
+  grow = false,
+  small = false,
+  badge = false,
 }: {
-  armed: boolean
-  onArm: () => void
-  onCancel: () => void
-  onConfirm: () => void
+  label: string
+  icon?: IconType
+  trailing?: IconType
+  active: boolean
+  onPress: () => void
+  grow?: boolean
+  small?: boolean
+  /** A dot for "more is set in the panel than this label says". */
+  badge?: boolean
 }) {
-  if (!armed) {
-    return (
-      <Pressable
-        onPress={onArm}
-        accessibilityRole="button"
-        accessibilityLabel="Remove from My Words"
-        className="w-full flex-row items-center justify-center gap-2 rounded-2xl bg-coral-600 py-3.5 shadow-card"
-      >
-        <Trash2 size={18} color="white" />
-        <Text className="text-lg font-bold text-white">Remove Word</Text>
-      </Pressable>
-    )
-  }
-
-  return (
-    <View className="w-full gap-2.5 rounded-2xl bg-coral-50 p-3.5 dark:bg-coral-900/20">
-      <Text className="text-center text-[13px] leading-[18px] text-coral-800 dark:text-coral-200">
-        Remove this word? Its review progress goes with it.
-      </Text>
-      <View className="flex-row gap-2.5">
-        <Pressable
-          onPress={onCancel}
-          accessibilityRole="button"
-          className="flex-1 items-center rounded-2xl bg-white py-3.5 shadow-card dark:bg-slate-800"
-        >
-          <Text className="text-base font-bold text-slate-500 dark:text-slate-300">Keep</Text>
-        </Pressable>
-        <Pressable
-          onPress={onConfirm}
-          accessibilityRole="button"
-          accessibilityLabel="Confirm remove"
-          className="flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl bg-coral-600 py-3.5"
-        >
-          <Trash2 size={17} color="white" />
-          <Text className="text-base font-bold text-white">Remove</Text>
-        </Pressable>
-      </View>
-    </View>
-  )
-}
-
-/**
- * Explains a word's tier in the detail sheet: how many correct reviews it has
- * banked, and what it would take to move up — or what dropped it back down.
- */
-function ProficiencyDetail({ entry }: { entry: LearnedWord }) {
-  const { card, level } = entry
-  const meta = PROFICIENCY_META[level]
-  const successful = Math.max(0, card.reps - card.lapses)
-  const recentLapses = card.recentLapses ?? 0
-  const pct = Math.round(proficiencyProgress(card) * 100)
-
-  const note =
-    level === 'proficient'
-      ? `Answered right ${successful} times. Missing it ${DEMOTE_LAPSES} times recently would move it back to still learning.`
-      : successful < PROFICIENT_REPS
-        ? `${successful} of ${PROFICIENT_REPS} correct reviews. ${PROFICIENT_REPS - successful} more to reach proficient.`
-        : `Missed ${recentLapses} times recently, which moved it back down. Get it right again to restore it.`
-
-  return (
-    <View className="w-full rounded-2xl bg-slate-50 p-3.5 dark:bg-slate-800/60">
-      <View className="mb-2 h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-        <View className={`h-full rounded-full ${meta.bar}`} style={{ width: `${pct}%` }} />
-      </View>
-      <Text className="text-[13px] leading-[18px] text-slate-600 dark:text-slate-300">{note}</Text>
-    </View>
-  )
-}
-
-function FilterChip({ active, onPress, label, icon }: { active: boolean; onPress: () => void; label: string; icon?: ReactNode }) {
+  const ink = active ? c.onJade : c.navy
+  const iconInk = active ? c.onJade : c.slate
   return (
     <Pressable
       onPress={() => {
         tickHaptic()
         onPress()
       }}
-      style={active ? undefined : CHIP_SHADOW}
-      className={`flex-row items-center gap-1.5 rounded-full px-3.5 py-2 ${active ? 'bg-brand-500' : 'bg-white dark:bg-slate-900'}`}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      className="flex-row items-center justify-center active:opacity-70"
+      style={{
+        flexGrow: grow ? 1 : 0,
+        height: small ? 36 : 44,
+        paddingHorizontal: small ? sp.md : 18,
+        gap: 6,
+        borderRadius: mwRadius.pill,
+        borderWidth: 1,
+        borderColor: active ? c.jade : c.fieldBorder,
+        backgroundColor: active ? c.jade : c.field,
+      }}
+    >
+      {Icon && <Icon size={small ? 15 : 17} color={iconInk} strokeWidth={2} />}
+      <Text className="font-sans" style={{ ...t.chip, fontSize: small ? 13.5 : t.chip.fontSize, color: ink }}>
+        {label}
+      </Text>
+      {badge && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: c.onJade }} />}
+      {Trailing && <Trailing size={16} color={iconInk} strokeWidth={2} />}
+    </Pressable>
+  )
+}
+
+/**
+ * Everything narrower than All / Favorites, opened from the HSK chip: Due
+ * today, the HSK level, and the learning stage. The three combine — "HSK 2,
+ * still learning, due" is one question.
+ */
+function FilterPanel({
+  dueOnly,
+  dueTotal,
+  onToggleDue,
+  levels,
+  level,
+  levelLabel,
+  onLevel,
+  tier,
+  onTier,
+  canClear,
+  onClear,
+  onDone,
+}: {
+  dueOnly: boolean
+  dueTotal: number
+  onToggleDue: () => void
+  levels: LevelFilter[]
+  level: LevelFilter
+  levelLabel: (lvl: LevelFilter) => string
+  onLevel: (lvl: LevelFilter) => void
+  tier: Proficiency | 'all'
+  onTier: (tier: Proficiency | 'all') => void
+  canClear: boolean
+  onClear: () => void
+  onDone: () => void
+}) {
+  return (
+    <View
+      style={{
+        marginTop: sp.sm,
+        padding: sp.lg,
+        gap: sp.lg,
+        borderRadius: mwRadius.panel,
+        borderWidth: 1,
+        borderColor: c.fieldBorder,
+        backgroundColor: c.sheet,
+      }}
+    >
+      <PanelSection title="Review">
+        <Chip
+          small
+          label={dueTotal > 0 ? `Due today · ${dueTotal}` : 'Due today'}
+          icon={Clock3}
+          active={dueOnly}
+          onPress={onToggleDue}
+        />
+      </PanelSection>
+
+      <PanelSection title="HSK level">
+        {levels.map((lvl) => (
+          <Chip key={String(lvl)} small label={levelLabel(lvl)} active={level === lvl} onPress={() => onLevel(lvl)} />
+        ))}
+      </PanelSection>
+
+      <PanelSection title="Learning stage">
+        <Chip small label="All stages" active={tier === 'all'} onPress={() => onTier('all')} />
+        {TIER_ORDER.map((stage) => (
+          <Chip key={stage} small label={mwTiers[stage].label} active={tier === stage} onPress={() => onTier(stage)} />
+        ))}
+      </PanelSection>
+
+      <View className="flex-row items-center justify-between">
+        <Pressable
+          onPress={() => {
+            tickHaptic()
+            onClear()
+          }}
+          disabled={!canClear}
+          accessibilityRole="button"
+          hitSlop={8}
+          className="active:opacity-60"
+        >
+          <Text className="font-nunito-semibold" style={{ ...t.chip, color: canClear ? c.jade : c.placeholder }}>
+            Clear filters
+          </Text>
+        </Pressable>
+        <Chip small label="Done" active onPress={onDone} />
+      </View>
+    </View>
+  )
+}
+
+function PanelSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <View style={{ gap: sp.sm }}>
+      <Text className="font-nunito-bold" style={{ ...t.sheetHeading, color: c.sheetHeading, textTransform: 'uppercase' }}>
+        {title}
+      </Text>
+      <View className="flex-row flex-wrap" style={{ gap: sp.sm }}>
+        {children}
+      </View>
+    </View>
+  )
+}
+
+/**
+ * Saved words / Due today / Favorites — the reference's panel. Due and
+ * Favorites toggle their filter; Saved words clears every filter.
+ */
+function StatsPanel({
+  saved,
+  due,
+  favorites,
+  onSaved,
+  onDue,
+  onFavorites,
+}: {
+  saved: number
+  due: number
+  favorites: number
+  onSaved: () => void
+  onDue: () => void
+  onFavorites: () => void
+}) {
+  const columns: { key: string; value: number; label: string; icon: ReactNode; onPress: () => void }[] = [
+    {
+      key: 'saved',
+      value: saved,
+      label: 'Saved words',
+      icon: <BookOpen size={24} color={c.savedIcon} strokeWidth={1.8} />,
+      onPress: onSaved,
+    },
+    {
+      key: 'due',
+      value: due,
+      label: 'Due today',
+      icon: <Clock3 size={24} color={c.dueIcon} strokeWidth={1.8} />,
+      onPress: onDue,
+    },
+    {
+      key: 'favorites',
+      value: favorites,
+      label: 'Favorites',
+      icon: <Star size={24} color={c.star} fill={c.star} strokeWidth={1.8} />,
+      onPress: onFavorites,
+    },
+  ]
+
+  return (
+    <View
+      className="flex-row"
+      style={{
+        marginTop: sp.lg,
+        backgroundColor: c.panel,
+        borderRadius: mwRadius.panel,
+        borderWidth: 1,
+        borderColor: c.panelBorder,
+        paddingVertical: sp.lg,
+      }}
+    >
+      {columns.map((col, i) => (
+        <View key={col.key} className="flex-1 flex-row">
+          {i > 0 && <View style={{ width: 1, marginVertical: 2, backgroundColor: c.panelBorder }} />}
+          <Pressable
+            onPress={() => {
+              tickHaptic()
+              col.onPress()
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`${col.value} ${col.label}`}
+            className="flex-1 items-center active:opacity-70"
+          >
+            {col.icon}
+            <Text className="font-lora-bold" style={{ ...t.statValue, color: c.navy, marginTop: 6 }}>
+              {col.value}
+            </Text>
+            <Text className="font-sans" numberOfLines={1} style={{ ...t.statLabel, color: c.slate }}>
+              {col.label}
+            </Text>
+          </Pressable>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+function Tag({ label, bg, ink, icon }: { label: string; bg: string; ink: string; icon?: ReactNode }) {
+  return (
+    <View
+      className="flex-row items-center"
+      style={{ height: 26, paddingHorizontal: 9, gap: 5, borderRadius: mwRadius.pill, backgroundColor: bg }}
     >
       {icon}
-      <Text className={`text-xs font-semibold ${active ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>{label}</Text>
-    </Pressable>
+      <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...t.tag, color: ink }}>
+        {label}
+      </Text>
+    </View>
+  )
+}
+
+/**
+ * One saved word, as the reference draws it: the hanzi, its reading over its
+ * gloss, then a column of tags — the HSK level, the learning stage beneath it
+ * (in the slot the reference gives "Due today"), and "Favorite" when starred —
+ * and a chevron.
+ *
+ * The hanzi is fitted to a fixed column rather than sized once: a four-character
+ * idiom at the two-character size would push the gloss off the card. CJK glyphs
+ * are full-width, so the column over the character count is a safe bound.
+ */
+function WordRow({
+  entry,
+  hanzi,
+  reading,
+  hanziClass,
+  onPress,
+}: {
+  entry: LearnedWord
+  hanzi: string
+  reading: string
+  hanziClass: string
+  onPress: () => void
+}) {
+  const chars = Math.max(1, [...hanzi].length)
+  const size = Math.min(mwCard.hanziMax, (mwCard.hanziWidth - 2) / chars)
+  const gloss = shortGloss(entry.word)
+  const hsk = entry.word.custom ? mwHskOther : (mwHsk[entry.word.hskLevel] ?? mwHskOther)
+  const tier = mwTiers[entry.level]
+
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={0.985}
+      haptic={false}
+      accessibilityLabel={`${hanzi}, ${reading}, ${gloss}. ${tier.label}.${entry.favorite ? ' Favorite.' : ''}`}
+    >
+      <View
+        className="flex-row items-center"
+        style={{
+          minHeight: mwCard.minHeight,
+          borderRadius: mwRadius.card,
+          borderWidth: 1,
+          borderColor: c.wordCardBorder,
+          backgroundColor: c.wordCard,
+          paddingLeft: sp.lg,
+          paddingRight: sp.sm,
+          paddingVertical: sp.md,
+          gap: 10,
+        }}
+      >
+        <View style={{ width: mwCard.hanziWidth }}>
+          <Text
+            className={hanziClass}
+            numberOfLines={1}
+            style={{ fontSize: size, lineHeight: size * 1.3, color: c.navy }}
+          >
+            {hanzi}
+          </Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text className="font-sans" numberOfLines={1} style={{ ...t.reading, color: c.navy }}>
+            {reading}
+          </Text>
+          <Text className="font-sans" numberOfLines={2} style={{ ...t.gloss, color: c.slate, marginTop: 2 }}>
+            {gloss}
+          </Text>
+        </View>
+
+        <View style={{ width: mwCard.tagWidth, alignItems: 'flex-start', gap: 6 }}>
+          <Tag label={hskLabel(entry.word)} bg={hsk.bg} ink={hsk.ink} />
+          <Tag label={tier.label} bg={tier.bg} ink={tier.ink} />
+          {entry.favorite && (
+            <Tag
+              label="Favorite"
+              bg={c.favorite}
+              ink={c.favoriteInk}
+              icon={<Star size={13} color={c.star} fill={c.star} strokeWidth={2} />}
+            />
+          )}
+        </View>
+
+        <ChevronRight size={22} color={c.slate} strokeWidth={1.8} />
+      </View>
+    </PressableScale>
+  )
+}
+
+function EmptyNote({ children }: { children: ReactNode }) {
+  return (
+    <Text className="font-sans" style={{ ...t.empty, color: c.slate, textAlign: 'center', paddingVertical: 40 }}>
+      {children}
+    </Text>
   )
 }

@@ -98,6 +98,15 @@ export function mergeStoryProgress(
  * double-counting is neither. The exact answer is a re-derivation from
  * `review_events`, which becomes available once the review log is uncapped.
  */
+function maxOptional(
+  field: 'charactersWritten' | 'listeningAnswered',
+  a: DailyProgress,
+  b: DailyProgress,
+): Partial<DailyProgress> {
+  if (a[field] === undefined && b[field] === undefined) return {}
+  return { [field]: Math.max(a[field] ?? 0, b[field] ?? 0) }
+}
+
 export function mergeDailyActivity(
   local: DailyProgress[],
   remote: DailyProgress[],
@@ -113,6 +122,12 @@ export function mergeDailyActivity(
             date: day.date,
             wordsLearned: Math.max(mine.wordsLearned, day.wordsLearned),
             reviewsCompleted: Math.max(mine.reviewsCompleted, day.reviewsCompleted),
+            // Never uploaded, so the remote side is always missing them — a
+            // merge that rebuilt the day from the two synced fields alone
+            // would wipe today's writing and listening progress. Carried only
+            // where one side has them, so a day that never did stays as it was.
+            ...maxOptional('charactersWritten', mine, day),
+            ...maxOptional('listeningAnswered', mine, day),
           }
         : day,
     )

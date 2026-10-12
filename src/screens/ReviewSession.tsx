@@ -15,12 +15,23 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { X, Timer } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { previewReview } from '../lib/srs'
+import { prefetchStrokeData } from '../lib/hanziStrokeData'
 import { dueCardsFor, listeningCardsFor, mistakeCardsFor } from '../lib/selectors'
-import { displayWord } from '../lib/hanzi'
-import { HanziStage } from '../components/HanziStage'
 import { Celebration } from '../components/Celebration'
 import { ReviewFlashcard, directionFor } from '../components/ReviewFlashcard'
+import { PracticeRep } from '../components/flashcard/PracticeRep'
 import { ReviewListening } from '../components/ReviewListening'
+import { ReviewFillGap } from '../components/drills/ReviewFillGap'
+import { ReviewMatchPairs } from '../components/drills/ReviewMatchPairs'
+import {
+  buildMixedSteps,
+  isListeningPaused,
+  withoutListening,
+  LISTENING_PAUSE_MINUTES,
+  type DrillStep,
+} from '../lib/mixedDrills'
+import { DrillToast } from '../components/drills/parts'
+import { SessionEnd } from '../components/sessionEnd/SessionEnd'
 import { PronunciationCheck } from '../components/PronunciationCheck'
 import { isSpeechRecognitionAvailable } from '../lib/speechRecognition'
 import { playPositiveChime, playRetryTone } from '../lib/sound'
@@ -47,8 +58,15 @@ function SessionStage({ style, children }: { style: StyleProp<ViewStyle>; childr
   )
 }
 
-/** How the session was launched — decides which pool it draws on and which phases it runs. */
-export type ReviewMode = 'flashcards' | 'listening' | 'mistakes' | 'full' | 'quick'
+/**
+ * How the session was launched — decides which pool it draws on and which phases it runs.
+ *
+ * `mixed` is Mixed Drills: listening, fill-the-gap and match-the-pairs over the
+ * listening pool. It replaced the listening-only drill, and `?mode=listening`
+ * is still accepted as an alias for it so an old link lands somewhere real.
+ */
+export type ReviewMode = 'flashcards' | 'mixed' | 'mistakes' | 'full' | 'quick'
+const MODES: readonly ReviewMode[] = ['flashcards', 'mixed', 'mistakes', 'full', 'quick']
 
 const QUICK_SESSION_SECONDS = 5 * 60
 
@@ -68,16 +86,14 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
 const MODE_TITLES: Record<ReviewMode, string> = {
   flashcards: 'Flashcards',
-  listening: 'Listening',
+  mixed: 'Mixed Drills',
   mistakes: 'Mistakes',
   full: 'Review Session',
   quick: 'Quick Review',
 }
 
-/** One thing to do, in order. Listening steps carry their own options so the distractors stay stable across re-renders. */
-type Step =
-  | { kind: 'flashcards'; wordId: string }
-  | { kind: 'listening'; wordId: string; optionIds: string[] }
+/** One thing to do, in order. Question steps carry their own options so the distractors stay stable across re-renders. */
+type Step = DrillStep
 
 interface PracticeState {
   wordId: string
@@ -93,42 +109,47 @@ interface PracticeState {
  */
 function closeSession() {
   if (router.canGoBack()) router.back()
-  else router.replace('/review')
-}
-
-function shuffle<T>(items: T[]): T[] {
-  const copy = [...items]
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[copy[i], copy[j]] = [copy[j], copy[i]]
-  }
-  return copy
+  else router.navigate('/review-tab')
 }
 
 /**
- * Three wrong answers for a listening question. Drawn from the rest of the
- * learner's own deck first — words they're studying make far better distractors
- * than random dictionary entries — and topped up from the word bank at a similar
- * HSK level only if the deck is too small.
+ * The session, with the "listening is off" toast laid over it.
+ *
+ * The toast lives out here rather than inside the session because every phase
+ * of the session renders in a stage that slides off-screen between cards — and
+ * the toast is raised at exactly such a moment, as the listening question is
+ * swapped away. Out here it stays put while the card moves under it.
  */
-function distractorsFor(answer: VocabWord, deckWords: VocabWord[], wordBank: VocabWord[]): VocabWord[] {
-  const pool = deckWords.filter((w) => w.id !== answer.id)
-  const picked = shuffle(pool).slice(0, 3)
-  if (picked.length === 3) return picked
-
-  const takenIds = new Set([answer.id, ...picked.map((w) => w.id)])
-  const filler = shuffle(wordBank.filter((w) => !takenIds.has(w.id) && Math.abs(w.hskLevel - answer.hskLevel) <= 1))
-  return [...picked, ...filler.slice(0, 3 - picked.length)]
+export function ReviewSession() {
+  const [toastKey, setToastKey] = useState(0)
+  return (
+    <View style={{ flex: 1 }}>
+      <ReviewSessionBody onListeningPaused={() => setToastKey((k) => k + 1)} />
+      {toastKey > 0 && (
+        <DrillToast key={toastKey} message={`Listening will be turned off for ${LISTENING_PAUSE_MINUTES} minutes`} />
+      )}
+    </View>
+  )
 }
 
-export function ReviewSession() {
-  const { deck, wordBank, settings, getWord, gradeCard, completePracticeRep, streak } = useApp()
+function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => void }) {
+  const {
+    deck,
+    wordBank,
+    settings,
+    getWord,
+    gradeCard,
+    completePracticeRep,
+    trackLearningEvent,
+    streak,
+    matchHistory,
+    noteWordsMatched,
+    listeningPausedUntil,
+    pauseListening,
+  } = useApp()
   const params = useLocalSearchParams<{ mode?: string }>()
-  const mode: ReviewMode = (['flashcards', 'listening', 'mistakes', 'full', 'quick'] as const).includes(
-    params.mode as ReviewMode,
-  )
-    ? (params.mode as ReviewMode)
-    : 'flashcards'
+  const mode: ReviewMode =
+    params.mode === 'listening' ? 'mixed' : MODES.includes(params.mode as ReviewMode) ? (params.mode as ReviewMode) : 'flashcards'
 
   // The plan is fixed at mount: grading a card mutates the deck, so recomputing
   // the queue from it mid-session would reshuffle the ground under the learner.
@@ -137,22 +158,29 @@ export function ReviewSession() {
     const toIds = (cards: SrsCard[]) => cards.map((c) => c.wordId).filter((id) => !!getWord(id))
 
     const flashcardIds =
-      mode === 'mistakes' ? toIds(mistakeCardsFor(deck)) : mode === 'listening' ? [] : toIds(dueCardsFor(deck, settings))
-    const listeningIds =
-      mode === 'listening' || mode === 'full' || mode === 'quick' ? toIds(listeningCardsFor(deck, settings)) : []
+      mode === 'mistakes' ? toIds(mistakeCardsFor(deck)) : mode === 'mixed' ? [] : toIds(dueCardsFor(deck, settings))
+    /* Standalone Mixed Drills takes every due card, new ones included; Full and Quick
+       skip brand-new cards in their drill half because their flashcards just showed them. */
+    const drillIds =
+      mode === 'mixed'
+        ? toIds(dueCardsFor(deck, settings))
+        : mode === 'full' || mode === 'quick'
+          ? toIds(listeningCardsFor(deck, settings))
+          : []
 
     const flashcardSteps: Step[] = flashcardIds.map((wordId) => ({ kind: 'flashcards', wordId }))
-    const listeningSteps: Step[] = listeningIds.flatMap((wordId) => {
-      const answer = getWord(wordId)
-      if (!answer) return []
-      const options = distractorsFor(answer, deckWords, wordBank)
-      // Fewer than three distractors means no real multiple choice — skip rather
-      // than show a question the learner can answer by elimination.
-      if (options.length < 3) return []
-      return [{ kind: 'listening', wordId, optionIds: shuffle([answer, ...options]).map((w) => w.id) }]
+    /* Listening, fill-the-gap and match-the-pairs, interleaved — see lib/mixedDrills.ts. */
+    const drillSteps = buildMixedSteps({
+      dueWords: drillIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w),
+      deckWords,
+      wordBank,
+      script: settings.script,
+      matchedAt: matchHistory,
+      // "Can't listen now" pressed in the last half hour: gaps and boards only.
+      listening: !isListeningPaused(listeningPausedUntil),
     })
 
-    return [...flashcardSteps, ...listeningSteps]
+    return [...flashcardSteps, ...drillSteps]
   })
 
   const [index, setIndex] = useState(0)
@@ -203,11 +231,24 @@ export function ReviewSession() {
 
   const total = steps.length
   const step = steps[index]
-  const word = step ? getWord(step.wordId) : undefined
+  /* A match board is several words at once and has no single one. */
+  const word = step && step.kind !== 'match' ? getWord(step.wordId) : undefined
   /* Identity of the card on screen. Index as well as word id, exactly like the
      mount key below: "I don't know" re-queues a word later in the same session,
      and keyed on the id alone the second showing would reuse the first's state. */
-  const stepKey = step ? `${step.wordId}-${index}` : ''
+  const stepKey = step ? `${step.kind === 'match' ? 'match' : step.wordId}-${index}` : ''
+
+  /* Warm the stroke data for the writing cards coming up, so each one's pad is
+     ready to draw the moment it slides in rather than loading on arrival. Both
+     scripts' forms: cheap, and it doesn't need to know the preference. */
+  useEffect(() => {
+    for (const upcoming of steps.slice(index, index + 3)) {
+      if (upcoming.kind !== 'flashcards') continue
+      const next = getWord(upcoming.wordId)
+      if (next) prefetchStrokeData(next.traditional + next.simplified)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, steps])
 
   /*
    * The four scheduling outcomes for the card on screen.
@@ -226,6 +267,15 @@ export function ReviewSession() {
     // card in the deck changed would re-roll the fuzz under the learner's hand.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepKey, settings.wrongAnswerReps])
+
+  /* Whether the card on screen has never been reviewed, for its "New word" pill.
+     Fixed per step like the preview, so grading doesn't flip the pill to
+     "Due today" while the card is sliding away. */
+  const cardIsNew = useMemo(
+    () => (step && step.kind === 'flashcards' ? (deck.find((c) => c.wordId === step.wordId)?.reps ?? 0) === 0 : false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [stepKey],
+  )
 
   /*
    * When the current card appeared, for the response timer.
@@ -334,7 +384,7 @@ export function ReviewSession() {
   }
 
   const handleGrade = (grade: Grade) => {
-    if (!step) return
+    if (!step || step.kind === 'match') return
     /* The preview the learner was actually looking at, and the elapsed time
        since the card appeared. The preview keeps the button's interval and the
        stored one identical; the duration is analytics only and never reaches
@@ -358,15 +408,40 @@ export function ReviewSession() {
   }
 
   const handleListeningAnswer = (correct: boolean) => {
-    if (!step) return
+    if (!step || step.kind === 'match') return
     /* A listening miss reschedules the card but doesn't detour into the writing
        drill the way an "Again" on a flashcard does — wrong ear, not wrong hand.
        No preview: this drill never showed the learner four intervals to choose
        between, so there is no displayed number for the commit to have to match,
        and scheduling fresh at the moment of the answer is correct. */
     gradeCard(step.wordId, correct ? 'good' : 'again', undefined, Date.now() - shownAt.current)
+    trackLearningEvent({ type: 'LISTENING_ANSWERED', correct })
     setStats((s) => ({ reviewed: s.reviewed + 1, correct: s.correct + (correct ? 1 : 0) }))
     if (correct) setCelebrateKey((k) => k + 1)
+    advance()
+  }
+
+  /* Graded exactly like a listening answer — a gap is recall of the same word
+     in context — but it isn't listening, so it doesn't feed that counter. */
+  const handleFillGapAnswer = (correct: boolean) => {
+    if (!step || step.kind !== 'fillGap') return
+    gradeCard(step.wordId, correct ? 'good' : 'again', undefined, Date.now() - shownAt.current)
+    setStats((s) => ({ reviewed: s.reviewed + 1, correct: s.correct + (correct ? 1 : 0) }))
+    if (correct) setCelebrateKey((k) => k + 1)
+    advance()
+  }
+
+  /*
+   * A finished board. Practice, not review: these words were drawn from the
+   * whole deck rather than the due pool, so nothing is graded — grading a card
+   * that wasn't due would pull its schedule forward for no reason. Each pair
+   * counts toward the session's accuracy, right only if matched first time.
+   */
+  const handleMatchComplete = (firstTry: number, pairs: number) => {
+    if (!step || step.kind !== 'match') return
+    noteWordsMatched(step.wordIds)
+    setStats((s) => ({ reviewed: s.reviewed + pairs, correct: s.correct + firstTry }))
+    if (firstTry === pairs) setCelebrateKey((k) => k + 1)
     advance()
   }
 
@@ -391,7 +466,7 @@ export function ReviewSession() {
   const skippedOnce = useRef(new Set<string>())
 
   const skipForNow = () => {
-    if (!step) return
+    if (!step || step.kind === 'match') return
     const wordId = step.wordId
 
     if (skippedOnce.current.has(wordId)) {
@@ -407,6 +482,24 @@ export function ReviewSession() {
     })
   }
 
+  /**
+   * "Can't listen now" — listening goes off for half an hour, and every
+   * listening question left in this session, the one on screen included,
+   * becomes a Fill the Gap on the same word (see `withoutListening`). Nothing
+   * is graded: the learner didn't attempt the word, they just couldn't hear it.
+   */
+  const cantListenNow = () => {
+    if (!step || step.kind !== 'listening') return
+    pauseListening(LISTENING_PAUSE_MINUTES)
+    onListeningPaused()
+    const deckWords = deck.map((c) => getWord(c.wordId)).filter((w): w is VocabWord => !!w)
+    const next = withoutListening(steps, index, { getWord, deckWords, wordBank, script: settings.script })
+    slideForward(() => {
+      setSteps(next)
+      if (index >= next.length) setFinished(true)
+    })
+  }
+
   const handlePracticeNext = () => {
     if (!practice) return
     completePracticeRep(practice.wordId)
@@ -418,7 +511,17 @@ export function ReviewSession() {
     }
   }
 
-  const accuracy = useMemo(() => (stats.reviewed === 0 ? 0 : Math.round((stats.correct / stats.reviewed) * 100)), [stats])
+  /*
+   * A finished session with at least one card graded counts once toward the
+   * review achievements. An empty session ("Nothing to review") is not one.
+   */
+  const sessionCounted = useRef(false)
+  useEffect(() => {
+    if (!finished || sessionCounted.current || stats.reviewed === 0) return
+    sessionCounted.current = true
+    trackLearningEvent({ type: 'REVIEW_SESSION_COMPLETED' })
+  }, [finished, stats.reviewed, trackLearningEvent])
+
 
   if (finished) {
     const ranOutOfTime = mode === 'quick' && secondsLeft === 0 && index < total - 1
@@ -458,41 +561,42 @@ export function ReviewSession() {
       }
       void noteNaturalBreak('review-session-complete').finally(leave)
     }
+    /* Built to the SS930 references — see components/sessionEnd/. */
     return (
       <SessionStage style={stageStyle}>
-        <SafeAreaView className="flex-1 items-center justify-center gap-6 bg-slate-50 px-6 dark:bg-slate-950">
-          <Celebration trigger={celebrateKey} />
-          <Text className="text-6xl">{stats.reviewed === 0 ? '\u{1F4ED}' : accuracy >= 80 ? '\u{1F389}' : '\u{1F44D}'}</Text>
-          <Text className="text-2xl font-bold text-slate-900 dark:text-white">
-            {stats.reviewed === 0 ? 'Nothing to review' : ranOutOfTime ? "Time's up!" : 'Session complete!'}
-          </Text>
-          <Text className="text-center text-slate-500 dark:text-slate-400">
-            {stats.reviewed === 0
-              ? mode === 'mistakes'
-                ? "No repeated mistakes to drill — nothing you've missed twice."
-                : mode === 'listening'
-                  ? 'No studied words are due for listening practice right now.'
-                  : "You're all caught up. Check back later or add new words."
-              : `You reviewed ${stats.reviewed} card${stats.reviewed === 1 ? '' : 's'}.`}
-          </Text>
+        {stats.reviewed === 0 ? (
+          <SessionEnd kind="empty" mode={mode} onBack={finishSession} />
+        ) : (
+          <>
+            <SessionEnd
+              kind="done"
+              mode={mode}
+              onBack={finishSession}
+              reviewed={stats.reviewed}
+              correct={stats.correct}
+              streak={streak}
+              timedOut={ranOutOfTime}
+            />
+            <Celebration trigger={celebrateKey} />
+          </>
+        )}
+      </SessionStage>
+    )
+  }
 
-          {stats.reviewed > 0 && (
-            <View className="w-full max-w-xs flex-row gap-3">
-              <View className="flex-1 rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-                <Text className="text-xs font-medium uppercase text-slate-400">Accuracy</Text>
-                <Text className="text-2xl font-bold text-brand-600 dark:text-brand-400">{accuracy}%</Text>
-              </View>
-              <View className="flex-1 rounded-2xl bg-white p-4 shadow-card dark:bg-slate-900">
-                <Text className="text-xs font-medium uppercase text-slate-400">Streak</Text>
-                <Text className="text-2xl font-bold text-amber-500">{streak} days</Text>
-              </View>
-            </View>
-          )}
-
-          <Pressable onPress={finishSession} className="mt-2 w-full max-w-xs items-center rounded-2xl bg-brand-500 px-6 py-4 shadow-card">
-            <Text className="text-lg font-bold text-white">Back to Review</Text>
-          </Pressable>
-        </SafeAreaView>
+  if (step?.kind === 'match') {
+    return (
+      <SessionStage style={stageStyle}>
+        <Celebration trigger={celebrateKey} />
+        <ReviewMatchPairs
+          key={stepKey}
+          words={step.wordIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)}
+          onComplete={handleMatchComplete}
+          onClose={() => closeSession()}
+          step={index + 1}
+          total={total}
+          secondsLeft={secondsLeft}
+        />
       </SessionStage>
     )
   }
@@ -530,81 +634,91 @@ export function ReviewSession() {
 
   if (practice) {
     const doneCount = practice.total - practice.remaining + 1
+    /* In the flashcard's own design. Keyed per rep: each rep's auto-advance and
+       writer state belong to that rep alone. */
     return (
       <SessionStage style={stageStyle}>
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
-          <SessionHeader
-            onClose={() => closeSession()}
-            step={doneCount}
-            total={practice.total}
-            progress={doneCount / practice.total}
-            tint="amber"
-            unit="rep"
-          />
-          <View className="items-center justify-center gap-3 px-4 pb-4 pt-6">
-            <Text className="font-hanzi text-3xl font-semibold text-slate-900 dark:text-white">{displayWord(word, settings.script)}</Text>
-            <Text className="text-sm text-slate-400">Rewrite it to lock it in</Text>
-          </View>
-          <View
-            style={{ minHeight: 200 }}
-            className="relative mx-4 mb-4 flex-1 rounded-2xl border border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40"
-          >
-            <HanziStage
-              character={displayWord(word, settings.script)}
-              mode="quiz"
-              showOutline
-              showGuides
-              resetKey={practice.remaining}
-            />
-          </View>
-          <View className="px-4 pb-6">
-            <Pressable onPress={handlePracticeNext} className="w-full items-center rounded-2xl bg-amber-500 py-4 shadow-card">
-              <Text className="text-lg font-bold text-white">{practice.remaining <= 1 ? 'Done' : 'Next rep'}</Text>
-            </Pressable>
-          </View>
-        </SafeAreaView>
+        <PracticeRep
+          key={`${practice.wordId}-${practice.remaining}`}
+          word={word}
+          rep={doneCount}
+          total={practice.total}
+          secondsLeft={secondsLeft}
+          onNext={handlePracticeNext}
+          onClose={() => closeSession()}
+        />
       </SessionStage>
     )
   }
 
-  return (
-    <SessionStage style={stageStyle}>
-      <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
+  if (step.kind === 'fillGap') {
+    return (
+      <SessionStage style={stageStyle}>
         <Celebration trigger={celebrateKey} />
-        <SessionHeader
+        <ReviewFillGap
+          key={stepKey}
+          word={word}
+          options={step.optionIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)}
+          onAnswer={handleFillGapAnswer}
+          onSkip={skipForNow}
           onClose={() => closeSession()}
           step={index + 1}
           total={total}
-          progress={(index + 1) / total}
-          label={mode === 'full' || mode === 'quick' ? (step.kind === 'listening' ? 'Listening' : 'Flashcards') : MODE_TITLES[mode]}
           secondsLeft={secondsLeft}
         />
+      </SessionStage>
+    )
+  }
 
-        {/*
-          `key` carries the index as well as the word: a skipped word comes back
-          later in the same session, and keyed on the id alone the second
-          showing would reuse the first one's mounted state — a flashcard still
-          revealed, a listening question still answered.
-        */}
-        {step.kind === 'flashcards' ? (
-          <ReviewFlashcard
-            key={`${step.wordId}-${index}`}
-            word={word}
-            direction={directionFor(step.wordId, settings.reviewDirection)}
-            preview={preview ?? undefined}
-            onGrade={handleGrade}
-            onSkip={skipForNow}
-          />
-        ) : (
-          <ReviewListening
-            key={`${step.wordId}-${index}`}
-            word={word}
-            options={step.optionIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)}
-            onAnswer={handleListeningAnswer}
-            onSkip={skipForNow}
-          />
-        )}
-      </SafeAreaView>
+  /* The Mixed Drills kinds own their whole screen — their own header,
+     progress and (for listening) Recent sheet, built to the SS930 and SS102
+     references — so the generic session header stays out of their way. */
+  if (step.kind === 'listening') {
+    return (
+      <SessionStage style={stageStyle}>
+        <Celebration trigger={celebrateKey} />
+        {/* `key` carries the index as well as the word — see below. */}
+        <ReviewListening
+          key={`${step.wordId}-${index}`}
+          word={word}
+          options={step.optionIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)}
+          onAnswer={handleListeningAnswer}
+          onSkip={skipForNow}
+          onCantListen={cantListenNow}
+          onClose={() => closeSession()}
+          step={index + 1}
+          total={total}
+          secondsLeft={secondsLeft}
+        />
+      </SessionStage>
+    )
+  }
+
+  /* Like the Mixed Drills kinds, the flashcard owns its whole screen — header
+     included — built to the SS 1011 reference. */
+  return (
+    <SessionStage style={stageStyle}>
+      <Celebration trigger={celebrateKey} />
+      {/*
+        `key` carries the index as well as the word: a skipped word comes back
+        later in the same session, and keyed on the id alone the second
+        showing would reuse the first one's mounted state — a flashcard still
+        revealed, a listening question still answered.
+      */}
+      <ReviewFlashcard
+        key={`${step.wordId}-${index}`}
+        word={word}
+        direction={directionFor(step.wordId, settings.reviewDirection)}
+        preview={preview ?? undefined}
+        isNew={cardIsNew}
+        onGrade={handleGrade}
+        onSkip={skipForNow}
+        onClose={() => closeSession()}
+        step={index + 1}
+        total={total}
+        label={mode === 'full' || mode === 'quick' ? 'Flashcards' : MODE_TITLES[mode]}
+        secondsLeft={secondsLeft}
+      />
     </SessionStage>
   )
 }

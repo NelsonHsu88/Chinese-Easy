@@ -19,8 +19,6 @@ import {
 import { todayISO } from '../lib/date'
 import { warmLookup } from '../data/lookupWords'
 import { PressScale } from '../components/dictionary/PressScale'
-import { TourPulse } from '../components/tour/TourPulse'
-import { matchesWaterSearch } from '../lib/tour'
 import { dictEntrance } from '../components/dictionary/entrance'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { useScrollToTopOnFocus } from '../components/useScrollToTopOnFocus'
@@ -44,6 +42,7 @@ import { playPositiveChime } from '../lib/sound'
 import { tapHaptic, tickHaptic, successHaptic, sequence } from '../lib/haptics'
 import type { VocabWord } from '../types'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
+import { TourScrollContext, TourTarget } from '../components/tour/targets'
 
 /**
  * The design viewport, matching `DASH_CONTENT_MAX` / `REV_CONTENT_MAX` /
@@ -86,7 +85,8 @@ type Shelf = 'recents' | 'vocabulary' | 'characters'
  * level pills, shelf title and word cards stay legible the whole way through
  * instead of reading as not-yet-loaded until the motion settles.
  */
-/** Content's own fade — the "standard" Material curve, shared with the shadow ramp below. */
+/** Content's own fade — the "standard" Material curve. The shadow ramp below
+    starts with it but runs on the app's slower shared shadow curve. */
 const FADE_DURATION = 420
 const FADE_EASING = Easing.bezier(0.4, 0, 0.2, 1)
 
@@ -120,14 +120,15 @@ function FadeSection({ animate, children }: { animate: boolean; children: ReactN
 
   /*
    * A card's `elevation`/`shadowOpacity` can't ride the native driver `opacity`
-   * above does, so it gets a second, always-JS value on the same timing —
+   * above does, so it gets a second, always-JS value, starting with the fade
+   * and creeping in on the shared slow shadow curve (`shadowReveal.tsx`) —
    * every `EntryCard` and Landing card reads this through `useRevealedShadow`
-   * instead of a fixed shadow constant, so the shadow visibly grows in with
+   * instead of a fixed shadow constant, so the shadow visibly settles in under
    * the card rather than appearing already at full strength partway through.
    * `settled` mirrors `animate`: the first section a screen shows has nothing
    * to ramp up from either.
    */
-  const shadowProgress = useShadowReveal({ duration: FADE_DURATION, easing: FADE_EASING, run: 0, settled: !animate })
+  const shadowProgress = useShadowReveal({ duration: FADE_DURATION, run: 0, settled: !animate })
 
   return (
     /*
@@ -155,7 +156,6 @@ export function Dictionary() {
     pushRecentSearch,
     newlyAddedWordIds,
     getWord,
-    reportTourAction,
   } = useApp()
 
   // `?q=` lets other screens open the dictionary already searching for something
@@ -199,15 +199,6 @@ export function Dictionary() {
     setShelf(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadedAt])
-
-  /*
-   * Shifu's tour asks the learner to look up "water" and waits for it. Watching
-   * the query rather than the keystroke means any route to the same place counts
-   * — typing it, pasting it, or arriving with `?q=` from another screen.
-   */
-  useEffect(() => {
-    if (matchesWaterSearch(query)) reportTourAction('dictionary:search')
-  }, [query, reportTourAction])
 
   /*
    * Build the tier-2 row index while the learner is still reading the page.
@@ -282,6 +273,15 @@ export function Dictionary() {
   /* Coming back to the dictionary means coming back to the search field, not to
      wherever the last visit left the shelves. */
   const scroll = useScrollToTopOnFocus()
+
+  /* Shifu's Dictionary guide points at the Explore grid and the word to
+     discover, which start below the fold on a short phone — so it can ask for
+     a scroll. The offset is tracked rather than read back, as on the Dashboard. */
+  const scrollY = useRef(0)
+  const tourScrollBy = useMemo(
+    () => (dy: number) => scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true }),
+    [scroll],
+  )
 
   const recentWords = useMemo(
     () => recentSearchIds.map((id) => getWord(id)).filter((w): w is VocabWord => Boolean(w)),
@@ -371,7 +371,12 @@ export function Dictionary() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y
+        }}
+        scrollEventThrottle={32}
       >
+        <TourScrollContext.Provider value={tourScrollBy}>
         {/* Plain styles on the animated view with the column in a plain View
             inside it — NativeWind drops `className` on an `Animated.View`, and
             an animated `transform` replaces the whole array rather than merging
@@ -401,63 +406,63 @@ export function Dictionary() {
               Only the border colour varies between the two states, so the class
               string never toggles anything NativeWind would have to re-parse.
             */}
-            <TourPulse target="dictionary-search" radius={20}>
-              <View
-                className={`flex-row items-center rounded-[20px] border bg-dict-card pl-4 pr-2 ${
-                  focused ? 'border-dict-green/60' : 'border-dict-border'
-                }`}
-                style={{ height: 60, gap: 12 }}
-              >
-                <Search size={22} color={focused ? ICON_GREEN : ICON_MUTED} strokeWidth={ICON_STROKE} />
-                <TextInput
-                  value={query}
-                  onChangeText={setQuery}
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  placeholder="Search Chinese, pinyin or English"
-                  placeholderTextColor={ICON_MUTED}
-                  returnKeyType="search"
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  /*
-                   * iOS remembers the last keyboard/input-method a field used and
-                   * reopens it by default — on a device with a Chinese (Pinyin)
-                   * keyboard installed, that means this field can pop up in Chinese
-                   * input mode instead of a plain Latin one. `ascii-capable` pins it
-                   * to a Latin keyboard; pinyin search still works fine typed on
-                   * one, since pinyin *is* Latin letters, and the field still takes
-                   * pasted or dictated Hanzi. No equivalent exists on Android, where
-                   * the OS — not the app — owns IME selection.
-                   */
-                  keyboardType="ascii-capable"
-                  accessibilityLabel="Search the dictionary"
-                  className="flex-1 text-[16px] text-dict-heading"
-                  /*
-                   * Hanzi typed into the field are set in the serif face, pinyin
-                   * and English in the UI sans — keyed on what was actually typed
-                   * rather than on the field being non-empty, so "pengyou" doesn't
-                   * get rendered in a Chinese serif.
-                   */
-                  style={{ fontFamily: HAS_HANZI.test(query) ? 'NotoSerifTC' : 'NunitoSans', height: '100%' }}
-                />
-                {query.length > 0 && (
-                  <Pressable
-                    onPress={() => {
-                      tickHaptic()
-                      setQuery('')
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear search"
-                    hitSlop={8}
-                    className="h-11 w-11 items-center justify-center"
-                  >
-                    <View className="h-7 w-7 items-center justify-center rounded-full bg-dict-muted/30">
-                      <X size={15} color="#ffffff" strokeWidth={2.5} />
-                    </View>
-                  </Pressable>
-                )}
-              </View>
-            </TourPulse>
+            <TourTarget id="dictionary-search" radius={20}>
+            <View
+              className={`flex-row items-center rounded-[20px] border bg-dict-card pl-4 pr-2 ${
+                focused ? 'border-dict-green/60' : 'border-dict-border'
+              }`}
+              style={{ height: 60, gap: 12 }}
+            >
+              <Search size={22} color={focused ? ICON_GREEN : ICON_MUTED} strokeWidth={ICON_STROKE} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder="Search Chinese, pinyin or English"
+                placeholderTextColor={ICON_MUTED}
+                returnKeyType="search"
+                autoCorrect={false}
+                autoCapitalize="none"
+                /*
+                 * iOS remembers the last keyboard/input-method a field used and
+                 * reopens it by default — on a device with a Chinese (Pinyin)
+                 * keyboard installed, that means this field can pop up in Chinese
+                 * input mode instead of a plain Latin one. `ascii-capable` pins it
+                 * to a Latin keyboard; pinyin search still works fine typed on
+                 * one, since pinyin *is* Latin letters, and the field still takes
+                 * pasted or dictated Hanzi. No equivalent exists on Android, where
+                 * the OS — not the app — owns IME selection.
+                 */
+                keyboardType="ascii-capable"
+                accessibilityLabel="Search the dictionary"
+                className="flex-1 text-[16px] text-dict-heading"
+                /*
+                 * Hanzi typed into the field are set in the serif face, pinyin
+                 * and English in the UI sans — keyed on what was actually typed
+                 * rather than on the field being non-empty, so "pengyou" doesn't
+                 * get rendered in a Chinese serif.
+                 */
+                style={{ fontFamily: HAS_HANZI.test(query) ? 'NotoSerifTC' : 'NunitoSans', height: '100%' }}
+              />
+              {query.length > 0 && (
+                <Pressable
+                  onPress={() => {
+                    tickHaptic()
+                    setQuery('')
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  hitSlop={8}
+                  className="h-11 w-11 items-center justify-center"
+                >
+                  <View className="h-7 w-7 items-center justify-center rounded-full bg-dict-muted/30">
+                    <X size={15} color="#ffffff" strokeWidth={2.5} />
+                  </View>
+                </Pressable>
+              )}
+            </View>
+            </TourTarget>
 
             {/*
               Everything below the search field fades in together on every
@@ -481,6 +486,7 @@ export function Dictionary() {
                   onPanel={() => setPanelOpen((open) => !open)}
                 />
               ) : (
+                <TourTarget id="dictionary-filters" radius={22}>
                 <FilterRow
                   levelOnly={levelOnly}
                   hskLevel={hskLevel}
@@ -493,6 +499,7 @@ export function Dictionary() {
                   }
                   onPanel={() => setPanelOpen((open) => !open)}
                 />
+                </TourTarget>
               )}
             </View>
 
@@ -561,30 +568,34 @@ export function Dictionary() {
               />
             ) : (
               <>
-                {/* Word to discover opens the landing; Recent closes it. */}
+                {/* Explore opens the landing, then Word to discover; Recent closes it. */}
+                <FlexGap min={30} max={40} />
+                <SectionHeading title="Explore" />
+                <TourTarget id="dictionary-explore" radius={18}>
+                  <ExploreGrid
+                    script={settings.script}
+                    onVocabulary={() => setShelf('vocabulary')}
+                    onCharacters={() => setShelf('characters')}
+                    onRadicals={() => router.push('/radicals')}
+                    onMyWords={() => router.push('/my-words')}
+                  />
+                </TourTarget>
+
                 {discover && (
                   <>
                     <FlexGap min={30} max={40} />
-                    <WordToDiscover
-                      word={discover}
-                      settings={settings}
-                      added={isInDeck(discover.id, deckIndex)}
-                      width={columnWidth - GUTTER * 2}
-                      onOpen={() => openWord(discover)}
-                      onAdd={() => addToReviewDeck(discover.id)}
-                    />
+                    <TourTarget id="dictionary-discover" radius={20}>
+                      <WordToDiscover
+                        word={discover}
+                        settings={settings}
+                        added={isInDeck(discover.id, deckIndex)}
+                        width={columnWidth - GUTTER * 2}
+                        onOpen={() => openWord(discover)}
+                        onAdd={() => addToReviewDeck(discover.id)}
+                      />
+                    </TourTarget>
                   </>
                 )}
-
-                <FlexGap min={30} max={40} />
-                <SectionHeading title="Explore" />
-                <ExploreGrid
-                  script={settings.script}
-                  onVocabulary={() => setShelf('vocabulary')}
-                  onCharacters={() => setShelf('characters')}
-                  onRadicals={() => router.push('/radicals')}
-                  onMyWords={() => router.push('/my-words')}
-                />
 
                 <FlexGap min={30} max={40} />
                 <SectionHeading
@@ -600,6 +611,7 @@ export function Dictionary() {
             <AppBannerAd placement="dictionary" />
           </View>
         </Animated.View>
+        </TourScrollContext.Provider>
       </ScrollView>
 
       {lastBulkAdd && lastBulkAdd.length > 0 && (

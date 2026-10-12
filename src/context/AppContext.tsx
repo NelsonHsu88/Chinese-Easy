@@ -9,7 +9,7 @@ import type {
   VocabWord,
 } from '../types'
 import { hskFrequency, wordById as wordByIdInBank } from '../data/hskFrequency'
-import { deviceStore, getActiveScope, loadStored, saveStored, setActiveScope } from '../lib/storage'
+import { deviceStore, getActiveScope, loadStored, purgeDeletedAccounts, saveStored, setActiveScope } from '../lib/storage'
 import { scopeId } from '../lib/storageKeys'
 import { installationId, resolveScope } from '../lib/storageScope'
 import {
@@ -20,7 +20,16 @@ import {
   migrateLegacyKeys,
   type RecoverableProgress,
 } from '../lib/storageMigration'
-import { TOUR_STEPS, type TourAction } from '../lib/tour'
+import {
+  INITIAL_TOUR,
+  nextTourStep,
+  normalizeTour,
+  tourAfterAction,
+  type TourAction,
+  type TourState,
+  type TourStepId,
+} from '../lib/tour'
+import { normalizeSeenScreenTours, type ScreenTourId } from '../lib/screenTours'
 import { ladderHaptic, setHapticsEnabled } from '../lib/haptics'
 import { addDays, todayISO } from '../lib/date'
 import {
@@ -42,6 +51,26 @@ import {
 } from '../lib/subscription'
 import { useAuth } from './AuthContext'
 import { FEATURES } from '../lib/features'
+import { getLevelFromXp } from '../lib/progression/levels'
+import { countDailyChallengeClaims, type AchievementStats } from '../lib/progression/achievements'
+import type { ProfileRewardId } from '../lib/progression/profileRewards'
+import type { GardenItemId, GardenSlotId } from '../lib/progression/gardenItems'
+import {
+  DEFAULT_PROGRESSION,
+  evaluateAchievements,
+  normaliseProgression,
+  pinAchievement as pinAchievementIn,
+  placeGardenItem as placeGardenItemIn,
+  reachLevel,
+  removeGardenItem as removeGardenItemIn,
+  replacePinnedAchievement as replacePinnedIn,
+  setRewardEquipped,
+  unlocksBetween,
+  unpinAchievement as unpinAchievementIn,
+  type LevelUnlocks,
+  type PinResult,
+  type ProgressionState,
+} from '../lib/progression/state'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase'
 import { mergeSnapshot, pullSnapshot, type LocalAccountState, type SyncReadClient } from '../lib/sync/pull'
 import { accountSettings, rowToReview } from '../lib/sync/mappers'
@@ -61,7 +90,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   username: 'Learner',
   email: '',
   script: 'traditional',
-  phoneticScript: 'pinyin',
+  /* Matches `defaultPhoneticFor('traditional')`. Existing installs keep their
+     stored value — the settings blob hydrates over these defaults. */
+  phoneticScript: 'zhuyin',
   reviewDirection: 'production',
   dailyReviewLimit: 30,
   dailyNewWordLimit: 5,
@@ -73,6 +104,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   learningGoal: 'daily-life',
   soundEnabled: true,
   hapticsEnabled: true,
+  showReadings: true,
 }
 
 /**
@@ -81,9 +113,47 @@ export const DEFAULT_SETTINGS: AppSettings = {
  * `outcome` is what they did with it, which is what the Recent sheet reports
  * back: a skipped word can be reconsidered, an added one is already in the deck.
  */
+/**
+ * Where a grant of XP came from. Carried for the record and for any future
+ * analytics; nothing branches on it today.
+ */
+export type XpSource =
+  | { type: 'review'; wordId: string }
+  | { type: 'lesson'; lessonId: string }
+  | { type: 'challenge'; challengeId: string }
+
+/**
+ * The learning events the progression system counts that the app did not
+ * already keep a record of. Saved words, reviews and claimed challenges are
+ * *not* here: they are read straight from the deck, the daily history and the
+ * claimed ids, so they need no second bookkeeping that could drift from the
+ * first.
+ */
+export type LearningEvent =
+  | { type: 'WRITING_COMPLETED'; characters: number }
+  | { type: 'LISTENING_ANSWERED'; correct: boolean }
+  | { type: 'REVIEW_SESSION_COMPLETED' }
+  | { type: 'STORY_FINISHED'; storyId: string }
+
+/** Something to celebrate, queued for `ProgressionCelebration` in the root layout. */
+export type Celebration =
+  | { id: string; kind: 'level'; level: number; unlocks: LevelUnlocks }
+  | { id: string; kind: 'achievement'; achievementId: string }
+
+/** The per-day counters `bumpTodayActivity` can advance. */
+type ActivityField = 'wordsLearned' | 'reviewsCompleted' | 'charactersWritten' | 'listeningAnswered'
+
 export interface NewWordSeen {
   wordId: string
   outcome: 'skipped' | 'added'
+  at: string
+}
+
+/** One word heard in the listening drill, for its Recent sheet. */
+export interface WordListened {
+  wordId: string
+  /** "unsure" is "I don't know" — the answer was shown, nothing was guessed. */
+  outcome: 'correct' | 'incorrect' | 'unsure'
   at: string
 }
 
@@ -159,7 +229,62 @@ interface AppContextValue {
   /** Puts a skipped word back in the queue, from the Recent sheet. */
   unskipNewWord: (wordId: string) => void
   clearNewWordHistory: () => void
+  /**
+   * Words heard in the listening drill, newest last, one entry per word (a
+   * repeat replaces the earlier one). Persisted so the drill's Recent sheet
+   * lists what was listened to across sessions, not just this one.
+   */
+  listeningHistory: WordListened[]
+  noteWordListened: (wordId: string, outcome: WordListened['outcome']) => void
+  clearListeningHistory: () => void
+  /**
+   * When each word was last on a Match the Pairs board (ISO), by word id.
+   * Persisted so the boards rotate through the whole deck across sessions
+   * rather than drawing the same five words every time — see
+   * `pickMatchWords` in lib/mixedDrills.ts.
+   */
+  matchHistory: Record<string, string>
+  noteWordsMatched: (wordIds: string[]) => void
+  /**
+   * Starred words, by id. Independent of the deck: a word can be starred on a
+   * New Words card before it is added, and keeps its star if it is removed and
+   * added again.
+   */
+  favoriteWordIds: string[]
+  toggleFavorite: (wordId: string) => void
   completePracticeRep: (wordId: string) => void
+
+  /*
+   * ── Progression ──────────────────────────────────────────────────────────
+   * XP, levels, profile rewards, achievements and the garden. The rules live
+   * in `lib/progression/`; this is only the stored state and the calls that
+   * change it.
+   */
+  progression: ProgressionState
+  /** Lifetime totals every achievement is measured against. */
+  achievementStats: AchievementStats
+  /**
+   * The single way XP is earned. Returns what the grant unlocked (empty when it
+   * crossed no reward level); the celebration itself is queued automatically.
+   */
+  awardXp: (amount: number, source: XpSource) => LevelUnlocks
+  /**
+   * Developer only (Settings → General → Advanced). Sets the XP total outright,
+   * which is also how a level is set — the level is derived from XP. Lowering it
+   * winds `levelReached` back too, so climbing again replays the level-up.
+   */
+  devSetXp: (total: number) => void
+  /** Report a learning event the progression system counts. */
+  trackLearningEvent: (event: LearningEvent) => void
+  equipProfileReward: (id: ProfileRewardId, equipped: boolean) => void
+  pinAchievement: (id: string) => PinResult
+  unpinAchievement: (id: string) => void
+  replacePinnedAchievement: (outgoing: string, incoming: string) => void
+  /** False when every slot is taken and no `slot` was named — ask which to replace. */
+  placeGardenItem: (item: GardenItemId, slot?: GardenSlotId) => boolean
+  removeGardenItem: (item: GardenItemId) => void
+  celebrations: Celebration[]
+  dismissCelebration: (id: string) => void
 
   onboardingComplete: boolean
   placementResult?: PlacementResult
@@ -207,20 +332,42 @@ interface AppContextValue {
   recordStoryPage: (storyId: string, pageIndex: number) => void
 
   /**
-   * Which step of Shifu's guided tour the learner is on, or null when the tour
-   * isn't running. Persisted, so quitting the app halfway through resumes where
-   * they left off rather than starting the whole thing again.
+   * Shifu's guided tour: whether it has been offered, taken, finished or turned
+   * down, and which step is up while it runs. Persisted per device. A tour
+   * interrupted by the app closing is offered again rather than resumed — see
+   * `normalizeTour` in lib/tour.ts.
    */
-  tourStep: number | null
+  tour: TourState
+  /**
+   * Until when the learner has said they can't listen (ISO), or null. While it
+   * is in the future, Mixed Drills plans no listening questions — see
+   * `isListeningPaused` in lib/mixedDrills.ts. Device-owned: it describes where
+   * this phone is right now, not the learner's progress.
+   */
+  listeningPausedUntil: string | null
+  pauseListening: (minutes: number) => void
+  /** Arms the small "Want me to show you around?" prompt (end of onboarding). */
+  offerTour: () => void
+  /** Starts the tour at its first step — "Show me", or a replay from Settings. */
   startTour: () => void
-  advanceTour: () => void
-  endTour: () => void
+  /** Moves on from `from`. A no-op unless `from` is the step that is up. */
+  advanceTour: (from: TourStepId) => void
+  /** Ends the tour. `dismissed` means it is never offered again unasked. */
+  endTour: (outcome: 'completed' | 'dismissed') => void
   /**
    * Told by a screen that the learner just did something. Moves the tour on only
    * when the current step was waiting for exactly that, so screens can report
    * freely without knowing anything about where the tour has got to.
    */
   reportTourAction: (action: TourAction) => void
+  /**
+   * The per-tab guides (Learn, Dictionary, Settings) this device has already
+   * shown — seen through or skipped. See `lib/screenTours.ts`.
+   */
+  seenScreenTours: ScreenTourId[]
+  markScreenTourSeen: (id: ScreenTourId) => void
+  /** Shows every screen guide again on the next visit to its tab. */
+  replayScreenTours: () => void
 
   /**
    * The ad-free subscription, and **the app's only source of truth for it**.
@@ -265,6 +412,9 @@ const RECENT_SEARCH_LIMIT = 8
 
 /** How many New Words cards to remember having shown. */
 const NEW_WORD_HISTORY_LIMIT = 60
+
+/** How many listened words the listening drill's Recent sheet remembers. */
+const LISTENING_HISTORY_LIMIT = 100
 
 const AppContext = createContext<AppContextValue | null>(null)
 
@@ -319,6 +469,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * about a word, so it belongs with the rest of the learner's state.
    */
   const [newWordHistory, setNewWordHistory] = useState<NewWordSeen[]>([])
+  const [listeningHistory, setListeningHistory] = useState<WordListened[]>([])
+  const [matchHistory, setMatchHistory] = useState<Record<string, string>>({})
   const [customWords, setCustomWords] = useState<VocabWord[]>([])
   const [dailyProgress, setDailyProgress] = useState<DailyProgress[]>([])
   const [streakState, setStreakState] = useState<StreakState>({ streak: 0, lastActiveDate: null })
@@ -327,11 +479,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [unlockedBuildingIds, setUnlockedBuildingIds] = useState<string[]>([])
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([])
   const [newlyAddedWordIds, setNewlyAddedWordIds] = useState<string[]>([])
+  const [favoriteWordIds, setFavoriteWordIds] = useState<string[]>([])
+  const [progression, setProgression] = useState<ProgressionState>(DEFAULT_PROGRESSION)
+  /* Not persisted: a celebration nobody saw before closing the app is not
+     owed on the next launch — the reward itself is already theirs. */
+  const [celebrations, setCelebrations] = useState<Celebration[]>([])
   const [devClockOverride, setDevClockOverrideState] = useState<string | null>(null)
   const [claimedChallengeIds, setClaimedChallengeIds] = useState<string[]>([])
   const [recentSearchIds, setRecentSearchIds] = useState<string[]>([])
   const [storyProgress, setStoryProgress] = useState<Record<string, number>>({})
-  const [tourStep, setTourStep] = useState<number | null>(null)
+  const [tour, setTour] = useState<TourState>(INITIAL_TOUR)
+  const [seenScreenTours, setSeenScreenTours] = useState<ScreenTourId[]>([])
+  const [listeningPausedUntil, setListeningPausedUntil] = useState<string | null>(null)
   const [subscription, setSubscription] = useState<Entitlement | null>(null)
   /**
    * Cards whose word the bank no longer resolves, held rather than destroyed.
@@ -388,11 +547,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadedClaimedChallengeIds,
         loadedRecentSearchIds,
         loadedStoryProgress,
-        loadedTourStep,
+        loadedTour,
+        loadedScreenTours,
+        loadedListeningPausedUntil,
         loadedSubscription,
         loadedReviewHistory,
         loadedNewWordHistory,
+        loadedListeningHistory,
+        loadedMatchHistory,
         loadedQuarantined,
+        loadedFavoriteWordIds,
+        loadedProgression,
       ] = await Promise.all([
         loadStored('settings', DEFAULT_SETTINGS),
         loadStored('deck', [] as SrsCard[]),
@@ -408,11 +573,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadStored('claimedChallengeIds', [] as string[]),
         loadStored('recentSearchIds', [] as string[]),
         loadStored('storyProgress', {} as Record<string, number>),
-        loadStored('tourStep', null as number | null),
+        /* `undefined` rather than null as the fallback: a stored null means
+           the old fourteen-step tour ended, and has to be told apart from a
+           key that was never written. See `normalizeTour`. */
+        loadStored<unknown>('tourStep', undefined),
+        loadStored<unknown>('screenTours', []),
+        loadStored('listeningPausedUntil', null as string | null),
         loadStored('subscription', null as Entitlement | null),
         loadReviewHistory(deviceStore, getActiveScope()),
         loadStored('newWordHistory', [] as NewWordSeen[]),
+        loadStored('listeningHistory', [] as WordListened[]),
+        loadStored('matchHistory', {} as Record<string, string>),
         loadStored('quarantinedCards', [] as SrsCard[]),
+        loadStored('favoriteWordIds', [] as string[]),
+        loadStored('progression', DEFAULT_PROGRESSION as unknown),
       ])
       if (cancelled) return
       // `script` is a real preference again — it used to be forced to
@@ -456,6 +630,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       reviewWindowStart.current = loadedReviewHistory.window.startSeq
       setReviewLog(loadedReviewHistory.window.entries)
       setNewWordHistory(loadedNewWordHistory)
+      setListeningHistory(loadedListeningHistory)
+      setMatchHistory(loadedMatchHistory)
+      setFavoriteWordIds(loadedFavoriteWordIds)
+      setProgression(normaliseProgression(loadedProgression))
+      setCelebrations([])
       setCustomWords(loadedCustomWords)
       setDailyProgress(loadedDailyProgress)
       setStreakState(loadedStreak)
@@ -469,17 +648,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setClaimedChallengeIds(loadedClaimedChallengeIds)
       setRecentSearchIds(loadedRecentSearchIds)
       setStoryProgress(loadedStoryProgress)
-      /*
-       * A step index saved by an older, shorter tour would point past the end of
-       * the current one, which renders nothing and leaves the learner stuck with
-       * an overlay they can't dismiss. Anything out of range is treated as
-       * "finished".
-       */
-      setTourStep(
-        loadedTourStep !== null && loadedTourStep >= 0 && loadedTourStep < TOUR_STEPS.length
-          ? loadedTourStep
-          : null,
-      )
+      setListeningPausedUntil(loadedListeningPausedUntil)
+      setTour(normalizeTour(loadedTour))
+      setSeenScreenTours(normalizeSeenScreenTours(loadedScreenTours))
       /*
        * The stored entitlement gets the app through the first moment of a cold
        * launch — a real subscriber must not be shown a paywall while the store
@@ -543,6 +714,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
 
       setActiveScope(scope)
+      /* Storage now points away from any account deleted a moment ago, so its
+         on-device copy can be erased without a save racing it back. */
+      void purgeDeletedAccounts()
       /* The store learns who is signed in at the same instant storage does, so
          an entitlement and a deck can never describe two different people. */
       await identifyUser(scope.kind === 'user' ? scope.userId : null)
@@ -598,10 +772,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     recentSearchIds: true,
     storyProgress: true,
     tourStep: true,
+    screenTours: true,
+    listeningPausedUntil: true,
     subscription: true,
     reviewLog: true,
     newWordHistory: true,
+    listeningHistory: true,
+    matchHistory: true,
     quarantinedCards: true,
+    favoriteWordIds: true,
+    progression: true,
   })
 
   /**
@@ -772,7 +952,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /**
    * Clears the outgoing learner from memory on an account switch.
    *
-   * Account-owned state only: `tourStep`, `devClockOverride` and
+   * Account-owned state only: `tour`, `devClockOverride` and
    * `recentSearchIds` describe this handset rather than this person, are stored
    * unscoped, and would only flicker if reset and immediately re-read.
    */
@@ -787,6 +967,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reviewLedger.current = EMPTY_LEDGER
     reviewWindowStart.current = 0
     setNewWordHistory([])
+    setListeningHistory([])
+    setMatchHistory({})
+    setFavoriteWordIds([])
+    setProgression(DEFAULT_PROGRESSION)
+    setCelebrations([])
     setCustomWords([])
     setDailyProgress([])
     setStreakState({ streak: 0, lastActiveDate: null })
@@ -856,9 +1041,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [reviewLog])
   useEffect(() => {
     if (!writeGate.current) return
+    if (skipNextSave.current.favoriteWordIds) { skipNextSave.current.favoriteWordIds = false; return }
+    void saveStored('favoriteWordIds', favoriteWordIds)
+  }, [favoriteWordIds])
+
+  useEffect(() => {
+    if (!writeGate.current) return
+    if (skipNextSave.current.progression) { skipNextSave.current.progression = false; return }
+    void saveStored('progression', progression)
+  }, [progression])
+  useEffect(() => {
+    if (!writeGate.current) return
     if (skipNextSave.current.newWordHistory) { skipNextSave.current.newWordHistory = false; return }
     void saveStored('newWordHistory', newWordHistory)
   }, [newWordHistory])
+  useEffect(() => {
+    if (!writeGate.current) return
+    if (skipNextSave.current.listeningHistory) { skipNextSave.current.listeningHistory = false; return }
+    void saveStored('listeningHistory', listeningHistory)
+  }, [listeningHistory])
+  useEffect(() => {
+    if (!writeGate.current) return
+    if (skipNextSave.current.matchHistory) { skipNextSave.current.matchHistory = false; return }
+    void saveStored('matchHistory', matchHistory)
+  }, [matchHistory])
   useEffect(() => {
     if (!writeGate.current) return
     if (skipNextSave.current.customWords) { skipNextSave.current.customWords = false; return }
@@ -937,8 +1143,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!writeGate.current) return
     if (skipNextSave.current.tourStep) { skipNextSave.current.tourStep = false; return }
-    void saveStored('tourStep', tourStep)
-  }, [tourStep])
+    void saveStored('tourStep', tour)
+  }, [tour])
+  useEffect(() => {
+    if (!writeGate.current) return
+    if (skipNextSave.current.screenTours) { skipNextSave.current.screenTours = false; return }
+    void saveStored('screenTours', seenScreenTours)
+  }, [seenScreenTours])
+  useEffect(() => {
+    if (!writeGate.current) return
+    if (skipNextSave.current.listeningPausedUntil) { skipNextSave.current.listeningPausedUntil = false; return }
+    void saveStored('listeningPausedUntil', listeningPausedUntil)
+  }, [listeningPausedUntil])
   useEffect(() => {
     if (!writeGate.current) return
     if (skipNextSave.current.subscription) { skipNextSave.current.subscription = false; return }
@@ -962,7 +1178,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const bumpTodayActivity = useCallback((field: 'wordsLearned' | 'reviewsCompleted', amount: number) => {
+  const bumpTodayActivity = useCallback((field: ActivityField, amount: number) => {
     setDailyProgress((prev) => {
       const today = todayISO()
       const idx = prev.findIndex((d) => d.date === today)
@@ -970,12 +1186,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return [...prev, { date: today, wordsLearned: 0, reviewsCompleted: 0, [field]: amount }]
       }
       const copy = [...prev]
-      copy[idx] = { ...copy[idx], [field]: copy[idx][field] + amount }
+      copy[idx] = { ...copy[idx], [field]: (copy[idx][field] ?? 0) + amount }
       return copy
     })
   }, [])
 
   const bumpDailyProgress = useCallback((count: number) => bumpTodayActivity('wordsLearned', count), [bumpTodayActivity])
+
+  /*
+   * The progression system's event intake — the one place a learning event is
+   * counted. Writing and listening advance the day's history (which the daily
+   * and weekly challenges read) as well as the lifetime totals; the rest are
+   * lifetime-only. Deliberately not `registerActivity`: each of these happens
+   * inside a review, a practice sheet or a story whose own actions already keep
+   * the streak.
+   */
+  const trackLearningEvent = useCallback(
+    (event: LearningEvent) => {
+      const lifetime = (field: keyof ProgressionState['lifetime']) =>
+        setProgression((prev) => ({ ...prev, lifetime: { ...prev.lifetime, [field]: prev.lifetime[field] + 1 } }))
+      switch (event.type) {
+        case 'WRITING_COMPLETED':
+          if (event.characters > 0) bumpTodayActivity('charactersWritten', event.characters)
+          break
+        case 'LISTENING_ANSWERED':
+          bumpTodayActivity('listeningAnswered', 1)
+          if (event.correct) lifetime('listeningCorrect')
+          break
+        case 'REVIEW_SESSION_COMPLETED':
+          lifetime('reviewSessions')
+          break
+        case 'STORY_FINISHED':
+          lifetime('storiesFinished')
+          break
+      }
+    },
+    [bumpTodayActivity],
+  )
+
+  /*
+   * XP. A ref mirrors it so `awardXp` can say synchronously what a grant
+   * unlocked, without waiting for a render.
+   */
+  const xpRef = useRef(xp)
+  xpRef.current = xp
+  const awardXp = useCallback((amount: number, _source: XpSource): LevelUnlocks => {
+    if (amount <= 0) return { rewards: [], gardenItems: [] }
+    const before = getLevelFromXp(xpRef.current)
+    xpRef.current += amount
+    setXp((prev) => prev + amount)
+    return unlocksBetween(before, getLevelFromXp(xpRef.current))
+  }, [])
+
+  const devSetXp = useCallback((total: number) => {
+    const next = Math.max(0, Math.round(total))
+    const nextLevel = getLevelFromXp(next)
+    xpRef.current = next
+    setXp(next)
+    /* Unlocks already granted are kept — `reachLevel` never takes one back —
+       but the high-water mark follows the level down, or raising XP again
+       would cross no line and the level-up could never be re-tested. */
+    setProgression((prev) =>
+      prev.levelReached !== null && prev.levelReached > nextLevel ? { ...prev, levelReached: nextLevel } : prev,
+    )
+  }, [])
 
   const addToReviewDeck = useCallback(
     (wordId: string) => {
@@ -1046,15 +1320,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       )
       bumpTodayActivity('reviewsCompleted', 1)
       registerActivity()
-      setXp((prev) => prev + xpForGrade(grade))
+      awardXp(xpForGrade(grade), { type: 'review', wordId })
     },
-    [settings.wrongAnswerReps, bumpTodayActivity, registerActivity],
+    [settings.wrongAnswerReps, bumpTodayActivity, registerActivity, awardXp],
   )
 
   const unlockBuilding = useCallback(
     (buildingId: string, cost: number) => {
+      /* XP is permanent progress and is never spent: a building's cost is the
+         XP a learner must have *reached*, like a level. (My Town is switched
+         off; this keeps it coherent for when it returns.) */
       if (unlockedBuildingIds.includes(buildingId) || xp < cost) return
-      setXp((prev) => prev - cost)
       setUnlockedBuildingIds((prev) => [...prev, buildingId])
     },
     [xp, unlockedBuildingIds],
@@ -1065,8 +1341,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (prev.includes(lessonId)) return prev
       return [...prev, lessonId]
     })
-    setXp((prev) => prev + XP_PER_LESSON)
-  }, [])
+    awardXp(XP_PER_LESSON, { type: 'lesson', lessonId })
+  }, [awardXp])
 
   const addWordFromBook = useCallback(
     (wordId: string) => {
@@ -1106,6 +1382,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const clearNewWordHistory = useCallback(() => setNewWordHistory([]), [])
 
+  const noteWordListened = useCallback((wordId: string, outcome: WordListened['outcome']) => {
+    setListeningHistory((prev) =>
+      [...prev.filter((entry) => entry.wordId !== wordId), { wordId, outcome, at: devNow().toISOString() }].slice(
+        -LISTENING_HISTORY_LIMIT,
+      ),
+    )
+  }, [])
+
+  const clearListeningHistory = useCallback(() => setListeningHistory([]), [])
+
+  /* Stamps a board's words, and drops entries for words no longer in the deck
+     on the way, so the record stays the size of the deck rather than growing
+     for the life of the install. */
+  const noteWordsMatched = useCallback(
+    (wordIds: string[]) => {
+      const inDeck = new Set(deck.map((c) => c.wordId))
+      const at = devNow().toISOString()
+      setMatchHistory((prev) => {
+        const next: Record<string, string> = {}
+        for (const [id, when] of Object.entries(prev)) if (inDeck.has(id)) next[id] = when
+        for (const id of wordIds) next[id] = at
+        return next
+      })
+    },
+    [deck],
+  )
+
+  const toggleFavorite = useCallback((wordId: string) => {
+    setFavoriteWordIds((prev) => (prev.includes(wordId) ? prev.filter((id) => id !== wordId) : [...prev, wordId]))
+  }, [])
+
   const updateDevClockOverride = useCallback((iso: string | null) => {
     setDevClockOverride(iso)
     setDevClockOverrideState(iso)
@@ -1115,9 +1422,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (challengeId: string, xpReward: number) => {
       if (claimedChallengeIds.includes(challengeId)) return
       setClaimedChallengeIds((prev) => [...prev, challengeId])
-      setXp((prev) => prev + xpReward)
+      awardXp(xpReward, { type: 'challenge', challengeId })
     },
-    [claimedChallengeIds],
+    [claimedChallengeIds, awardXp],
   )
 
   /** Moves a word to the front of the search history, de-duplicating and trimming the tail. */
@@ -1137,26 +1444,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
-  const startTour = useCallback(() => setTourStep(0), [])
+  const offerTour = useCallback(() => setTour(INITIAL_TOUR), [])
+  const startTour = useCallback(() => setTour({ status: 'in_progress', step: 'home' }), [])
 
-  /** Moves to the next step, ending the tour once the last one is done. */
-  const advanceTour = useCallback(() => {
-    setTourStep((prev) => {
-      if (prev === null) return null
-      const next = prev + 1
-      return next >= TOUR_STEPS.length ? null : next
+  /* Real time, not `devNow()`: this is a wall-clock promise to the learner
+     ("for 30 minutes"), and a frozen developer clock would make it never end. */
+  const pauseListening = useCallback((minutes: number) => {
+    setListeningPausedUntil(new Date(Date.now() + minutes * 60_000).toISOString())
+  }, [])
+
+  /*
+   * Advancing names the step it is leaving, so a late or doubled call — a
+   * backstop timer and an animation callback both arriving, a screen reporting
+   * twice — moves the tour once and not twice.
+   */
+  const advanceTour = useCallback((from: TourStepId) => {
+    setTour((prev) => {
+      if (prev.status !== 'in_progress' || prev.step !== from) return prev
+      const next = nextTourStep(from)
+      return next ? { status: 'in_progress', step: next } : { status: 'completed', step: null }
     })
   }, [])
 
-  const endTour = useCallback(() => setTourStep(null), [])
+  const endTour = useCallback((outcome: 'completed' | 'dismissed') => {
+    setTour({ status: outcome, step: null })
+  }, [])
 
   const reportTourAction = useCallback((action: TourAction) => {
-    setTourStep((prev) => {
-      if (prev === null || TOUR_STEPS[prev]?.awaits !== action) return prev
-      const next = prev + 1
-      return next >= TOUR_STEPS.length ? null : next
-    })
+    setTour((prev) => tourAfterAction(prev, action))
   }, [])
+
+  const markScreenTourSeen = useCallback((id: ScreenTourId) => {
+    setSeenScreenTours((prev) => (prev.includes(id) ? prev : [...prev, id]))
+  }, [])
+
+  const replayScreenTours = useCallback(() => setSeenScreenTours([]), [])
 
   const completePracticeRep = useCallback((wordId: string) => {
     setDeck((prev) =>
@@ -1194,6 +1516,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reviewLedger.current = EMPTY_LEDGER
     reviewWindowStart.current = 0
     setNewWordHistory([])
+    setListeningHistory([])
+    setMatchHistory({})
+    setFavoriteWordIds([])
+    setProgression(DEFAULT_PROGRESSION)
+    setCelebrations([])
     setCustomWords([])
     setDailyProgress([])
     setStreakState({ streak: 0, lastActiveDate: null })
@@ -1206,11 +1533,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setRecentSearchIds([])
     setStoryProgress({})
     /*
-     * Null rather than 0: the tour is started by onboarding's finish handler, so
-     * seeding a step here would run it over the top of the welcome screen the
+     * Back to "not offered yet", not running: the prompt only appears once
+     * onboarding is complete, so nothing draws over the welcome screen the
      * learner is about to be sent back to.
      */
-    setTourStep(null)
+    setTour(INITIAL_TOUR)
+    setSeenScreenTours([])
     /*
      * A *simulated* entitlement is development state and goes with the rest of
      * it. A real one is not the app's to revoke — it lives with the store and
@@ -1271,6 +1599,109 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSubscription(null)
   }, [])
 
+  // --- Progression ----------------------------------------------------------
+
+  /*
+   * Lifetime totals, derived wherever the app already keeps the history — so
+   * a learner's past work counts from the first launch of this version — and
+   * read from `progression.lifetime` for the three things it never recorded.
+   */
+  const achievementStats = useMemo<AchievementStats>(() => {
+    let reviews = 0
+    let charactersWritten = 0
+    let listeningAnswered = 0
+    for (const day of dailyProgress) {
+      reviews += day.reviewsCompleted
+      charactersWritten += day.charactersWritten ?? 0
+      listeningAnswered += day.listeningAnswered ?? 0
+    }
+    return {
+      wordsSaved: deck.length,
+      reviews,
+      reviewSessions: progression.lifetime.reviewSessions,
+      charactersWritten,
+      listeningAnswered,
+      listeningCorrect: progression.lifetime.listeningCorrect,
+      storiesFinished: progression.lifetime.storiesFinished,
+      streak: streakState.streak,
+      dailyChallengesCompleted: countDailyChallengeClaims(claimedChallengeIds),
+    }
+  }, [deck.length, dailyProgress, progression.lifetime, streakState.streak, claimedChallengeIds])
+
+  const level = getLevelFromXp(xp)
+
+  /*
+   * The one place unlocks are granted and celebrations queued. It runs after
+   * every change to XP or to the stats, compares against what has already been
+   * handled, and does nothing when nothing crossed a line — so it is safe
+   * however often it fires, and a grant that arrived by any route (a claim, a
+   * review, a sync) is handled the same way.
+   *
+   * The first run for a profile seeds silently: see `ProgressionState.levelReached`.
+   */
+  useEffect(() => {
+    if (!ready) return
+    const silent = progression.levelReached === null
+    const levelChange = reachLevel(progression, level)
+    const achievementChange = evaluateAchievements(levelChange.state, achievementStats, devNow().toISOString(), {
+      silent,
+    })
+    if (achievementChange.state === progression) return
+    setProgression(achievementChange.state)
+    const queued: Celebration[] = []
+    if (levelChange.celebrate) {
+      queued.push({
+        id: `level-${levelChange.celebrate.to}`,
+        kind: 'level',
+        level: levelChange.celebrate.to,
+        unlocks: levelChange.celebrate.unlocks,
+      })
+    }
+    for (const achievementId of achievementChange.earned) {
+      queued.push({ id: `achievement-${achievementId}`, kind: 'achievement', achievementId })
+    }
+    if (queued.length > 0) setCelebrations((prev) => [...prev, ...queued])
+  }, [ready, level, achievementStats, progression])
+
+  const dismissCelebration = useCallback((id: string) => {
+    setCelebrations((prev) => prev.filter((c) => c.id !== id))
+  }, [])
+
+  const equipProfileReward = useCallback((id: ProfileRewardId, equipped: boolean) => {
+    setProgression((prev) => setRewardEquipped(prev, id, equipped))
+  }, [])
+
+  const pinAchievement = useCallback(
+    (id: string): PinResult => {
+      const { state, result } = pinAchievementIn(progression, id)
+      if (result === 'pinned') setProgression(state)
+      return result
+    },
+    [progression],
+  )
+
+  const unpinAchievement = useCallback((id: string) => {
+    setProgression((prev) => unpinAchievementIn(prev, id))
+  }, [])
+
+  const replacePinnedAchievement = useCallback((outgoing: string, incoming: string) => {
+    setProgression((prev) => replacePinnedIn(prev, outgoing, incoming))
+  }, [])
+
+  const placeGardenItem = useCallback(
+    (item: GardenItemId, slot?: GardenSlotId): boolean => {
+      const next = placeGardenItemIn(progression, item, slot)
+      if (!next) return false
+      setProgression(next)
+      return true
+    },
+    [progression],
+  )
+
+  const removeGardenItem = useCallback((item: GardenItemId) => {
+    setProgression((prev) => removeGardenItemIn(prev, item))
+  }, [])
+
   const wordsLearnedToday = useMemo(() => {
     const today = todayISO()
     return dailyProgress.find((d) => d.date === today)?.wordsLearned ?? 0
@@ -1291,6 +1722,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addCustomWord,
     gradeCard,
     completePracticeRep,
+    progression,
+    achievementStats,
+    awardXp,
+    devSetXp,
+    trackLearningEvent,
+    equipProfileReward,
+    pinAchievement,
+    unpinAchievement,
+    replacePinnedAchievement,
+    placeGardenItem,
+    removeGardenItem,
+    celebrations,
+    dismissCelebration,
     onboardingComplete: onboarding.complete,
     placementResult: onboarding.result,
     completeOnboarding,
@@ -1310,6 +1754,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     noteNewWordAdded,
     unskipNewWord,
     clearNewWordHistory,
+    listeningHistory,
+    noteWordListened,
+    clearListeningHistory,
+    matchHistory,
+    noteWordsMatched,
+    favoriteWordIds,
+    toggleFavorite,
     devClockOverride,
     updateDevClockOverride,
     claimedChallengeIds,
@@ -1319,11 +1770,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearRecentSearches,
     storyProgress,
     recordStoryPage,
-    tourStep,
+    tour,
+    listeningPausedUntil,
+    pauseListening,
+    offerTour,
     startTour,
     advanceTour,
     endTour,
     reportTourAction,
+    seenScreenTours,
+    markScreenTourSeen,
+    replayScreenTours,
     subscription,
     recoverableProgress,
     adoptRecoverableProgress,

@@ -4,62 +4,87 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { ChevronRight } from 'lucide-react-native'
-import { dashColors as c, dashShadow, dashShadowLifted, DASH_CONTENT_MAX } from '../components/dashboard/tokens'
+import { dashColors as c, dashShadow, DASH_CONTENT_MAX } from '../components/dashboard/tokens'
 import { PressableScale } from '../components/dashboard/parts'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { FEATURES } from '../lib/features'
 import { WritingGuideModal } from '../components/WritingGuideModal'
+import { TourTarget } from '../components/tour/targets'
+import type { TourTargetId } from '../lib/tour'
 
 /**
- * The Learn tab: a header over three cards (New Words, Books, Writing Basics),
- * built to the Beta 2.1 reference "NEW Learn Screen.png".
+ * The Learn tab: a header with Shifu and his line, over three cards (New Words,
+ * Books, Writing Basics), built to the Beta 2.1 reference "SS103 Learn
+ * Redesigned UI.png". The reference's back arrow is left out — this is tab
+ * content, with nothing behind it to go back to.
  *
- * **All three cards fit one screen, and fill it.** The card column is `flex: 1`
- * and each card takes an equal share, so the cards end at the tab bar on any
- * phone rather than stopping short (a band of bare paper) or running past it
- * (a scroll). What made the page scroll before was the text column: squeezed
- * to ~107pt, a description wrapped to six lines and pushed its card taller than
- * its share. The proportions below are measured off the reference — a 393pt
- * phone rendered at 2.39× — which gives the text ~135pt, enough for three lines.
+ * **The whole page fits one screen and never scrolls.** Each card is an
+ * explicit third of whatever the viewport leaves under the header (measured,
+ * not estimated), clamped to `CARD_MIN`…`CARD_MAX`, with room kept underneath
+ * for the foot painting. On a short screen the foot gives up its room first,
+ * then the cards shrink to `CARD_FLOOR`, and below `COMPACT_BELOW` the speech
+ * bubble is dropped — decoration goes before anything the learner taps. The
+ * ScrollView stays only as a last resort at a large accessibility text size.
  *
- * The artwork is cropped out of that same reference by
- * `scripts/processLearnArt.mjs`, so the screen uses the signed-off art rather
- * than stand-ins. Colours are the Dashboard's `dashColors` — this sits behind
- * the same tab bar as the Dashboard, Settings and Review and has to read as the
- * same app.
+ * Every piece of painting is cropped out of the reference by
+ * `scripts/processLearnArt.mjs` and keyed against `dashColors.background` (the
+ * hero and foot) or `dashColors.card` (the card scenes) — both exactly the
+ * mockup's own colours, so change neither without re-running the script.
  *
  * With `FEATURES.lessons` off, the third card is Writing Basics (the existing
  * four-page primer); flipping the flag brings the Lessons Path card back.
  */
 
 const ART = {
-  newWords: require('../assets/images/learn/new-words.jpg'),
-  books: require('../assets/images/learn/books.jpg'),
-  writingBasics: require('../assets/images/learn/writing-basics.jpg'),
-  scenery: require('../assets/images/learn/header-scenery.png'),
+  hero: require('../assets/images/learn/hero.png'),
+  foot: require('../assets/images/learn/foot.png'),
+  newWords: require('../assets/images/learn/new-words.png'),
+  books: require('../assets/images/learn/books.png'),
+  writingBasics: require('../assets/images/learn/writing-basics.png'),
 } as const
-/** header-scenery.png's own pixel size. */
-const SCENERY_RATIO = 286 / 350
+/** Each asset's own pixel size, as width / height. */
+const HERO_RATIO = 467 / 559
+const FOOT_RATIO = 995 / 150
+/** Hero width as a share of the column: 467 of the mockup's 995. */
+const HERO_SHARE = 467 / 995
 
-/** Measured off the reference, in points at a 393pt width. */
+/** Measured off the reference (995px wide, a 430pt column). */
 const GUTTER = 22
-const CARD_GAP = 16
-const CARD_RADIUS = 26
-/** Share of the card the illustration takes; the text starts just past it. */
-const ART_SHARE = '42%'
-const CHEVRON = 40
-/** Soft sage the reference uses for the dash above each title and the corner wave. */
-const SAGE = '#DDEBDA'
+const CARD_GAP = 12
+const CARD_RADIUS = 24
 /**
- * Below this a card stops shrinking and the page scrolls instead — only
- * reached on a very short phone or at a large accessibility text size.
+ * Share of the card the illustration takes. The mockup's is 45% (400 of 887),
+ * but that leaves a 360pt phone's text column too narrow for "Writing Basics"
+ * on one line; 40% keeps the scene the dominant half and the copy at three lines.
  */
-const CARD_MIN = 118
-/** Space under the last card, above the tab bar. */
-const COLUMN_BOTTOM = 16
+const ART_SHARE = '40%'
+const CHEVRON = 38
+/**
+ * Card type is designed for a 430pt column and scales down with it (to at
+ * most 84%) rather than wrapping: at the designed size a 360pt phone wraps
+ * every title and runs the descriptions past the card.
+ */
+const DESIGN_COLUMN = 430
+const TYPE_SCALE_MIN = 0.84
+/** How far the bubble may run behind the painting's feathered left edge. */
+const BUBBLE_OVERLAP = 12
+
+/** The designed card, and the range it may grow or shrink to fill the screen. */
+const CARD_MIN = 112
+const CARD_MAX = 150
+/** Last resort before the page scrolls, reached only on a very short screen. */
+const CARD_FLOOR = 98
+/** Least space kept under the last card, above the tab bar. */
+const COLUMN_BOTTOM = 12
+/** Viewport heights below this drop the speech bubble. */
+const COMPACT_BELOW = 590
+
+const SHIFU_LINE = 'Every character you learn brings you one step closer. Take it at your own pace!'
 
 interface LearnCardDef {
   key: string
+  /** Where Shifu's Learn guide points (`lib/screenTours.ts`). */
+  tourId: TourTargetId
   title: string
   description: string
   art: ImageSourcePropType
@@ -67,21 +92,29 @@ interface LearnCardDef {
 }
 
 /**
- * One card: a full-bleed scene on the left, feathered into the card; a short
- * sage dash, the title and the description; a round chevron on the right.
+ * One card: the scene on the left, feathered into the card; the title and
+ * description; a soft round chevron on the right.
  *
  * The whole card is the target — the chevron is decoration, not a second
  * button, so no `Pressable` nests inside `PressableScale`. `numberOfLines` is
  * never set on the description: it wraps rather than ending in an ellipsis.
  */
-function LearnCard({ title, description, art, onPress, height }: Omit<LearnCardDef, 'key'> & { height?: number }) {
+function LearnCard({
+  title,
+  description,
+  art,
+  onPress,
+  height,
+  scale,
+}: Omit<LearnCardDef, 'key' | 'tourId'> & { height?: number; scale: number }) {
+  const chevron = Math.round(CHEVRON * scale)
   return (
     // `wrapperStyle` carries the size because `PressableScale`'s animated
     // wrapper is the real flex child — sizing `style` alone does nothing.
     <PressableScale
       onPress={onPress}
       accessibilityLabel={`${title}. ${description}`}
-      wrapperStyle={height !== undefined ? { height } : { flex: 1, minHeight: CARD_MIN }}
+      wrapperStyle={{ height: height ?? CARD_MIN }}
       style={{ flex: 1 }}
     >
       <View
@@ -92,28 +125,14 @@ function LearnCard({ title, description, art, onPress, height }: Omit<LearnCardD
           borderWidth: 1,
           borderColor: c.border,
           overflow: 'hidden',
-          ...dashShadowLifted,
+          ...dashShadow,
         }}
       >
-        {/* The sage wave along the bottom-right, clipped by the card's own corner. */}
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            width: 280,
-            height: 120,
-            borderRadius: 140,
-            right: -70,
-            bottom: -64,
-            backgroundColor: SAGE,
-            opacity: 0.55,
-          }}
-        />
-
         {/*
-          Full-bleed on three sides, so it reads as part of the card rather than
-          a picture placed on it. The gradient feathers its right edge into the
-          card, as the reference does, instead of ending on a hard line.
+          A sized box with the Image filling it — react-native-web does not
+          apply `cover` to an absolutely stretched Image. The gradient feathers
+          the right edge into the card in case `cover` crops the painting's own
+          feather off.
         */}
         <View style={{ width: ART_SHARE, alignSelf: 'stretch' }}>
           <Image source={art} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
@@ -122,63 +141,132 @@ function LearnCard({ title, description, art, onPress, height }: Omit<LearnCardD
             colors={['rgba(255,253,252,0)', c.card]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '32%' }}
+            style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '22%' }}
           />
         </View>
 
-        <View className="flex-1" style={{ paddingLeft: 12, paddingRight: 8 }}>
-          <View style={{ width: 22, height: 5, borderRadius: 3, backgroundColor: SAGE, marginBottom: 8 }} />
-          <Text className="font-nunito-extrabold" style={{ fontSize: 20, lineHeight: 25, color: c.greenDark }}>
+        <View className="flex-1" style={{ paddingLeft: 10, paddingRight: 6 }}>
+          <Text
+            className="font-lora-bold"
+            style={{ fontSize: 21 * scale, lineHeight: 26 * scale, letterSpacing: -0.2, color: c.navy }}
+          >
             {title}
           </Text>
-          <Text className="mt-1 font-nunito-semibold" style={{ fontSize: 13.5, lineHeight: 18.5, color: c.textSecondary }}>
+          <Text
+            className="font-lora"
+            style={{ marginTop: 3, fontSize: 13.5 * scale, lineHeight: 18.5 * scale, color: c.textSecondary }}
+          >
             {description}
           </Text>
         </View>
 
         <View
           className="items-center justify-center rounded-full"
-          style={{ width: CHEVRON, height: CHEVRON, marginRight: 12, backgroundColor: c.greenSoft, ...dashShadow }}
+          style={{ width: chevron, height: chevron, marginRight: Math.round(14 * scale), backgroundColor: c.greenSoft }}
         >
-          <ChevronRight size={20} color={c.greenDark} strokeWidth={2.4} />
+          <ChevronRight size={Math.round(20 * scale)} color={c.greenDark} strokeWidth={2.4} />
         </View>
       </View>
     </PressableScale>
   )
 }
 
+/**
+ * Shifu's line, the same soft editorial bubble as the Review hub's: a warm
+ * fill, a drawn hairline, a faint shadow and a small tail pointing at him.
+ */
+function SpeechBubble({ message }: { message: string }) {
+  return (
+    <View>
+      <View
+        style={{
+          backgroundColor: c.card,
+          borderRadius: 22,
+          borderWidth: 1,
+          borderColor: c.border,
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          ...dashShadow,
+        }}
+      >
+        <Text className="font-lora" style={{ fontSize: 14, lineHeight: 19.5, color: c.navy }}>
+          {message}
+        </Text>
+      </View>
+      {/* Drawn after the body so it covers the body's border where the two meet. */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          right: -6,
+          top: 24,
+          width: 12,
+          height: 12,
+          backgroundColor: c.card,
+          borderTopWidth: 1,
+          borderRightWidth: 1,
+          borderColor: c.border,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+    </View>
+  )
+}
+
 export function Learn() {
   const [showGuide, setShowGuide] = useState(false)
   /*
-   * Each card is an explicit third of the room under the header. A flex split
-   * alone let a card whose copy wraps to more lines grow past its share, so
-   * the three came out uneven; one computed height is equal by construction.
-   *
    * Measured from the viewport and the header — never from the card column,
-   * whose height the cards themselves can inflate. Neither input depends on
-   * the cards, so the sum can't feed back into itself.
+   * whose height the cards themselves set. Neither input depends on the cards,
+   * so the sum can't feed back into itself.
    */
   const [viewportHeight, setViewportHeight] = useState<number | null>(null)
   const [headerHeight, setHeaderHeight] = useState<number | null>(null)
-  const cardHeight =
-    viewportHeight !== null && headerHeight !== null
-      ? Math.max(CARD_MIN, Math.floor((viewportHeight - headerHeight - COLUMN_BOTTOM - CARD_GAP * 2) / 3))
-      : undefined
   const settle = (set: (fn: (prev: number | null) => number | null) => void) => (h: number) =>
     set((prev) => (prev !== null && Math.abs(prev - h) < 1 ? prev : h))
+
   const { width: windowWidth } = useWindowDimensions()
   const columnWidth = Math.min(windowWidth, DASH_CONTENT_MAX)
-  /* 286/941 of the reference's width, bleeding off the top-right edge. */
-  const sceneryWidth = columnWidth * 0.34
+  const footHeight = columnWidth / FOOT_RATIO
+  const typeScale = Math.max(TYPE_SCALE_MIN, Math.min(1, columnWidth / DESIGN_COLUMN))
+  /*
+   * Decided from the viewport alone: deciding it from the header would flip it
+   * back the moment dropping the bubble made the header fit.
+   */
+  const compact = viewportHeight !== null && viewportHeight < COMPACT_BELOW
 
-  /* One calm arrival, replayed on every return to the tab — the same engine
-     the Dashboard uses, just a single piece rather than a staged score. */
+  let cardHeight: number | undefined
+  if (viewportHeight !== null && headerHeight !== null) {
+    const room = viewportHeight - headerHeight - CARD_GAP * 2
+    /* Enough under the cards for the foot's pagoda and treeline to show. */
+    const roomy = (room - footHeight * 0.8) / 3
+    cardHeight = Math.floor(
+      roomy >= CARD_MIN ? Math.min(roomy, CARD_MAX) : Math.max(CARD_FLOOR, Math.min(CARD_MIN, (room - COLUMN_BOTTOM) / 3)),
+    )
+  }
+
+  /*
+   * The painting is anchored to the header's bottom right, so Shifu's robe
+   * meets the first card wherever the text above wraps. Its height is capped by
+   * the header's so a compact header shrinks him rather than pushing his head
+   * up under the status bar.
+   */
+  const heroHeight = Math.min((columnWidth * HERO_SHARE) / HERO_RATIO, (headerHeight ?? Infinity) + 24)
+  const heroWidth = heroHeight * HERO_RATIO
+  /* In the padded column's coordinates: the painting's right edge is the column's. */
+  const heroLeft = columnWidth - GUTTER - heroWidth
+  const bubbleMax = heroLeft + BUBBLE_OVERLAP
+
+  /* One calm arrival, replayed on every return to the tab — the page rises,
+     the painting drifts in from the right, both at once as on Review. */
   const run = useEntranceRun()
   const page = useReveal({ from: 'bottom', at: 0, duration: 420, run, distance: 22 })
+  const hero = useReveal({ from: 'right', at: 0, duration: 520, run, distance: 28 })
 
   const cards: LearnCardDef[] = [
     {
       key: 'new-words',
+      tourId: 'learn-new-words',
       title: 'New Words',
       description: 'Learn useful Chinese words with clear examples and audio.',
       art: ART.newWords,
@@ -186,6 +274,7 @@ export function Learn() {
     },
     {
       key: 'books',
+      tourId: 'learn-books',
       title: 'Books',
       description: 'Read Chinese stories, articles and classics to build your skills.',
       art: ART.books,
@@ -194,6 +283,7 @@ export function Learn() {
     FEATURES.lessons
       ? {
           key: 'lessons',
+          tourId: 'learn-third',
           title: 'Lessons Path',
           description: 'Follow a structured path from beginner to advanced.',
           art: ART.writingBasics,
@@ -201,6 +291,7 @@ export function Learn() {
         }
       : {
           key: 'writing-basics',
+          tourId: 'learn-third',
           title: 'Writing Basics',
           description: 'How Chinese characters are built, one stroke at a time.',
           art: ART.writingBasics,
@@ -211,20 +302,21 @@ export function Learn() {
   return (
     <SafeAreaView edges={['top']} className="flex-1" style={{ backgroundColor: c.background }}>
       {/*
-        Out of flow and behind everything, so it costs the layout nothing and
-        can run off the screen's edge as the reference's does.
+        The foot painting, out of flow and behind everything, so it costs the
+        layout nothing: it shows in the room kept under the last card and runs
+        behind the cards' corners on a short screen.
       */}
       <View
         pointerEvents="none"
         style={{
           position: 'absolute',
-          top: 0,
-          right: Math.max(0, (windowWidth - columnWidth) / 2),
-          width: sceneryWidth,
-          height: sceneryWidth / SCENERY_RATIO,
+          bottom: 0,
+          left: Math.max(0, (windowWidth - columnWidth) / 2),
+          width: columnWidth,
+          height: footHeight,
         }}
       >
-        <Image source={ART.scenery} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+        <Image source={ART.foot} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
       </View>
 
       <ScrollView
@@ -237,27 +329,40 @@ export function Learn() {
         /* The ScrollView's own frame is the visible viewport, whatever its content does. */
         onLayout={(e) => settle(setViewportHeight)(e.nativeEvent.layout.height)}
       >
-        <Animated.View style={[{ width: columnWidth, flexGrow: 1 }, page]}>
-          <View style={{ flexGrow: 1, paddingHorizontal: GUTTER }}>
-            <View
-              style={{ paddingTop: 22, paddingBottom: 26 }}
-              onLayout={(e) => settle(setHeaderHeight)(e.nativeEvent.layout.height)}
+        <View style={{ width: columnWidth, flexGrow: 1, paddingHorizontal: GUTTER }}>
+          <View onLayout={(e) => settle(setHeaderHeight)(e.nativeEvent.layout.height)}>
+            <Animated.View
+              pointerEvents="none"
+              style={[{ position: 'absolute', right: -GUTTER, bottom: 0 }, hero]}
             >
-              <Text className="font-nunito-extrabold" style={{ fontSize: 44, lineHeight: 50, color: c.greenDark }}>
+              <Image source={ART.hero} resizeMode="contain" style={{ width: heroWidth, height: heroHeight }} />
+            </Animated.View>
+
+            <Animated.View style={[{ paddingTop: compact ? 12 : 22, paddingBottom: compact ? 16 : 18 }, page]}>
+              {/* Lora Bold in navy, matching the Review, Challenges, My Words and Dictionary headings. */}
+              <Text className="font-lora-bold" accessibilityRole="header" style={{ fontSize: 44, lineHeight: 50, letterSpacing: -0.6, color: c.navy }}>
                 Learn
               </Text>
-              <Text className="mt-1 font-nunito-semibold" style={{ fontSize: 16, lineHeight: 22, color: c.textSecondary }}>
-                Choose what you want to study today.
+              <Text className="font-lora" style={{ marginTop: 2, fontSize: 16.5, lineHeight: 22, color: c.textSecondary }}>
+                Choose what you want{'\n'}to study today.
               </Text>
-            </View>
 
-            <View style={{ flex: 1, gap: CARD_GAP, paddingBottom: COLUMN_BOTTOM }}>
-              {cards.map(({ key, ...card }) => (
-                <LearnCard key={key} {...card} height={cardHeight} />
-              ))}
-            </View>
+              {!compact && (
+                <View style={{ marginTop: 16, maxWidth: bubbleMax, alignSelf: 'flex-start' }}>
+                  <SpeechBubble message={SHIFU_LINE} />
+                </View>
+              )}
+            </Animated.View>
           </View>
-        </Animated.View>
+
+          <Animated.View style={[{ gap: CARD_GAP, paddingBottom: COLUMN_BOTTOM }, page]}>
+            {cards.map(({ key, tourId, ...card }) => (
+              <TourTarget key={key} id={tourId} radius={CARD_RADIUS}>
+                <LearnCard {...card} height={cardHeight} scale={typeScale} />
+              </TourTarget>
+            ))}
+          </Animated.View>
+        </View>
       </ScrollView>
 
       {showGuide && <WritingGuideModal onClose={() => setShowGuide(false)} />}

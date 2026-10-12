@@ -127,6 +127,31 @@ export function predictedChar(
   return clamp(Math.floor(from + (ms / 1000) * charsPerSecond), from, Math.max(from, textLength - 1))
 }
 
+/** Punctuation an engine pauses at — and, on Android, the only places some engines report a boundary. */
+const CLAUSE_BREAK = /[，。！？、；：,.!?;:…「」『』“”]/
+
+/**
+ * The last character of the clause `from` sits in: one before the next
+ * pause-worthy punctuation mark, or the end of the text.
+ *
+ * Android's Mandarin voices commonly report a boundary only at the start of
+ * each clause, so between reports the highlight is predicted from the clock —
+ * and capped here, so a voice slower than the estimate never sees the line run
+ * ahead into a clause it has not reached. The next real boundary re-anchors it.
+ */
+export function clauseEnd(text: string, from: number): number {
+  for (let i = Math.max(0, from) + 1; i < text.length; i++) {
+    if (CLAUSE_BREAK.test(text[i])) return i - 1
+  }
+  return Math.max(0, text.length - 1)
+}
+
+/** Seconds, as m:ss. */
+export function formatClock(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`
+}
+
 export interface SegmentSpan {
   /** Index into the segment list. */
   index: number

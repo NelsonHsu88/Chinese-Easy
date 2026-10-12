@@ -67,6 +67,17 @@ describe('new card', () => {
     assert.equal(preview.easy.card.state, 'review')
     assert.ok(days(preview.easy.card, T0) >= 1, 'Easy should schedule days out, not minutes')
   })
+
+  test('Easy on a new word comes back in about three days, not a week', () => {
+    // Several instants, because fuzz is seeded from the review time.
+    for (let hour = 0; hour < 24; hour += 3) {
+      const now = new Date(T0.getTime() + hour * 3_600_000)
+      const easy = previewReview(createNewCard(`w${hour}`, now), REPS, now).easy
+      const d = days(easy.card, now)
+      assert.ok(d >= 2 && d <= 4, `Easy on a new card should be 2–4 days, got ${d}`)
+      assert.match(easy.label, /^[234]d$/)
+    }
+  })
 })
 
 describe('mature card', () => {

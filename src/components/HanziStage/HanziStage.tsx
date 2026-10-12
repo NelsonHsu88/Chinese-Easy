@@ -5,7 +5,7 @@ import type { CharacterJson } from 'hanzi-writer'
 import { playStrokeSound, playGongSound } from '../../lib/sound'
 import { tickHaptic, thudHaptic } from '../../lib/haptics'
 import { WRITER_HTML } from './writerHtml'
-import { bundledCharacterData } from '../../lib/hanziStrokeData'
+import { bundledCharacterData, prefetchStrokeData } from '../../lib/hanziStrokeData'
 
 export type HanziStageMode = 'demo' | 'quiz'
 
@@ -30,6 +30,15 @@ const CDN_URL = (char: string) =>
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+/**
+ * How long a finished character stays centred before the next one in a
+ * multi-character word slides in. Long enough to see it whole; short enough
+ * not to read as the app waiting for something.
+ */
+const CHARACTER_HOLD_MS = 900
+/** How long a writer may take to come up before it shows a spinner. */
+const SPINNER_DELAY_MS = 280
 
 /**
  * hanzi-writer's own contract: a list of SVG path strings and one median per
@@ -123,6 +132,13 @@ interface Props {
    */
   holdCharacterOnComplete?: boolean
   /**
+   * How long a finished character holds before the next one slides in, for a
+   * multi-character word in quiz mode. Defaults to `CHARACTER_HOLD_MS`; review
+   * screens pass less, because a learner drilling through a deck has already
+   * seen what they wrote and is waiting for the next glyph.
+   */
+  characterHoldMs?: number
+  /**
    * Fired on every accepted stroke — and once more, immediately, whenever
    * `resetActiveKey` clears the active glyph — with figures for the **whole
    * word**, not the character currently being written. `done`/`total` rather
@@ -163,6 +179,7 @@ export function HanziStage({
   resetActiveKey = 0,
   speed = 'normal',
   holdCharacterOnComplete = false,
+  characterHoldMs = CHARACTER_HOLD_MS,
   onQuizProgress,
   onQuizComplete,
   onDemoComplete,
@@ -171,6 +188,12 @@ export function HanziStage({
 }: Props) {
   const chars = useMemo(() => [...character].filter(Boolean), [character])
   const [box, setBox] = useState<{ w: number; h: number } | null>(null)
+
+  /* The writer can't mount until the stage has been measured, but its stroke
+     data doesn't need to wait for that — start the read now. */
+  useEffect(() => {
+    prefetchStrokeData(character)
+  }, [character])
 
   const handleLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout
@@ -207,7 +230,20 @@ export function HanziStage({
   const glyphTotals = useRef<number[]>([])
   const glyphDrawn = useRef<number[]>([])
 
+  /*
+   * The pause between one finished character and the next, so the learner sees
+   * what they just wrote before it slides away. Cancelled by anything that
+   * resets the word, or a stale timer would advance the next word's first glyph.
+   */
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelAdvance = () => {
+    if (advanceTimer.current) clearTimeout(advanceTimer.current)
+    advanceTimer.current = null
+  }
+  useEffect(() => cancelAdvance, [])
+
   useEffect(() => {
+    cancelAdvance()
     completedIndexes.current = new Set()
     demoCompletedIndexes.current = new Set()
     totalMistakes.current = 0
@@ -283,7 +319,11 @@ export function HanziStage({
     if (completedIndexes.current.size === chars.length) {
       onQuizComplete?.(totalMistakes.current)
     } else if (idx === activeIndex) {
-      setActiveIndex(idx + 1)
+      cancelAdvance()
+      advanceTimer.current = setTimeout(() => {
+        advanceTimer.current = null
+        setActiveIndex((current) => (current === idx ? idx + 1 : current))
+      }, characterHoldMs)
     }
   }
 
@@ -327,10 +367,18 @@ export function HanziStage({
                 style={{ position: 'absolute', inset: 0, opacity, transform: [{ translateX }] }}
               >
                 <SingleGlyphStage
-                  // `speed` is in the key because the WebView is configured once, by the
-                  // `init` message — there is no way to retune a live writer, so
-                  // changing speed has to rebuild it.
-                  key={`${idx}-${char}-${mode}-${speed}-${resetKey}-${Math.round(stageSize / 4) * 4}-${showOutline}`}
+                  /*
+                   * The key decides when the WebView itself is thrown away, and
+                   * that is the slow part: a native WebView, plus parsing the
+                   * whole hanzi-writer engine, before anything can draw. So it
+                   * holds only the character. Everything else — demo vs quiz, a
+                   * reset, a new size, the outline — goes in `initKey`, and the
+                   * writer is rebuilt inside the WebView that is already running
+                   * (writerHtml.ts handles a repeat `init`). Flipping a flashcard
+                   * to its stroke demo used to boot a fresh WebView here.
+                   */
+                  key={`${idx}-${char}`}
+                  initKey={`${mode}-${speed}-${resetKey}-${Math.round(stageSize / 4) * 4}-${showOutline}-${holdCharacterOnComplete || (mode === 'quiz' && idx < chars.length - 1)}`}
                   char={char}
                   mode={mode}
                   speed={speed}
@@ -340,7 +388,11 @@ export function HanziStage({
                   revealKey={revealKey}
                   restartKey={resetActiveKey}
                   size={stageSize}
-                  holdCharacterOnComplete={holdCharacterOnComplete}
+                  /* A character with another after it is held in full while
+                     it pauses — hanzi-writer otherwise fades it to its
+                     outline the instant the quiz ends, and the pause would
+                     show a ghost. The last one keeps the caller's choice. */
+                  holdCharacterOnComplete={holdCharacterOnComplete || (mode === 'quiz' && idx < chars.length - 1)}
                   active={idx === activeIndex}
                   onStrokeTotal={(total) => {
                     glyphTotals.current[idx] = total
@@ -359,6 +411,8 @@ export function HanziStage({
 }
 
 interface GlyphProps {
+  /** Changes whenever the writer must be re-created with new settings (see the parent's key). */
+  initKey: string
   speed: HanziStageSpeed
   char: string
   mode: HanziStageMode
@@ -380,7 +434,7 @@ interface GlyphProps {
   onDemoComplete: () => void
 }
 
-function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey, revealKey, restartKey, size, holdCharacterOnComplete, active, onStrokeTotal, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
+function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides, hintKey, revealKey, restartKey, size, holdCharacterOnComplete, active, onStrokeTotal, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
   const webviewRef = useRef<WebView>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const startedRef = useRef(false)
@@ -447,6 +501,35 @@ function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey,
     sendInit()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [strokeData])
+
+  /*
+   * New settings for the same character: re-create the writer in the WebView
+   * that is already up, rather than booting another. `sendInit` is a no-op
+   * until the WebView and the stroke data are both ready, so a change that
+   * lands before either simply goes out with the first init instead.
+   */
+  const initKeyRef = useRef(initKey)
+  useEffect(() => {
+    if (initKeyRef.current === initKey) return
+    initKeyRef.current = initKey
+    initSentRef.current = false
+    startedRef.current = false
+    setStatus((current) => (current === 'error' ? current : 'loading'))
+    sendInit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initKey])
+
+  /* The spinner waits a beat before showing: a writer that is ready within
+     that time (most of them, once the data is warm) never flashes one. */
+  const [spinnerDue, setSpinnerDue] = useState(false)
+  useEffect(() => {
+    if (status !== 'loading') {
+      setSpinnerDue(false)
+      return
+    }
+    const timer = setTimeout(() => setSpinnerDue(true), SPINNER_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [status])
 
   // Hint/reveal are fire-and-forget pulses driven by a bumped counter. Skip the
   // initial value so mounting a glyph doesn't immediately hint or spoil it, and
@@ -625,7 +708,7 @@ function SingleGlyphStage({ char, mode, speed, showOutline, showGuides, hintKey,
               containerStyle={{ backgroundColor: 'transparent' }}
             />
           ))}
-      {status === 'loading' && (
+      {status === 'loading' && spinnerDue && (
         <View className="absolute inset-0 items-center justify-center">
           <ActivityIndicator color="#22c55e" />
         </View>

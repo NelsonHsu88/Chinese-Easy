@@ -88,7 +88,7 @@ export function DueWords() {
           className="absolute inset-x-0 bottom-0 border-t border-slate-200 p-4 dark:border-slate-800"
         >
           <Pressable
-            onPress={() => router.push('/review')}
+            onPress={() => router.navigate('/review-tab')}
             className="w-full flex-row items-center justify-center gap-2 rounded-2xl bg-coral-500 py-4 shadow-card"
           >
             <Play size={20} color="white" />

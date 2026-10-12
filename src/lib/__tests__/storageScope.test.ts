@@ -72,7 +72,11 @@ function progress(tag: string): Record<StorageKey, string> {
     claimedChallengeIds: JSON.stringify([]),
     unlockedBuildingIds: JSON.stringify([]),
     newWordHistory: JSON.stringify([]),
+    listeningHistory: JSON.stringify([]),
+    matchHistory: JSON.stringify({}),
     newlyAddedWordIds: JSON.stringify([]),
+    favoriteWordIds: JSON.stringify([]),
+    progression: JSON.stringify({ levelReached: 3, lifetime: { reviewSessions: 2, listeningCorrect: 5, storiesFinished: 1 } }),
     subscription: JSON.stringify({ plan: 'yearly', source: 'store' }),
     quarantinedCards: JSON.stringify([]),
   } as Record<StorageKey, string>

@@ -40,7 +40,11 @@ export type StorageKey =
   | 'claimedChallengeIds'
   | 'unlockedBuildingIds'
   | 'newWordHistory'
+  | 'listeningHistory'
+  | 'matchHistory'
   | 'newlyAddedWordIds'
+  | 'favoriteWordIds'
+  | 'progression'
   | 'subscription'
   | 'quarantinedCards'
   // --- account-owned machinery (not progress; see ACCOUNT_MACHINERY_KEYS)
@@ -48,6 +52,8 @@ export type StorageKey =
   | 'syncCursor'
   // --- device-owned
   | 'tourStep'
+  | 'screenTours'
+  | 'listeningPausedUntil'
   | 'adFrequency'
   | 'devClockOverride'
   | 'recentSearchIds'
@@ -81,7 +87,11 @@ export const ACCOUNT_KEYS: ReadonlySet<StorageKey> = new Set<StorageKey>([
   'claimedChallengeIds',
   'unlockedBuildingIds',
   'newWordHistory',
+  'listeningHistory',
+  'matchHistory',
   'newlyAddedWordIds',
+  'favoriteWordIds',
+  'progression',
   'subscription',
   'quarantinedCards',
   'syncOutbox',
@@ -107,6 +117,9 @@ export const ACCOUNT_MACHINERY_KEYS: ReadonlySet<StorageKey> = new Set<StorageKe
  * Data that describes this installation rather than this person.
  *
  * - `tourStep` teaches this app's UI on this screen; a new phone deserves the tour.
+ *   `screenTours` (which per-tab guides have been seen) is the same, for the same reason.
+ * - `listeningPausedUntil` is "I can't listen right now" — a fact about where
+ *   this phone is, which another device has no reason to inherit.
  * - `adFrequency` counts impressions shown *here*, and is per-install by design.
  * - `devClockOverride` is a debug affordance that must never follow anyone.
  * - `recentSearchIds` is dictionary history: small, mildly useful across
@@ -114,6 +127,8 @@ export const ACCOUNT_MACHINERY_KEYS: ReadonlySet<StorageKey> = new Set<StorageKe
  */
 export const DEVICE_KEYS: ReadonlySet<StorageKey> = new Set<StorageKey>([
   'tourStep',
+  'screenTours',
+  'listeningPausedUntil',
   'adFrequency',
   'devClockOverride',
   'recentSearchIds',

@@ -258,22 +258,22 @@ function PurchaseState({
       <View style={{ flexDirection: 'row', gap: s.planGap }}>
         <PlanCard
           title={monthly?.title ?? 'Monthly'}
-          price={monthly?.price ?? '$4'}
+          price={monthly?.price ?? '$3'}
           unit={monthly?.unit ?? 'month'}
           selected={plan === 'monthly'}
           disabled={monthly ? !monthly.available : false}
           onSelect={() => select('monthly')}
-          accessibilityLabel={`Monthly plan, ${monthly?.price ?? '$4'} per month${plan === 'monthly' ? ', selected' : ''}`}
+          accessibilityLabel={`Monthly plan, ${monthly?.price ?? '$3'} per month${plan === 'monthly' ? ', selected' : ''}`}
         />
         <PlanCard
           title={yearly?.title ?? 'Yearly'}
-          price={yearly?.price ?? '$36'}
+          price={yearly?.price ?? '$15'}
           unit={yearly?.unit ?? 'year'}
-          savings={yearly?.savings ?? 'Save 25%'}
+          savings={yearly?.savings ?? 'Save 58%'}
           selected={plan === 'yearly'}
           disabled={yearly ? !yearly.available : false}
           onSelect={() => select('yearly')}
-          accessibilityLabel={`Yearly plan, ${yearly?.price ?? '$36'} per year, ${yearly?.savings ?? 'Save 25%'}${plan === 'yearly' ? ', selected' : ''}`}
+          accessibilityLabel={`Yearly plan, ${yearly?.price ?? '$15'} per year, ${yearly?.savings ?? 'Save 58%'}${plan === 'yearly' ? ', selected' : ''}`}
         />
       </View>
 
@@ -452,8 +452,9 @@ function Page({
    * are all drawn at the size they were designed at — so the scene is the one
    * element that changes, and it changes to make the page end exactly at the
    * bottom of the screen. On a tall phone that means more mountain; on a short
-   * one the artwork gives up its height first, exactly as the brief asks, and
-   * only once it is at its floor does the page scroll.
+   * one the artwork gives up its height first, exactly as the brief asks. The
+   * page does not scroll unless it has to: only once the artwork is at its
+   * floor and the page still overflows does scrolling switch back on.
    *
    * The subtraction is against the *usable* height, insets included: a hero
    * sized off the raw window is a hero that has quietly promised away the notch
@@ -485,12 +486,25 @@ function Page({
 
   const sceneryWidth = column * 1.16
 
+  /*
+   * Scrolling is off unless the page genuinely overflows. Both sizes come from
+   * the ScrollView's own callbacks, which react-native-web does fire (unlike
+   * `onLayout` on an arbitrary view). Until they arrive, scrolling stays off.
+   */
+  const [frameHeight, setFrameHeight] = useState(0)
+  const [contentHeight, setContentHeight] = useState(0)
+  const overflows = frameHeight > 0 && contentHeight > frameHeight + 1
+
   return (
     <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, backgroundColor: c.page }}>
       <ScrollView
         contentContainerStyle={{ flexGrow: 1, alignItems: 'center' }}
         showsVerticalScrollIndicator={false}
         bounces={false}
+        overScrollMode="never"
+        scrollEnabled={overflows}
+        onLayout={(e) => setFrameHeight(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_, h) => setContentHeight(h)}
       >
         {/* Plain styles on the animated view, content in a plain View inside it
             — NativeWind drops `className` on an `Animated.View` entirely. */}

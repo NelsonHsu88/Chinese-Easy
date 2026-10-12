@@ -1,5 +1,5 @@
 import CHARACTER_PINYIN from '../data/characterPinyin.json'
-import { pinyinSyllableToZhuyin } from './zhuyin'
+import { pinyinSyllableToZhuyin, ZHUYIN_SYLLABLE_GAP } from './zhuyin'
 import type { PhoneticScript } from '../types'
 
 /*
@@ -51,5 +51,5 @@ export function readingForText(text: string, phoneticScript: PhoneticScript): st
     parts.push(phoneticScript === 'zhuyin' ? pinyinSyllableToZhuyin(pinyin) : pinyin)
   }
 
-  return found ? parts.join(' ') : ''
+  return found ? parts.join(phoneticScript === 'zhuyin' ? ZHUYIN_SYLLABLE_GAP : ' ') : ''
 }

@@ -1,7 +1,8 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
 import { View, Text, Pressable, Animated, Platform } from 'react-native'
 import { Gauge, Snail } from 'lucide-react-native'
 import { guideColors as c, spacing, type as t, motion } from './tokens'
+import { LiftedFace, PressableScale } from '../dashboard/parts'
 
 /*
  * The writing guide's building blocks.
@@ -14,6 +15,15 @@ import { guideColors as c, spacing, type as t, motion } from './tokens'
  */
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
+
+/**
+ * True on a short phone, where the guide tightens its vertical padding so the
+ * character keeps a readable size and the page still fits without scrolling.
+ * Set once by `WritingGuideModal` from the screen height; only vertical space
+ * changes — type, widths, colours and corner radii are the same in both.
+ */
+export const GuideCompact = createContext(false)
+export const useGuideCompact = () => useContext(GuideCompact)
 
 // --- Progress stepper ---------------------------------------------------------
 
@@ -107,6 +117,7 @@ export function ExampleCard({
   icon?: ReactNode
   children: ReactNode
 }) {
+  const compact = useGuideCompact()
   return (
     <View
       style={{
@@ -115,7 +126,7 @@ export function ExampleCard({
         borderWidth: 1,
         borderRadius: 16,
         paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.lg,
+        paddingVertical: compact ? spacing.md : spacing.lg,
       }}
     >
       {label && (
@@ -144,6 +155,7 @@ export function PlainCard({
   icon?: ReactNode
   children: ReactNode
 }) {
+  const compact = useGuideCompact()
   return (
     <View
       style={{
@@ -152,7 +164,7 @@ export function PlainCard({
         borderWidth: 1,
         borderRadius: 16,
         paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.lg,
+        paddingVertical: compact ? spacing.md : spacing.lg,
       }}
     >
       {(title || icon) && (
@@ -176,6 +188,8 @@ export function PlainCard({
  * stands out, which stops working the moment there are two.
  */
 export function TakeawayCard({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  const compact = useGuideCompact()
+  const badge = compact ? 44 : 52
   return (
     <View
       className="flex-row items-center"
@@ -185,13 +199,13 @@ export function TakeawayCard({ icon, children }: { icon: ReactNode; children: Re
         borderWidth: 1,
         borderRadius: 16,
         paddingHorizontal: spacing.xl,
-        paddingVertical: spacing.xl,
+        paddingVertical: compact ? spacing.md : spacing.xl,
         gap: spacing.lg,
       }}
     >
       <View
         className="items-center justify-center rounded-full"
-        style={{ width: 52, height: 52, backgroundColor: c.green }}
+        style={{ width: badge, height: badge, backgroundColor: c.green }}
       >
         {icon}
       </View>
@@ -304,7 +318,11 @@ function SpeedOption({
 
 // --- Primary call to action ---------------------------------------------------
 
-/** Full-width, unmistakable, and the only green fill on the page. */
+/**
+ * The page's call to action — the app's raised 3D button (the Dashboard's
+ * `LiftedFace` inside a `PressableScale`), so it sinks onto its shoulder when
+ * pressed exactly like Start Review and Add to my words.
+ */
 export function PrimaryButton({
   label,
   icon,
@@ -314,28 +332,14 @@ export function PrimaryButton({
   icon?: ReactNode
   onPress: () => void
 }) {
-  const press = useRef(new Animated.Value(0)).current
-  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.97] })
-
-  const to = (value: number) =>
-    Animated.timing(press, { toValue: value, duration: 90, useNativeDriver: USE_NATIVE_DRIVER }).start()
-
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
-      <Pressable
-        onPress={onPress}
-        onPressIn={() => to(1)}
-        onPressOut={() => to(0)}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        className="flex-row items-center justify-center rounded-full"
-        style={{ height: 56, backgroundColor: c.greenCta, gap: spacing.sm }}
-      >
+    <PressableScale onPress={onPress} scaleTo={1} haptic={false} accessibilityLabel={label}>
+      <LiftedFace height={56} fill={c.greenCta} shoulder={c.greenCtaShoulder}>
         <Text className="font-nunito-extrabold text-white" style={{ fontSize: t.button.fontSize }}>
           {label}
         </Text>
         {icon}
-      </Pressable>
-    </Animated.View>
+      </LiftedFace>
+    </PressableScale>
   )
 }

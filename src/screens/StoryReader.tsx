@@ -1,29 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Pressable, ScrollView, Image, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
+import { View, Text, Pressable, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
-import { router, useLocalSearchParams } from 'expo-router'
-import { ChevronLeft, ChevronRight, Bookmark, Check, Plus, Volume2, PenLine } from 'lucide-react-native'
+import { router, Stack, useLocalSearchParams } from 'expo-router'
+import { ChevronLeft, ChevronDown, Check, Plus, Volume2, PenLine } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { storyById } from '../data/stories'
 import { segmentText } from '../lib/textSegmentation'
 import { displayExample, displayPinyin, displayWord, hanziFont } from '../lib/hanzi'
 import { forScript } from '../lib/scriptConversion'
-import { readingForText } from '../lib/characterReading'
 import { speak, speakWithProgress, stopSpeaking } from '../lib/speech'
-import { createRateEstimator, segmentSpans, segmentAt, skipTarget, predictedChar } from '../lib/narration'
+import { clauseEnd, createRateEstimator, segmentSpans, skipTarget, predictedChar } from '../lib/narration'
 import { paginateStory, budgetForArea } from '../lib/pagination'
 import { playTapSound } from '../lib/sound'
-import { tapHaptic, thunkHaptic, tickHaptic } from '../lib/haptics'
+import { tapHaptic, tickHaptic } from '../lib/haptics'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
 import { NarrationBar } from '../components/reading/NarrationBar'
-import { PageDecor } from '../components/reading/PageDecor'
-import { ReadingShell } from '../components/reading/ReadingShell'
-import { StoryArt } from '../components/reading/StoryArt'
 import { shortGloss } from '../lib/definitions'
 import { ReadingSentence } from '../components/dictionary/ReadingSentence'
-
-/** Ink-wash range that watermarks the right edge of the translation card. */
-const TRANSLATION_ART = require('../assets/images/decor/mountains-small.png')
+import { BookCover } from '../components/book/BookCover'
+import { PageFlip, type PageFlipHandle } from '../components/book/PageFlip'
+import { BookBlock, EndPage, TextPage, TitlePage } from '../components/book/BookPages'
+import { BOOK_CELL, BOOK_CONTENT_MAX, TRANSLATION_ALLOWANCE, bookColors as c, bookSize } from '../components/book/tokens'
+import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
 
 /*
  * Sheet motion. Rising is a spring — damped hard enough not to wobble, but with
@@ -42,99 +40,57 @@ const SHEET_FALL = { duration: 210, easing: Easing.in(Easing.cubic) } as const
 /** Transform and opacity can run off the UI thread natively; web has no such thread. */
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
-/*
- * Everything on a reading screen that isn't the words themselves, subtracted
- * from the measured reading area to leave the space the text actually gets:
- * the translation card (measured at 256 for a long translation), the page nav
- * (40) and the scroll padding (40).
- *
- * The card is the awkward part, because its height follows the length of the
- * translation, which follows the length of the Chinese on the screen — so this
- * is sized for a wordy one and will leave a little room spare on a terse one.
- * An estimate, and allowed to be: the page sits inside a ScrollView, so a
- * screen that underfills costs nothing and one that overfills still scrolls
- * rather than clipping.
- */
-const CHROME_ALLOWANCE = 336
-
-/** The story cover in the header, at the library's 2:3. */
-const COVER_WIDTH = 56
-const COVER_HEIGHT = 84
-
-/**
- * The reading progress row and the title header, above the text. The base was
- * measured — the window is 1119 tall in the browser and the scrolling area 929
- * — and the cover and its margin are added on top, because putting the cover in
- * the header takes that space away from the text on every screen.
- */
-const HEADER_ALLOWANCE = 190 + COVER_HEIGHT + 8
-
-/** `px-4` on the word grid, both sides. */
-const GRID_PADDING = 32
-
-/** The reading design's content cap, matching `ReadingShell`. */
-const CONTENT_WIDTH = 430
+/** Breathing room between the header and the top of the page. */
+const PAGE_TOP_GAP = 8
 
 /*
- * The Story Reader.
+ * The Story Reader — a book, built to the Beta 2.1 reference
+ * (`102 Book Redesign uI.png`).
  *
- * A book page, not a lesson screen: no card wrapping the reading area, cream
- * showing through everywhere, hanzi in a serif that is deliberately not the UI
- * sans, and the English translation set in Lora so it reads as prose rather than
- * app chrome. Light-only, for the same reason as the library.
- */
-
-/**
- * Coral dots under a word the learner hasn't added yet — a hint, not an error.
+ * A story opens on its cover (`BookCover`). "Start Reading" swings the cover
+ * open onto a title page, and from there the story is turned a page at a time:
+ * swiped, with the page following the finger over the spine in perspective, or
+ * by the arrows at the middle of the page (`PageFlip`). Every page is a sheet
+ * of paper cut to fit — the pagination below is measured against the page, so
+ * a page ends where its paper does instead of scrolling.
  *
- * **`alignSelf: 'stretch'`, never `w-full`**, and that one word is the whole
- * difference between the page reading as a paragraph and as a column of words.
- * The word box around this is sized by its own contents, and Yoga resolves a
- * percentage width against the space its *parent* was offered — which in the
- * wrapping grid is the full width of the line. So `w-full` measured this rule
- * at the width of the screen, the box grew to hold it, and every word took a
- * row of its own. It only bit on the phone: react-native-web treats the same
- * percentage as `auto` while it is measuring a shrink-to-fit box, so the
- * browser laid the page out correctly throughout. `alignSelf` asks for the
- * width the box turns out to have instead of voting on what it should be.
+ * Book page 0 is the title page; book page n is story screen n − 1; the page
+ * after the last screen is the End page. Everything that thinks in story
+ * screens (narration, progress) converts at the edges.
  */
-function DottedUnderline({ width }: { width: number }) {
-  const count = Math.max(3, Math.floor(width / 6))
-  return (
-    <View className="mt-[2px] flex-row justify-between" style={{ height: 3, alignSelf: 'stretch' }}>
-      {Array.from({ length: count }, (_, i) => (
-        <View key={i} style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#f46757' }} />
-      ))}
-    </View>
-  )
-}
-
 export function StoryReader() {
   const { storyId } = useLocalSearchParams<{ storyId: string }>()
-  const { wordBank, deck, addWordFromBook, settings, recordStoryPage } = useApp()
+  const { wordBank, deck, addWordFromBook, settings, updateSettings, recordStoryPage, trackLearningEvent, storyProgress } = useApp()
   const story = storyById(storyId)
 
-  const [pageIndex, setPageIndex] = useState(0)
+  /** The page the book is open at: 0 the title page, n story screen n − 1. */
+  const [bookIndex, setBookIndex] = useState(0)
+  const [coverShown, setCoverShown] = useState(true)
   const [practiceWordId, setPracticeWordId] = useState<string | null>(null)
+  const flip = useRef<PageFlipHandle>(null)
 
   /*
    * The audiobook.
    *
    * `request` is the single source of truth for what should be speaking right
-   * now: a page, the character to start from, and a token that makes every
-   * request a fresh object even when the other two repeat — skipping back onto
-   * the word you are already on still has to restart speech. One effect below
-   * performs whatever the current request says and tears down whatever the last
-   * one started, so pause, skip, page-turn and auto-advance don't each need
-   * their own stop logic. `null` means silent.
+   * now: a story screen, the character to start from, and a token that makes
+   * every request a fresh object even when the other two repeat — skipping back
+   * onto the word you are already on still has to restart speech. One effect
+   * below performs whatever the current request says and tears down whatever
+   * the last one started, so pause, skip, page-turn and auto-advance don't each
+   * need their own stop logic. `null` means silent.
    */
   const [request, setRequest] = useState<{ page: number; from: number; token: number } | null>(null)
   const [narrationOpen, setNarrationOpen] = useState(false)
-  /** The character being spoken, or -1 for none. This is what the green line follows. */
+  /** The header's 讀音 dropdown. */
+  const [readingsOpen, setReadingsOpen] = useState(false)
+  /** The character being spoken, or -1 for none. This is what the highlight follows. */
   const [spokenChar, setSpokenChar] = useState(-1)
   /** The same position, readable by the skip buttons without waiting for a render. */
   const spokenCharRef = useRef(-1)
   const tokenRef = useRef(0)
+  /** Narration was asked for from the title page: start it once the first page has turned in. */
+  const startOnTurnRef = useRef(false)
   const rate = useRef(createRateEstimator()).current
   const playing = request !== null
 
@@ -150,68 +106,77 @@ export function StoryReader() {
   const [sheetHeight, setSheetHeight] = useState(420)
 
   /*
-   * The reading area, measured once it lays out, and the screens that fit in it.
+   * The page, and the story cut to fit it.
    *
-   * The library is authored in long pages — a median of 291 characters, which
-   * is several screens of this layout — so they are re-cut here to what the
-   * device can actually show, and each screen carries the slice of the
-   * translation that belongs to it. Page numbers therefore mean a screen, not
-   * an authored page, and differ between a phone and a tablet.
-   */
-  /*
-   * Derived from the window, not from `onLayout`.
-   *
-   * Measuring the reading area with `onLayout` is the obvious approach and it
-   * does not work here: the callback never fires for this view under
-   * react-native-web, so the budget stayed at its pre-measurement fallback and
-   * every screen carried three rows of text in a container with room for seven.
-   * The window's size and the safe-area insets are always known, and everything
-   * between them and the text — the progress row, the title header, the
-   * translation card, the nav — is fixed chrome, so the same number can be
-   * reached without waiting to be told.
+   * Derived from the window and the safe-area insets rather than `onLayout`,
+   * which does not fire reliably for this kind of view under react-native-web.
+   * Everything between the window's edges and the paper is fixed chrome — the
+   * header, the gaps round the page — so the page's size is known up front, and
+   * the text area inside it is the paper less its margins and the room kept
+   * back for the translation.
    */
   const { width: windowWidth, height: windowHeight } = useWindowDimensions()
   const insets = useSafeAreaInsets()
-  const budget = budgetForArea(
-    Math.min(windowWidth, CONTENT_WIDTH) - GRID_PADDING,
-    windowHeight - insets.top - insets.bottom - HEADER_ALLOWANCE - CHROME_ALLOWANCE,
+  const column = Math.min(windowWidth, BOOK_CONTENT_MAX)
+  const pageW = column - bookSize.spineGap - bookSize.edgeGap
+  const pageH = Math.max(
+    360,
+    windowHeight - insets.top - insets.bottom - bookSize.header - PAGE_TOP_GAP - bookSize.footGap,
   )
-  const screens = useMemo(() => (story ? paginateStory(story.pages, budget) : []), [story, budget])
+  const budget = budgetForArea(
+    pageW - bookSize.padX * 2,
+    pageH - bookSize.padTop - bookSize.padBottom - TRANSLATION_ALLOWANCE,
+    BOOK_CELL,
+  )
+  /* One sentence a page at least, and never more than fits: a book page cannot scroll. */
+  const screens = useMemo(
+    () => (story ? paginateStory(story.pages, budget, { minSentences: 1, maxChars: budget }) : []),
+    [story, budget],
+  )
+  /** The title page, every story screen, and the End page. */
+  const bookPages = screens.length + 2
+  const endPage = screens.length + 1
+  /** The story screen on view: -1 on the title page, `screens.length` on the End page. */
+  const pageIndex = bookIndex - 1
+  /** The screen narration works from — the last one, when the book is open at the End page. */
+  const narrationPage = Math.min(Math.max(0, pageIndex), screens.length - 1)
 
   /*
-   * Re-measuring (a rotation, a font-size change) can leave fewer screens than
+   * Re-measuring (a rotation, a font-size change) can leave fewer pages than
    * before, stranding the reader past the end of the story.
    */
   useEffect(() => {
-    if (screens.length > 0 && pageIndex > screens.length - 1) setPageIndex(screens.length - 1)
-  }, [screens.length, pageIndex])
+    if (screens.length > 0 && bookIndex > screens.length + 1) setBookIndex(screens.length + 1)
+  }, [screens.length, bookIndex])
 
-  const page = screens[pageIndex]
   /*
-   * Segmented against the canonical traditional prose, with each segment's
-   * *display* form converted to the learner's script.
-   *
-   * The order matters. Matching first and converting second is what keeps every
-   * word interactive: `seg.word` is resolved from the authored text, so a
-   * simplified learner tapping 学校 gets the same entry as a traditional learner
-   * tapping 學校, and `seg.text` stays canonical so the narration cursor and
-   * `segmentSpans` keep measuring against the string the voice is actually
-   * reading. Converting `page.chinese` up front would have segmented simplified
-   * text and lost the match on every word whose forms differ.
+   * Reaching the last page finishes the story, for the reading achievements —
+   * once per opening, so paging back and forth on the last page counts one
+   * read, and reading the story again another day counts again.
+   */
+  const finishCounted = useRef(false)
+  useEffect(() => {
+    if (finishCounted.current || screens.length === 0 || bookIndex < screens.length || !story) return
+    finishCounted.current = true
+    trackLearningEvent({ type: 'STORY_FINISHED', storyId: story.id })
+  }, [bookIndex, screens.length, story, trackLearningEvent])
+
+  const page = pageIndex >= 0 ? screens[pageIndex] : undefined
+  /*
+   * The page on view, segmented the way `TextPage` draws it — the narration
+   * controls need its word spans to skip by whole words. `segmentText` caches
+   * its table, so doing this here as well as in the page costs little.
    */
   const segments = useMemo(
     () => (page ? segmentText(page.chinese, wordBank, settings.script) : []),
     [page, wordBank, settings.script],
   )
-  /* Character spans per segment — the join between what the voice reports (a
-     character) and what the page draws on (a whole word). */
   const spans = useMemo(() => segmentSpans(segments), [segments])
-  const spokenSegment = useMemo(() => segmentAt(spans, spokenChar), [spans, spokenChar])
   const sheetWord = sheetWordId ? wordBank.find((w) => w.id === sheetWordId) : undefined
   const practiceWord = practiceWordId ? wordBank.find((w) => w.id === practiceWordId) : undefined
-  const alreadyAdded = sheetWord ? deck.some((c) => c.wordId === sheetWord.id) : false
+  const alreadyAdded = sheetWord ? deck.some((card) => card.wordId === sheetWord.id) : false
 
-  const deckWordIds = useMemo(() => new Set(deck.map((c) => c.wordId)), [deck])
+  const deckWordIds = useMemo(() => new Set(deck.map((card) => card.wordId)), [deck])
 
   // Runs after the sheet has been laid out and measured, so the rise starts from
   // the right offset rather than from the placeholder height.
@@ -239,14 +204,11 @@ export function StoryReader() {
     outputRange: [sheetHeight, 0],
   })
 
-  // Reaching a page is what counts as reading it, so progress is recorded on
-  // arrival rather than on leaving — closing the story mid-page still counts.
   /*
-   * The *authored* page is recorded, not the screen index. Screens are cut to
-   * fit the device, so a screen number means different text on a phone and a
-   * tablet — persisting one would make a resumed story jump around between
-   * them, and would leave the library's progress bar reading against a total it
-   * no longer matches.
+   * Reaching a page is what counts as reading it. The *authored* page is
+   * recorded, not the book page: pages are cut to fit the device, so a page
+   * number means different text on a phone and a tablet, and persisting one
+   * would make a resumed story jump between them.
    */
   useEffect(() => {
     const source = screens[pageIndex]?.sourcePage
@@ -267,18 +229,9 @@ export function StoryReader() {
     if (!canonical) return
     /*
      * Spoken in the learner's script, and every offset below still counts
-     * canonical characters.
-     *
-     * That works — and is only safe at all — because conversion preserves
-     * character count: `buildWordBank.mjs` fails the build rather than emit an
-     * entry whose two forms differ in length, so `text[i]` is the same position
-     * in both. `spans` are measured off the canonical segments and the engine's
-     * boundary offsets index this string, so the two stay in step either way.
-     *
-     * Worth doing rather than always speaking traditional: `mandarinLocale`
-     * ranks `zh-CN` first (it is the tag engines most reliably map to Mandarin),
-     * and a zh-CN voice handed traditional-only characters is the case most
-     * likely to mispronounce one or fall silent on it.
+     * canonical characters — safe because conversion preserves character count
+     * (`buildWordBank.mjs` fails the build rather than emit an entry whose two
+     * forms differ in length).
      */
     const text = forScript(canonical, settings.script)
 
@@ -287,52 +240,63 @@ export function StoryReader() {
     rate.reset()
 
     /*
-     * Not every voice reports where it has got to, so the line is driven from
-     * the clock until one proves it will.
-     *
-     * Chrome fires no `boundary` events at all for its remote voices, and on a
-     * machine whose best Mandarin voice is one of those the highlight simply
-     * froze on the first word. A real boundary is better than a prediction, so
-     * the first one to arrive takes over for good and the timer stops.
+     * The highlight runs on the clock between whatever boundaries the voice
+     * reports. Chrome fires none at all for its remote voices, and Android's
+     * Mandarin engines typically fire one per *clause* — so stopping the clock
+     * at the first real boundary, as this used to, left the line parked on the
+     * first word of every clause while the voice read on. Each boundary
+     * re-anchors the prediction; once a voice has proved it reports them, the
+     * prediction is held inside the clause it is in, so the next boundary is
+     * always a step forward rather than a correction back.
      */
     let sawBoundary = false
-    const startedAt = Date.now()
+    let anchor = request.from
+    let anchoredAt = Date.now()
+    const startedAt = anchoredAt
     const moveTo = (at: number) => {
+      if (at === spokenCharRef.current) return
       spokenCharRef.current = at
       setSpokenChar(at)
     }
     const ticker = setInterval(() => {
-      if (cancelled || sawBoundary) return
-      moveTo(predictedChar(request.from, Date.now() - startedAt, rate.perSecond(), text.length))
+      if (cancelled) return
+      const predicted = predictedChar(anchor, Date.now() - anchoredAt, rate.perSecond(), text.length)
+      moveTo(sawBoundary ? Math.min(predicted, clauseEnd(text, anchor)) : predicted)
     }, 110)
 
     speakWithProgress(text.slice(request.from), {
       onBoundary: (offset) => {
         if (cancelled) return
         sawBoundary = true
-        clearInterval(ticker)
         const at = request.from + offset
+        anchor = at
+        anchoredAt = Date.now()
         moveTo(at)
         rate.record(at)
       },
       onDone: () => {
         if (cancelled) return
         clearInterval(ticker)
-        // A page read start to finish reveals the speaking rate even when
-        // nothing reported progress along the way, so the next page can be
-        // predicted properly rather than guessed at again.
         if (!sawBoundary) rate.observeRun(text.length - request.from, Date.now() - startedAt)
         if (request.page < screens.length - 1) {
-          // Straight on into the next page: an audiobook that stopped at every
-          // page break would need a tap every few sentences.
-          setPageIndex(request.page + 1)
-          spokenCharRef.current = 0
-          setSpokenChar(0)
-          setRequest({ page: request.page + 1, from: 0, token: ++tokenRef.current })
+          /*
+           * Straight on into the next page — and turned like one, so the
+           * audiobook reads as a book being read. The turn's own commit
+           * (`handleTurn`) starts the next page's speech. Should a turn already
+           * be under way (the learner mid-swipe), jump instead.
+           */
+          if (!flip.current?.turn('next')) {
+            setBookIndex(request.page + 2)
+            spokenCharRef.current = 0
+            setSpokenChar(0)
+            setRequest({ page: request.page + 1, from: 0, token: ++tokenRef.current })
+          }
         } else {
+          // The story is over: fall silent and turn to the End page.
           setRequest(null)
           setSpokenChar(-1)
           spokenCharRef.current = -1
+          flip.current?.turn('next')
         }
       },
     })
@@ -350,35 +314,52 @@ export function StoryReader() {
   // the learner opens next.
   useEffect(() => () => stopSpeaking(), [])
 
-  if (!story || !page) {
+  const openWord = useCallback((word: VocabWord) => {
+    playTapSound()
+    tapHaptic()
+    setSheetWordId(word.id)
+  }, [])
+
+  if (!story || screens.length === 0) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center px-6" style={{ backgroundColor: '#fdfbf5' }}>
-        <Text className="font-inter" style={{ color: '#8a8a99' }}>
+      <SafeAreaView className="flex-1 items-center justify-center px-6" style={{ backgroundColor: c.backdrop }}>
+        <Text className="font-inter" style={{ color: c.inkFaint }}>
           Story not found.
         </Text>
       </SafeAreaView>
     )
   }
 
-  const totalPages = screens.length
-  // Against screens rather than authored pages, so the bar creeps forward with
-  // each turn instead of jumping a third of the way at a time.
-  const percent = Math.round(((pageIndex + 1) / totalPages) * 100)
+  const leave = () => (router.canGoBack() ? router.back() : router.replace('/books'))
 
   /*
-   * Where the narrator is in the story as a whole, for the scrubber.
-   *
-   * Speech has no timeline, but the position in the text is known exactly and
-   * can be restarted from anywhere — so the scrubber measures characters, which
-   * is a real quantity, rather than pretending to measure seconds.
+   * Where the narrator is in the story as a whole, for the scrubber. Speech has
+   * no timeline, but the position in the text is known exactly and can be
+   * restarted from anywhere — so the scrubber measures characters.
    */
   const storyChars = screens.reduce((sum, s) => sum + s.chinese.length, 0)
-  const charsBefore = screens.slice(0, pageIndex).reduce((sum, s) => sum + s.chinese.length, 0)
-  const narrationProgress = storyChars
-    ? (charsBefore + Math.max(0, spokenChar)) / storyChars
-    : 0
+  const charsBefore = screens.slice(0, Math.max(0, pageIndex)).reduce((sum, s) => sum + s.chinese.length, 0)
+  const narrationProgress = storyChars ? (charsBefore + Math.max(0, spokenChar)) / storyChars : 0
+  /* The clock under the scrubber. Speech has no timeline, so both numbers are
+     characters over the voice's measured speaking rate — the same estimate that
+     drives the highlight and the ±5s buttons. */
+  const charsPerSecond = rate.perSecond()
+  const narrationTotal = storyChars / charsPerSecond
 
-  /** Jumps to a fraction of the whole story, across screens. */
+  /**
+   * Moves the reading position to a story screen, restarting speech only if it
+   * was already running. Skipping while paused moves the place without
+   * breaking the silence — that's what a paused player does. A jump, not a
+   * turn: the scrubber can cross half the book.
+   */
+  const seekTo = (targetPage: number, from: number) => {
+    if (targetPage !== pageIndex) setBookIndex(targetPage + 1)
+    spokenCharRef.current = from
+    setSpokenChar(from)
+    if (playing) setRequest({ page: targetPage, from, token: ++tokenRef.current })
+  }
+
+  /** Jumps to a fraction of the whole story, across pages. */
   const seekToFraction = (fraction: number) => {
     const target = Math.round(fraction * storyChars)
     let at = 0
@@ -392,23 +373,51 @@ export function StoryReader() {
     }
   }
 
-  /**
-   * Moves the reading position, restarting speech only if it was already
-   * running. Skipping while paused should move the place without breaking the
-   * silence — that's what a paused player does.
+  /*
+   * A page has finished turning — by hand, by arrow or by the narrator.
+   * Narration follows the book: still playing, it starts on the page now open;
+   * turned back to the title page, it stops, there being nothing there to read.
    */
-  const seekTo = (targetPage: number, from: number) => {
-    if (targetPage !== pageIndex) setPageIndex(targetPage)
-    spokenCharRef.current = from
-    setSpokenChar(from)
-    if (playing) setRequest({ page: targetPage, from, token: ++tokenRef.current })
+  const handleTurn = (next: number) => {
+    setBookIndex(next)
+    const wantsAudio = playing || startOnTurnRef.current
+    startOnTurnRef.current = false
+    if (!wantsAudio) {
+      spokenCharRef.current = -1
+      setSpokenChar(-1)
+      return
+    }
+    if (next < 1 || next === endPage) {
+      setRequest(null)
+      spokenCharRef.current = -1
+      setSpokenChar(-1)
+      return
+    }
+    spokenCharRef.current = 0
+    setSpokenChar(0)
+    setRequest({ page: next - 1, from: 0, token: ++tokenRef.current })
   }
 
   const startNarration = () => {
     setNarrationOpen(true)
+    // From the End page there is nothing left to read: start the story again.
+    if (bookIndex === endPage) {
+      setBookIndex(1)
+      spokenCharRef.current = 0
+      setSpokenChar(0)
+      setRequest({ page: 0, from: 0, token: ++tokenRef.current })
+      return
+    }
+    // From the title page, turn to the first page and read from there.
+    if (bookIndex === 0) {
+      startOnTurnRef.current = true
+      if (flip.current?.turn('next')) return
+      startOnTurnRef.current = false
+      setBookIndex(1)
+    }
     spokenCharRef.current = 0
     setSpokenChar(0)
-    setRequest({ page: pageIndex, from: 0, token: ++tokenRef.current })
+    setRequest({ page: narrationPage, from: 0, token: ++tokenRef.current })
   }
 
   const toggleNarration = () => {
@@ -420,7 +429,7 @@ export function StoryReader() {
       return
     }
     setRequest({
-      page: pageIndex,
+      page: narrationPage,
       from: Math.max(0, spokenCharRef.current),
       token: ++tokenRef.current,
     })
@@ -434,6 +443,7 @@ export function StoryReader() {
   }
 
   const skipNarration = (seconds: number) => {
+    if (!page) return
     tickHaptic()
     const from = Math.max(0, spokenCharRef.current)
     const target = skipTarget(from, seconds, rate.perSecond(), spans, page.chinese.length)
@@ -441,289 +451,176 @@ export function StoryReader() {
     // The skip ran off the end of this page. Those seconds genuinely belong to
     // the next one, so follow them there rather than parking on the last word.
     if (target >= page.chinese.length) {
-      if (pageIndex < totalPages - 1) seekTo(pageIndex + 1, 0)
+      if (pageIndex < screens.length - 1) seekTo(pageIndex + 1, 0)
       return
     }
     seekTo(pageIndex, target)
   }
 
-  /** Page turns by hand. Narration follows the learner rather than fighting them. */
-  const goToPage = (next: number) => {
-    thunkHaptic()
-    seekTo(next, 0)
-    if (!playing) setSpokenChar(-1)
-  }
+  /*
+   * Where "Continue Reading" opens the book: the first page of the furthest
+   * authored page reached. A story never opened, or read only on its first
+   * authored page, opens on the title page.
+   */
+  const furthest = storyProgress[story.id]
+  const resumeAt = furthest ? screens.findIndex((s) => s.sourcePage === furthest) + 1 : 0
+
+  const renderPage = (i: number) =>
+    i === 0 ? (
+      <TitlePage story={story} width={pageW} height={pageH} script={settings.script} />
+    ) : i === endPage ? (
+      <EndPage story={story} width={pageW} height={pageH} script={settings.script} onDone={leave} />
+    ) : (
+      <TextPage
+        screen={screens[i - 1]}
+        width={pageW}
+        height={pageH}
+        folio={`${i} / ${screens.length}`}
+        wordBank={wordBank}
+        deckWordIds={deckWordIds}
+        script={settings.script}
+        phonetic={settings.phoneticScript}
+        spokenChar={i === bookIndex ? spokenChar : -1}
+        onPressWord={openWord}
+      />
+    )
 
   return (
-    <ReadingShell>
-      {/* Reading progress. Thin on purpose — a thick bar turns a book back into an app. */}
-      <View className="mt-5 flex-row items-center gap-2.5 px-5">
-        <View className="h-1 flex-1 overflow-hidden rounded-full" style={{ backgroundColor: '#eee8df' }}>
-          <View className="h-full rounded-full" style={{ width: `${percent}%`, backgroundColor: '#f46757' }} />
-        </View>
-        <Text className="font-inter-medium text-[13px]" style={{ color: '#292936' }}>
-          {percent}%
-        </Text>
-      </View>
+    // Clipped: the turn arrows straddle the page edge, and on a phone-width
+    // window one pokes past the screen — which on web makes the page pan sideways.
+    <View style={{ flex: 1, backgroundColor: c.backdrop, overflow: 'hidden' }}>
+      {/* The cover is this screen's arrival, so the stack's own push slide stays out
+          of it. And no swipe-back: on iOS a swipe in from the left edge would leave
+          the book instead of turning back a page — the back arrow is the way out. */}
+      <Stack.Screen options={{ animation: 'none', gestureEnabled: false }} />
 
-      <View className="flex-row items-center px-5 pb-1 pt-3">
-        {/*
-          Falls back to the library rather than relying on there being somewhere
-          to go back to. A story is reachable by its own URL — a deep link, a
-          reload, a shared address — and in those cases nothing was pushed to
-          pop, so a bare `router.back()` is a button that silently does nothing.
-          The shelf is where this story came from, so it is the right answer
-          whether or not the stack agrees.
-        */}
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/books'))}
-          accessibilityRole="button"
-          accessibilityLabel="Back to library"
-          hitSlop={12}
-        >
-          <ChevronLeft size={26} color="#1a1a2e" strokeWidth={2} />
-        </Pressable>
-        <View className="flex-1 items-center px-2">
-          {/*
-            The cover, over the title it belongs to. It sits in the header
-            rather than in the scrolling text, which is what lets it appear on
-            every screen without being the reason any of them overflow — the
-            height it takes is fixed and is accounted for in HEADER_ALLOWANCE,
-            so the text budget below simply shrinks to make room for it.
-          */}
-          <View className="mb-2 rounded-[11px] shadow-paper-lifted">
-            <StoryArt story={story} width={COVER_WIDTH} height={COVER_HEIGHT} radius={11} />
-          </View>
-          <Text
-            className={`${hanziFont(settings.script, 'semibold')} text-[25px] leading-[32px]`}
-            style={{ color: '#1a1a2e' }}
-          >
-            {forScript(story.title, settings.script)}
-          </Text>
-          <Text className="font-lora text-sm" style={{ color: '#55545d' }}>
-            {story.titleEnglish}
-          </Text>
-        </View>
-        {/*
-          Listening lives in the header, next to the title, because it is a
-          property of the whole story rather than of the page you happen to be
-          on. It used to hang off the translation card at the foot of the page,
-          which meant scrolling to the bottom to start an audiobook — and now
-          that pages are cut to fit a screen, scrolling past the text to reach
-          the play button would be the only scrolling left on the screen.
-        */}
-        <Pressable
-          onPress={startNarration}
-          accessibilityRole="button"
-          accessibilityLabel="Read this story aloud"
-          hitSlop={10}
-          className="mr-2 items-center justify-center rounded-full active:opacity-80"
-          style={{ width: 38, height: 38, backgroundColor: '#f46757' }}
-        >
-          <Volume2 size={19} color="#ffffff" />
-        </Pressable>
-        {/* Placeholder affordance from the reference — bookmarking isn't a feature
-            of the app yet, so this is intentionally inert and not announced. */}
-        <Bookmark size={24} color="#c9c2b4" strokeWidth={1.8} />
-      </View>
-
-      <View className="flex-1">
-        {/* No clouds here — the reading text is already a dense field of small
-            marks, and drifting shapes behind it fight the hanzi for attention. */}
-        <PageDecor />
-
-        <ScrollView contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
-          {/*
-            With real artwork the hero is the book's cover, shown at its native
-            2:3 and lifted off the page. Without it, the painted fallback reads
-            better as a soft near-circular wash than as an empty rectangle — a
-            hard-edged placeholder would look like a failed image load.
-          */}
-          {/*
-            No hero cover here any more.
-
-            Every screen has to have the same amount of room for text, or the
-            budget would depend on which screen you were looking at and the
-            story would repaginate underneath you on every page turn. Showing
-            the cover on the first screen alone therefore meant that screen —
-            and only that screen — overflowed and had to be scrolled, which is
-            the exact thing this pagination exists to stop. The cover still
-            introduces the story on the library shelf, and now names the track
-            in the player, so nothing is lost by letting the reading surface be
-            uniformly reading.
-          */}
-
-          {/*
-            Each segment is its own column so the reading sits directly under the
-            word it belongs to, rather than as one pinyin run beneath the whole
-            paragraph. Wrapping is handled by the flex row, not by Text, which is
-            why this is a View of columns rather than nested <Text> runs.
-          */}
-          <View className="flex-row flex-wrap items-start justify-center px-4">
-            {segments.map((seg, i) => {
-              // A matched word's own pinyin knows which reading it takes; anything
-              // else falls back to the per-character index, so a name or a rare
-              // character in a story still gets a sound under it.
-              const reading = seg.word
-                ? displayPinyin(seg.word, settings.phoneticScript)
-                : readingForText(seg.text, settings.phoneticScript)
-              const unknown = !!seg.word && !deckWordIds.has(seg.word.id)
-              const boxWidth = seg.display.length * 25
-              const spoken = spokenSegment === i
-
-              return (
-                <Pressable
-                  key={i}
-                  disabled={!seg.word}
-                  onPress={() => {
-                    if (!seg.word) return
-                    playTapSound()
-                    tapHaptic()
-                    setSheetWordId(seg.word.id)
-                  }}
-                  accessibilityRole={seg.word ? 'button' : undefined}
-                  accessibilityLabel={seg.word ? `${seg.display}, ${reading}` : undefined}
-                  className="mx-[1px] mb-[9px] mt-[3px] items-center"
-                >
-                  <View
-                    className="items-center rounded-[10px] px-[9px] pb-1 pt-[7px]"
-                    style={
-                      seg.word
-                        ? {
-                            borderWidth: 1,
-                            borderColor: 'rgba(205,194,177,0.36)',
-                            backgroundColor: 'rgba(255,255,255,0.32)',
-                          }
-                        : undefined
-                    }
-                  >
-                    <Text
-                      className={`${hanziFont(settings.script, 'medium')} text-[23px] leading-[31px]`}
-                      style={{ color: '#17171d' }}
-                    >
-                      {seg.display}
-                    </Text>
-                    {unknown && <DottedUnderline width={boxWidth} />}
-                    {/*
-                      The narrator's place in the text. Absolutely positioned, and
-                      sitting just outside the box's bottom edge, for two reasons:
-                      nothing reflows as it moves from word to word, and it never
-                      collides with the coral "not in your deck yet" dots drawn
-                      inside the box.
-                    */}
-                    {spoken && (
-                      <View
-                        style={{
-                          position: 'absolute',
-                          left: 4,
-                          right: 4,
-                          bottom: -4,
-                          height: 3,
-                          borderRadius: 2,
-                          backgroundColor: '#45b887',
-                        }}
-                      />
-                    )}
-                  </View>
-                  {reading ? (
-                    <Text className="mt-1 font-inter text-[9.5px]" style={{ color: '#96928e' }}>
-                      {reading}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              )
-            })}
-          </View>
-
-          {/* Translation. Always visible — hiding it behind a toggle made the page
-              feel like an exercise; the reference treats it as part of the story. */}
-          <View className="mx-[22px] mb-3 mt-[26px]">
-            <View
-              className="overflow-hidden rounded-[17px] px-[18px] pb-5 pt-[18px]"
-              style={{
-                backgroundColor: 'rgba(255,253,248,0.86)',
-                borderWidth: 1,
-                borderColor: 'rgba(215,203,183,0.45)',
-              }}
+      <SafeAreaView edges={['top', 'bottom']} style={{ flex: 1, alignItems: 'center' }}>
+        <View style={{ width: column, flex: 1 }}>
+          {/* Header: back, the title, and the narrator. */}
+          <View style={{ height: bookSize.header, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
+            {/*
+              Falls back to the library rather than relying on there being
+              somewhere to go back to: a story is reachable by its own URL, and
+              then nothing was pushed to pop.
+            */}
+            <Pressable onPress={leave} accessibilityRole="button" accessibilityLabel="Back to library" hitSlop={12}>
+              <ChevronLeft size={26} color={c.ink} strokeWidth={2} />
+            </Pressable>
+            <Text
+              numberOfLines={1}
+              className={hanziFont(settings.script, 'semibold')}
+              style={{ flex: 1, textAlign: 'center', fontSize: 17, color: c.ink, paddingHorizontal: 8 }}
             >
-              {/*
-                Ink-wash range washing in from the right edge, behind the prose.
-                Bled off the edge and clipped by the card's own radius so it reads
-                as printed into the paper rather than placed on top of it. Sits
-                first in the tree so the text paints over it.
-
-                No page pinyin above the translation: every word in the passage
-                already carries its own reading, so a second romanised copy of the
-                whole paragraph was pure duplication.
-              */}
-              <Image
-                source={TRANSLATION_ART}
+              {forScript(story.title, settings.script)}
+            </Text>
+            <Pressable
+              onPress={startNarration}
+              accessibilityRole="button"
+              accessibilityLabel="Read this story aloud"
+              hitSlop={10}
+            >
+              <View
                 style={{
-                  position: 'absolute',
-                  right: -22,
-                  top: '30%',
-                  width: 190,
-                  height: 190 / (325 / 132),
-                  opacity: 0.7,
-                }}
-                resizeMode="contain"
-                accessibilityIgnoresInvertColors
-              />
-              <Text className="font-lora text-[15.5px]" style={{ color: '#303038', lineHeight: 27 }}>
-                {page.translation}
-              </Text>
-            </View>
-
-          </View>
-
-          {totalPages > 1 && (
-            <View className="mt-7 flex-row items-center justify-between px-5">
-              <Pressable
-                disabled={pageIndex === 0}
-                onPress={() => goToPage(pageIndex - 1)}
-                accessibilityRole="button"
-                className="h-10 flex-row items-center gap-1 rounded-full px-4"
-                style={{
-                  backgroundColor: 'rgba(255,255,255,0.7)',
-                  borderWidth: 1,
-                  borderColor: '#e4ded4',
-                  opacity: pageIndex === 0 ? 0.35 : 1,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: c.narratorDisc,
+                  borderWidth: 2,
+                  borderColor: c.narratorRim,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#3A2A14',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowRadius: 4,
+                  shadowOpacity: 0.22,
+                  elevation: 3,
                 }}
               >
-                <ChevronLeft size={17} color="#292936" />
-                <Text className="font-inter-semibold text-[13px]" style={{ color: '#292936' }}>
-                  Previous
-                </Text>
-              </Pressable>
-
-              <Text className="font-inter text-[12px]" style={{ color: '#8a8a99' }}>
-                {pageIndex + 1} / {totalPages}
-              </Text>
-
-              <Pressable
-                disabled={pageIndex === totalPages - 1}
-                onPress={() => goToPage(pageIndex + 1)}
-                accessibilityRole="button"
-                className="h-10 flex-row items-center gap-1 rounded-full px-4"
+                <Volume2 size={19} color="#FFFFFF" strokeWidth={2.2} />
+              </View>
+            </Pressable>
+            {/*
+              Readings, right where they show: hidden, zhuyin or pinyin. Hidden
+              fades them without moving a character, so the learner can test
+              themselves on the page and bring them back for a word. The same
+              two settings as Settings → Learning preferences.
+            */}
+            <Pressable
+              onPress={() => {
+                tickHaptic()
+                setReadingsOpen((o) => !o)
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: readingsOpen }}
+              accessibilityLabel="Readings"
+              hitSlop={8}
+              style={{ marginLeft: 10 }}
+            >
+              <View
                 style={{
-                  backgroundColor: pageIndex === totalPages - 1 ? 'rgba(255,255,255,0.7)' : '#d9f2e0',
+                  height: 36,
+                  paddingLeft: 14,
+                  paddingRight: 10,
+                  borderRadius: 18,
+                  backgroundColor: c.readingsPill,
                   borderWidth: 1,
-                  borderColor: pageIndex === totalPages - 1 ? '#e4ded4' : 'transparent',
-                  opacity: pageIndex === totalPages - 1 ? 0.35 : 1,
+                  borderColor: c.readingsBorder,
+                  flexDirection: 'row',
+                  alignItems: 'center',
                 }}
               >
                 <Text
-                  className="font-inter-semibold text-[13px]"
-                  style={{ color: pageIndex === totalPages - 1 ? '#292936' : '#246847' }}
+                  className={hanziFont(settings.script, 'semibold')}
+                  style={{ fontSize: 15, color: c.ink, includeFontPadding: false }}
                 >
-                  Next
+                  {forScript('讀音', settings.script)}
                 </Text>
-                <ChevronRight size={17} color={pageIndex === totalPages - 1 ? '#292936' : '#246847'} />
-              </Pressable>
+                <ChevronDown size={16} color={c.ink} strokeWidth={2.4} style={{ marginLeft: 4 }} />
+              </View>
+            </Pressable>
+          </View>
+
+          {/* The open book. */}
+          <View style={{ marginTop: PAGE_TOP_GAP, marginLeft: bookSize.spineGap, width: pageW, height: pageH }}>
+            <BookBlock width={pageW} height={pageH} />
+            <View
+              style={{
+                shadowColor: '#3A2A14',
+                shadowOffset: { width: 0, height: 3 },
+                shadowRadius: 8,
+                shadowOpacity: 0.14,
+                elevation: 3,
+                borderRadius: bookSize.radius.outer,
+              }}
+            >
+              <PageFlip
+                ref={flip}
+                index={bookIndex}
+                count={bookPages}
+                width={pageW}
+                height={pageH}
+                renderPage={renderPage}
+                onTurn={handleTurn}
+              />
             </View>
-          )}
-        </ScrollView>
-      </View>
+          </View>
+        </View>
+      </SafeAreaView>
+
+      {readingsOpen && (
+        <ReadingsMenu
+          top={insets.top + bookSize.header - 4}
+          right={(windowWidth - column) / 2 + 10}
+          script={settings.script}
+          value={settings.showReadings ? settings.phoneticScript : 'hidden'}
+          onPick={(v) => {
+            tickHaptic()
+            setReadingsOpen(false)
+            updateSettings(v === 'hidden' ? { showReadings: false } : { showReadings: true, phoneticScript: v })
+          }}
+          onDismiss={() => setReadingsOpen(false)}
+        />
+      )}
 
       {/* Before the word sheet in the tree, so the sheet rises over the transport
           rather than under it when a word is tapped mid-narration. */}
@@ -732,6 +629,7 @@ export function StoryReader() {
         playing={playing}
         story={story}
         progress={narrationProgress}
+        totalSeconds={narrationTotal}
         onTogglePlay={toggleNarration}
         onSkip={skipNarration}
         onSeek={seekToFraction}
@@ -755,15 +653,13 @@ export function StoryReader() {
           </Animated.View>
           {/*
             Two nested views on purpose. NativeWind doesn't process `className` on
-            Reanimated's Animated.View, so the outer one carries only plain styles
-            and the transform, and the inner plain View keeps the Tailwind
-            styling. Collapsing these back into one animated view silently drops
-            the radius, padding and paper background.
+            an Animated.View, so the outer one carries only plain styles and the
+            transform, and the inner plain View keeps the Tailwind styling.
           */}
           <Animated.View
             onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}
             style={[
-              { position: 'absolute', left: 0, right: 0, bottom: 0 },
+              { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' },
               { transform: [{ translateY: sheetTranslateY }], opacity: sheetProgress },
             ]}
           >
@@ -772,6 +668,8 @@ export function StoryReader() {
             <View
               className="rounded-t-[30px] px-6 pb-8 pt-3 shadow-paper-sheet"
               style={{
+                width: '100%',
+                maxWidth: BOOK_CONTENT_MAX,
                 backgroundColor: '#fffdf8',
                 borderTopWidth: 1,
                 borderColor: 'rgba(212,201,181,0.55)',
@@ -806,8 +704,7 @@ export function StoryReader() {
 
               {/*
                 The word in use. Sentences come from the bundled corpus and are
-                never generated, and only about eight thousand of the imported
-                entries carry one — so this block simply isn't there for words
+                never generated, so this block simply isn't there for words
                 without an example, rather than showing an empty frame.
               */}
               {sheetWord.example && (
@@ -817,13 +714,6 @@ export function StoryReader() {
                 >
                   <View className="flex-row items-start gap-2">
                     <View className="flex-1">
-                      {/*
-                        No `script` override: this sentence is word-bank data,
-                        which carries both forms, so ReadingSentence's default
-                        (the learner's preference) is exactly right. Only the
-                        story's own authored prose needs converting, and that
-                        happens in `segmentText` above.
-                      */}
                       <ReadingSentence
                         text={displayExample(sheetWord, settings.script)}
                         term={displayWord(sheetWord, settings.script)}
@@ -867,10 +757,10 @@ export function StoryReader() {
                 {alreadyAdded ? (
                   <View
                     className="h-[52px] flex-1 flex-row items-center justify-center gap-2 rounded-full"
-                    style={{ backgroundColor: '#d9f2e0' }}
+                    style={{ backgroundColor: c.tealSoft }}
                   >
-                    <Check size={18} color="#246847" />
-                    <Text className="font-inter-semibold text-[15px]" style={{ color: '#246847' }}>
+                    <Check size={18} color={c.teal} />
+                    <Text className="font-inter-semibold text-[15px]" style={{ color: c.teal }}>
                       In My Words
                     </Text>
                   </View>
@@ -881,15 +771,15 @@ export function StoryReader() {
                       closeSheet()
                     }}
                     accessibilityRole="button"
-                    className="h-[52px] flex-1 flex-row items-center justify-center gap-2 rounded-full shadow-glow-jade active:opacity-80"
-                    style={{ backgroundColor: '#45b887' }}
+                    className="h-[52px] flex-1 flex-row items-center justify-center gap-2 rounded-full active:opacity-80"
+                    style={{ backgroundColor: c.teal }}
                   >
                     <Plus size={18} color="#ffffff" />
                     <Text className="font-inter-semibold text-[15px]" style={{ color: '#ffffff' }}>
                       Add to My Words
                     </Text>
                   </Pressable>
-                  )}
+                )}
               </View>
             </View>
           </Animated.View>
@@ -897,6 +787,115 @@ export function StoryReader() {
       )}
 
       {practiceWord && <WritingPracticeModal word={practiceWord} onClose={() => setPracticeWordId(null)} />}
-    </ReadingShell>
+
+      {coverShown && (
+        <BookCover
+          story={story}
+          script={settings.script}
+          resuming={resumeAt > 1}
+          onBack={leave}
+          onStart={() => setBookIndex(Math.max(0, Math.min(resumeAt, screens.length)))}
+          onOpened={() => setCoverShown(false)}
+        />
+      )}
+    </View>
+  )
+}
+
+type ReadingsChoice = 'hidden' | PhoneticScript
+
+const READINGS_OPTIONS: { value: ReadingsChoice; label: string; a11y: string }[] = [
+  { value: 'hidden', label: '隱藏', a11y: 'Hide readings' },
+  { value: 'zhuyin', label: '注音', a11y: 'Zhuyin' },
+  { value: 'pinyin', label: '拼音', a11y: 'Pinyin' },
+]
+
+/**
+ * The 讀音 dropdown (SS1012): a paper card hung under the pill, one radio row
+ * per choice. Laid over the whole screen with a transparent backdrop, so a tap
+ * anywhere else closes it rather than turning a page or opening a word.
+ */
+function ReadingsMenu({
+  top,
+  right,
+  script,
+  value,
+  onPick,
+  onDismiss,
+}: {
+  top: number
+  right: number
+  script: ScriptMode
+  value: ReadingsChoice
+  onPick: (v: ReadingsChoice) => void
+  onDismiss: () => void
+}) {
+  return (
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 20, elevation: 20 }}>
+      <Pressable style={{ flex: 1 }} onPress={onDismiss} accessibilityLabel="Close readings menu" />
+      <View
+        accessibilityRole="radiogroup"
+        style={{
+          position: 'absolute',
+          top,
+          right,
+          width: 150,
+          padding: 6,
+          borderRadius: 14,
+          backgroundColor: c.readingsPill,
+          borderWidth: 1,
+          borderColor: c.readingsBorder,
+          shadowColor: '#3A2A14',
+          shadowOffset: { width: 0, height: 6 },
+          shadowRadius: 14,
+          shadowOpacity: 0.16,
+          elevation: 8,
+        }}
+      >
+        {READINGS_OPTIONS.map((o) => {
+          const picked = o.value === value
+          return (
+            <Pressable
+              key={o.value}
+              onPress={() => onPick(o.value)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: picked }}
+              accessibilityLabel={o.a11y}
+            >
+              <View
+                style={{
+                  height: 44,
+                  borderRadius: 10,
+                  paddingHorizontal: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: picked ? c.readingsPicked : 'transparent',
+                }}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    borderWidth: picked ? 2 : 1.5,
+                    borderColor: picked ? c.narratorDisc : c.readingsRing,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {picked && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.narratorDisc }} />}
+                </View>
+                <Text
+                  className={hanziFont(script, 'medium')}
+                  style={{ marginLeft: 12, fontSize: 15, color: c.ink, includeFontPadding: false }}
+                >
+                  {forScript(o.label, script)}
+                </Text>
+              </View>
+            </Pressable>
+          )
+        })}
+      </View>
+    </View>
   )
 }

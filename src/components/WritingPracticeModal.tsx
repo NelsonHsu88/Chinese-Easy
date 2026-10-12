@@ -1,16 +1,26 @@
-import { useEffect, useRef, useState } from 'react'
-import { View, Text, Pressable, Modal as RNModal, Animated, Platform } from 'react-native'
+import { useEffect, useState } from 'react'
+import { View, Text, Pressable, Modal as RNModal } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { X, RotateCw, Lightbulb, Volume2, Check, ArrowRight } from 'lucide-react-native'
+import { X, RotateCw, Lightbulb, Volume2 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { displayWord, displayPinyin } from '../lib/hanzi'
+import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
 import { HanziStage } from './HanziStage'
 import { speak } from '../lib/speech'
-import { playTapSound, playPositiveChime } from '../lib/sound'
-import { rippleHaptic, tickHaptic } from '../lib/haptics'
+import { playTapSound, playCorrectSound } from '../lib/sound'
+import { correctHaptic, tickHaptic } from '../lib/haptics'
 import type { VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 import { ReadingSentence } from './dictionary/ReadingSentence'
+import { PressableScale, LiftedFace } from './dashboard/parts'
+import { AnswerSheet } from './drills/parts'
+
+/**
+ * Faces and shoulders for the raised buttons, from the `brand` scale in the
+ * Tailwind config: each shoulder a step or two below its face.
+ */
+const RAISED = {
+  hint: { fill: '#d6fae3', shoulder: '#9fe2b8' },
+} as const
 
 interface Props {
   word: VocabWord
@@ -22,7 +32,21 @@ interface Props {
    * early must not do.
    */
   onCompleted?: () => void
+  /**
+   * Once the word is written, replay its stroke order as an animation — the
+   * same playback a review flashcard gives after the learner finishes writing.
+   * Opt-in, because the writing guide's tracing page advances on Done and has
+   * its own animated centrepiece already.
+   */
+  playbackOnFinish?: boolean
 }
+
+/**
+ * How long the learner's own finished writing stays on screen before the
+ * playback replaces it. Long enough to register "I wrote that", short enough
+ * that the playback still reads as the answer to what they just did.
+ */
+const PLAYBACK_DELAY_MS = 900
 
 /** White circular speaker chip, as used in the reference design. */
 function SpeakChip({ text, size = 22, dim = 48 }: { text: string; size?: number; dim?: number }) {
@@ -39,8 +63,8 @@ function SpeakChip({ text, size = 22, dim = 48 }: { text: string; size?: number;
   )
 }
 
-export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
-  const { settings } = useApp()
+export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFinish = false }: Props) {
+  const { settings, trackLearningEvent } = useApp()
   const [attempt, setAttempt] = useState(0)
   /** Bumped to clear only the character currently being written — see `resetActive`. */
   const [resetActiveKey, setResetActiveKey] = useState(0)
@@ -48,6 +72,8 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
   const [strokesDone, setStrokesDone] = useState(0)
   const [totalStrokes, setTotalStrokes] = useState(0)
   const [finished, setFinished] = useState(false)
+  /** The stage has switched from the learner's quiz to the stroke-order demo. */
+  const [playing, setPlaying] = useState(false)
   /**
    * Which characters in the word are already written — the progress
    * indicator's whole reason for existing. Indexes into `characters` below,
@@ -56,25 +82,11 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
    */
   const [completedChars, setCompletedChars] = useState<Set<number>>(() => new Set())
 
-  /*
-   * Finishing the character used to leave the learner facing a "Show Answer"
-   * button, which makes no sense once they've written the thing correctly —
-   * there's no answer left to show. Instead the card asks the only question that
-   * still matters: go again, or move on.
-   */
-  const finishRise = useRef(new Animated.Value(0)).current
-  const [finishHeight, setFinishHeight] = useState(180)
-
   useEffect(() => {
-    if (!finished) return
-    Animated.spring(finishRise, {
-      toValue: 1,
-      damping: 21,
-      stiffness: 195,
-      mass: 0.9,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start()
-  }, [finished, finishRise])
+    if (!finished || !playbackOnFinish) return
+    const timer = setTimeout(() => setPlaying(true), PLAYBACK_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [finished, playbackOnFinish])
 
   const text = displayWord(word, settings.script)
   const pinyin = displayPinyin(word, settings.phoneticScript)
@@ -135,18 +147,17 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
   }
 
   /*
-   * Finishing the character is the one genuine accomplishment in this screen, so
-   * it gets the same chime-and-buzz the app uses for a correct review answer
-   * rather than passing in silence. Guarded against firing twice: hanzi-writer
-   * can report completion again if the last stroke is re-evaluated.
+   * Finishing the word is the one genuine accomplishment in this screen, so it
+   * gets what a correct drill answer gets: the answer sheet rising with "Well
+   * done!", the ding-ding and its haptic. Guarded against firing twice:
+   * hanzi-writer can report completion again if the last stroke is re-evaluated.
    */
   const handleComplete = () => {
     if (finished) return
     setFinished(true)
-    playPositiveChime()
-    // One beat per character, so the rhythm counts back what was just written —
-    // a two-character word feels different from a four.
-    rippleHaptic(characters.length)
+    trackLearningEvent({ type: 'WRITING_COMPLETED', characters: characters.length })
+    playCorrectSound()
+    correctHaptic()
   }
 
   /** "Write it again" — the whole word over, from its first character. */
@@ -156,8 +167,8 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
     setStrokesDone(0)
     setTotalStrokes(0)
     setFinished(false)
+    setPlaying(false)
     setCompletedChars(new Set())
-    finishRise.setValue(0)
     setAttempt((n) => n + 1)
   }
 
@@ -176,6 +187,7 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
 
   return (
     <RNModal animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1 }}>
       <SafeAreaView className="flex-1 bg-canvas dark:bg-slate-950">
         <View className="flex-row items-center gap-3 px-5 pt-3">
           <Pressable
@@ -233,11 +245,14 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
         >
           <HanziStage
             character={text}
-            mode="quiz"
+            mode={playing ? 'demo' : 'quiz'}
+            // Slow, like the review flashcard's playback: it is watched once,
+            // at a glance, rather than studied.
+            speed={playing ? 'slow' : 'normal'}
             showOutline
             showGuides
             hintKey={hintKey}
-            resetKey={attempt}
+            resetKey={`${attempt}-${playing}`}
             resetActiveKey={resetActiveKey}
             holdCharacterOnComplete
             onQuizProgress={handleProgress}
@@ -260,69 +275,66 @@ export function WritingPracticeModal({ word, onClose, onCompleted }: Props) {
           </View>
         ) : null}
 
-        {finished ? (
-          // NativeWind doesn't process `className` on an Animated.View, so the
-          // animated wrapper carries plain styles and the inner View keeps the
-          // Tailwind styling.
-          <Animated.View
-            onLayout={(e) => setFinishHeight(e.nativeEvent.layout.height)}
-            style={{
-              transform: [
-                { translateY: finishRise.interpolate({ inputRange: [0, 1], outputRange: [finishHeight, 0] }) },
-              ],
-              opacity: finishRise,
-            }}
-          >
-            <View className="px-5 pb-4 pt-2">
-              <View className="mb-3 flex-row items-center justify-center gap-2">
-                <Check size={22} color="#16a34a" strokeWidth={3} />
-                <Text className="text-[19px] font-extrabold text-brand-600 dark:text-brand-400">
-                  Nicely written!
-                </Text>
-              </View>
-              <View className="flex-row gap-3">
-                <Pressable
-                  onPress={restartWord}
-                  accessibilityRole="button"
-                  className="flex-1 flex-row items-center justify-center gap-2 rounded-full border border-slate-200 bg-white py-4 shadow-card active:opacity-80 dark:border-slate-700 dark:bg-slate-900"
-                >
-                  <RotateCw size={20} color="#64748b" strokeWidth={2.5} />
-                  <Text className="text-[17px] font-bold text-slate-600 dark:text-slate-300">Write it again</Text>
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    playTapSound()
-                    ;(onCompleted ?? onClose)()
-                  }}
-                  accessibilityRole="button"
-                  className="flex-1 flex-row items-center justify-center gap-2 rounded-full bg-brand-500 py-4 shadow-card active:opacity-80"
-                >
-                  <Text className="text-[17px] font-bold text-white">Done</Text>
-                  <ArrowRight size={20} color="#ffffff" strokeWidth={2.5} />
-                </Pressable>
-              </View>
-            </View>
-          </Animated.View>
-        ) : (
+        {/* Reset and Hint keep their place once the word is written — hidden
+            under the answer sheet rather than removed, so nothing above moves. */}
+        <View
+          pointerEvents={finished ? 'none' : 'auto'}
+          importantForAccessibility={finished ? 'no-hide-descendants' : 'auto'}
+          accessibilityElementsHidden={finished}
+          style={{ opacity: finished ? 0 : 1 }}
+        >
           <View className="flex-row items-center justify-between px-5 pb-4 pt-4">
             <Pressable onPress={resetActive} className="flex-row items-center gap-2.5 p-1 active:opacity-60">
               <RotateCw size={22} color="#94a3b8" strokeWidth={2.5} />
               <Text className="text-[18px] font-semibold text-slate-400">Reset</Text>
             </Pressable>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 playTapSound()
                 tickHaptic()
                 setHintKey((n) => n + 1)
               }}
-              className="flex-row items-center gap-2 rounded-full bg-brand-100 px-5 py-2.5 active:opacity-80 dark:bg-brand-900/40"
+              haptic={false}
+              accessibilityLabel="Hint"
             >
-              <Lightbulb size={20} color="#16a34a" />
-              <Text className="text-[18px] font-bold text-brand-700 dark:text-brand-300">Hint</Text>
-            </Pressable>
+              <LiftedFace height={44} fill={RAISED.hint.fill} shoulder={RAISED.hint.shoulder} shadow={false}>
+                {/* The face is content-sized, so the pill's padding lives here. */}
+                <View className="flex-row items-center" style={{ gap: 8, paddingHorizontal: 20 }}>
+                  <Lightbulb size={20} color="#16a34a" />
+                  <Text className="text-[18px] font-bold text-brand-700">Hint</Text>
+                </View>
+              </LiftedFace>
+            </PressableScale>
           </View>
-        )}
+        </View>
       </SafeAreaView>
+
+      {/* "Go again, or move on" — the only question left once the word is
+          written, asked the way a correct drill answer is. */}
+      {finished ? (
+        <AnswerSheet
+          key={attempt}
+          kind="correct"
+          title="Well done!"
+          detail={
+            <>
+              <Text className={hanziFont(settings.script, 'medium')} style={{ fontSize: 20, color: '#1e293b', includeFontPadding: false }}>
+                {text}
+              </Text>
+              <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, color: '#64748b' }}>
+                {pinyin} — {shortGloss(word)}
+              </Text>
+            </>
+          }
+          secondary={{ label: 'Write it again', onPress: restartWord }}
+          continueLabel="Done"
+          onContinue={() => {
+            playTapSound()
+            ;(onCompleted ?? onClose)()
+          }}
+        />
+      ) : null}
+      </View>
     </RNModal>
   )
 }

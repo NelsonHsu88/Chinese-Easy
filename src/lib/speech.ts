@@ -66,15 +66,18 @@ function mandarinVoice(): Promise<Speech.Voice | null> {
  */
 export const SPEECH_RATE = 0.85
 
+/** A slower read, for "play it again, slowly" — the listening drill's replay. */
+export const SLOW_SPEECH_RATE = 0.6
+
 /** Speaks Chinese text aloud in Mandarin, never Cantonese. */
-export function speak(text: string): void {
+export function speak(text: string, opts: { rate?: number } = {}): void {
   if (!text) return
   Speech.stop()
   void mandarinVoice().then((voice) => {
     Speech.speak(text, {
       language: voice?.language ?? FALLBACK_LANGUAGE,
       voice: voice?.identifier,
-      rate: SPEECH_RATE,
+      rate: opts.rate ?? SPEECH_RATE,
     })
   })
 }

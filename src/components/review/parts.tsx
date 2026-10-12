@@ -1,46 +1,35 @@
 import type { ComponentType, ReactNode } from 'react'
 import { View, Text, Image, Pressable, Animated } from 'react-native'
-import Svg, { Ellipse } from 'react-native-svg'
-import { ChevronRight, BookMarked } from 'lucide-react-native'
-import { PressableScale } from '../dashboard/parts'
+import { ArrowRight, BookOpen, ChartNoAxesColumnIncreasing, ChevronRight } from 'lucide-react-native'
+import { PressableScale, LiftedFace } from '../dashboard/parts'
 /* The entrance machinery is shared with the Dashboard rather than reimplemented
    — same `Animated`-not-Reanimated constraint, same hidden-tab backstop. Only
    the timings differ, and those live in `revEntrance`. */
 import { useReveal } from '../dashboard/entrance'
+import { revArt, FIRE_RATIO } from './art'
 import {
   revColors as c,
   revSpacing as s,
   revType as t,
   revCard,
+  revButton,
+  revShoulders,
+  revHero,
   revRadius,
   revShadow,
-  revShadowLifted,
   revEntrance,
+  REV_CONTENT_MAX,
+  REV_FOOT_RATIO,
 } from './tokens'
 
 /*
- * The Review hub's building blocks, built to its reference mockup.
+ * The Review hub's building blocks, built to the Beta 2.1 reference.
  *
  * Press response is `PressableScale` borrowed from the Dashboard rather than
  * reimplemented: this screen is one tap off that one, and a card that dips by a
  * different amount here than it does there is the kind of difference nobody can
  * name but everybody feels.
  */
-
-export const REVIEW_ART = {
-  /**
-   * The flat vector Shifu, not the Dashboard's watercolour bowing render.
-   *
-   * The reference draws him small and head-on beside a speech bubble, which is
-   * this asset — the watercolour one is a full-length figure at 300×704 that
-   * only works cropped at the hem, and cropping it into a 120pt hero leaves a
-   * head and no hands.
-   */
-  shifu: { source: require('../../assets/images/mascot-shifu.png'), ratio: 249 / 384 },
-  mountains: { source: require('../../assets/images/onboarding/pagoda-mountains.png'), ratio: 460 / 277 },
-  bonsai: { source: require('../../assets/images/dashboard/bonsai.png'), ratio: 290 / 197 },
-  fire: { source: require('../../assets/images/icons/fire.png') },
-} as const
 
 // --- Top bar ------------------------------------------------------------------
 
@@ -49,22 +38,25 @@ export function StreakPill({ streak }: { streak: number }) {
   return (
     <View
       className="flex-row items-center"
+      accessible
+      accessibilityLabel={`${streak} day streak`}
       style={{
-        height: 42,
-        paddingHorizontal: 15,
+        height: 38,
+        paddingHorizontal: s.lg,
         borderRadius: revRadius.pill,
         backgroundColor: c.card,
         borderWidth: 1,
         borderColor: c.border,
-        gap: 7,
-        ...revShadowLifted,
+        gap: s.sm,
+        ...revShadow,
       }}
     >
-      {/* The app's own painted flame rather than a platform emoji, which renders
-          as a different picture on every OS. */}
-      <Image source={REVIEW_ART.fire.source} style={{ width: 20, height: 20 }} resizeMode="contain" />
+      <Image source={revArt.fire} style={{ width: 20 * FIRE_RATIO, height: 20 }} resizeMode="contain" />
       <Text className="font-nunito-extrabold" style={{ ...t.streak, color: c.navy }}>
         {streak}
+      </Text>
+      <Text className="font-nunito-semibold" style={{ ...t.streak, color: c.slate, marginLeft: -2 }}>
+        Streak
       </Text>
     </View>
   )
@@ -72,138 +64,96 @@ export function StreakPill({ streak }: { streak: number }) {
 
 // --- Hero ---------------------------------------------------------------------
 
-/** How tall the illustrated strip is. */
-export const HERO_HEIGHT = 132
-
-/** Shifu's drawn height. Everything else in the row is measured off his width. */
-const SHIFU_HEIGHT = 126
-
-/** The range's width, as a fraction of the column. */
-const RANGE_SHARE = 0.56
-
-/** How far the range is allowed past the right edge. Small, deliberately: the
- *  pagoda sits at the right end once mirrored, so a generous bleed pushes the
- *  one thing worth seeing off the screen. */
-const RANGE_BLEED = 20
-
 /**
- * How much of the mirrored render the pagoda occupies, measured from its right
- * edge.
+ * Title, subtitle, Shifu's line — and the painting behind them.
  *
- * This is the only part of the scenery the bubble must not reach. The mountains
- * behind it are a pale wash and a white bubble sitting over them reads as depth;
- * the pagoda is the one piece of drawn detail, and text across a roofline reads
- * as a mistake. Keeping the two apart is what this fraction buys, and it is
- * measured off the *pagoda* rather than off the whole range so the bubble is
- * free to use everything to its left.
- */
-const PAGODA_SHARE = 0.36
-
-/**
- * Shifu, his line, and the range behind them.
+ * Not a card: the painting is laid straight onto the page, keyed into real
+ * alpha so there is no rectangle to see. It is absolutely positioned against
+ * the hero's *bottom* right, bleeding off the screen edge, so its bottom always
+ * meets the stats panel that follows — the panel cuts Shifu at the robe, which
+ * is the composition the reference draws. Everything textual is ordinary flow,
+ * so a wrapped subtitle or a longer line from Shifu grows the hero rather than
+ * colliding with anything.
  *
- * Deliberately about a third the height of the Dashboard's hero. This screen is
- * somewhere a learner arrives already knowing what they came to do, so the
- * scenery is here to keep the room warm, not to be looked at — the three drill
- * cards are what the eye should land on.
- *
- * **The three overlap on purpose, but not anywhere.** The bubble is allowed to
- * sit over the mountains — a white card over a pale wash reads as depth, and
- * holding it clear of the whole range left a band of dead space across the top
- * of the screen. What it may not reach is the pagoda, the one piece of drawn
- * detail in the scene.
- *
- * So the bubble's width is derived from where the *pagoda* starts rather than
- * guessed at. A fixed width that clears it on a 390pt screen sits across it on a
- * 360pt one, which is exactly how the bubble covered the roofline before.
+ * The bubble's width is derived from where the painting starts rather than
+ * fixed: a width that clears Shifu's sleeve on a 430pt column sits across it on
+ * a 360pt one.
  */
 export function ReviewHero({
   message,
-  width,
+  column,
   run,
 }: {
   message: string
-  width: number
+  /** Width of the page column, margins included. */
+  column: number
   /** Ticks on focus; restarts the entrance. */
   run: number
 }) {
-  const shifuWidth = SHIFU_HEIGHT * REVIEW_ART.shifu.ratio
+  const artWidth = revHero.artWidth * (column / REV_CONTENT_MAX)
+  const artHeight = artWidth / revHero.artRatio
 
-  const rangeWidth = width * RANGE_SHARE
-  /* Where the roofline begins, in the hero's own coordinates. */
-  const pagodaLeft = width + RANGE_BLEED - rangeWidth * PAGODA_SHARE
+  /* In the padded column's coordinates: the art's right edge is the screen's. */
+  const artLeft = column - s.screen - artWidth
+  const bubbleLeft = s.sm
+  const bubbleMax = Math.min(revHero.bubbleMax, artLeft + revHero.bubbleOverlap - bubbleLeft)
 
-  const bubbleLeft = shifuWidth + 6
-  const bubbleMax = Math.max(150, pagodaLeft - bubbleLeft - 8)
-
-  const beat = { at: revEntrance.at, duration: revEntrance.for, run }
-
-  /*
-   * The range carries its own `scaleX: -1` through the reveal rather than in a
-   * static style: an animated `transform` replaces the whole array instead of
-   * merging into it, so a mirror left behind in `style` is simply discarded and
-   * the pagoda lands back on the wrong side.
-   */
-  const range = useReveal({
-    ...beat,
+  const art = useReveal({
     from: 'right',
+    at: revEntrance.at,
+    duration: revEntrance.for,
+    run,
     distance: revEntrance.slideX,
-    toOpacity: 0.55,
-    extraTransform: [{ scaleX: -1 }],
+  })
+  const text = useReveal({
+    from: 'bottom',
+    at: revEntrance.at,
+    duration: revEntrance.for,
+    run,
+    distance: revEntrance.slideY,
   })
 
-  const shifu = useReveal({ ...beat, from: 'bottom', distance: revEntrance.slideY })
-  const bubble = useReveal({ ...beat, from: 'bottom', distance: revEntrance.slideY })
-
   return (
-    <View style={{ height: HERO_HEIGHT }}>
-      {/*
-        Mirrored, which puts the pagoda on the right-hand side and runs the ridge
-        line back to the left — the arrangement the reference shows. `scaleX: -1`
-        on the existing render rather than a second copy of a 200kB PNG.
-      */}
+    <View>
       <Animated.View
         pointerEvents="none"
-        style={[{ position: 'absolute', right: -RANGE_BLEED, top: 4 }, range]}
+        style={[{ position: 'absolute', right: -s.screen, bottom: 0 }, art]}
       >
-        <Image
-          source={REVIEW_ART.mountains.source}
-          style={{ width: rangeWidth, height: rangeWidth / REVIEW_ART.mountains.ratio }}
-          resizeMode="contain"
-        />
+        <Image source={revArt.hero} style={{ width: artWidth, height: artHeight }} resizeMode="contain" />
       </Animated.View>
 
-      <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: 0, bottom: 0 }, shifu]}>
-        <Image
-          source={REVIEW_ART.shifu.source}
-          style={{ width: shifuWidth, height: SHIFU_HEIGHT }}
-          resizeMode="contain"
-        />
-      </Animated.View>
+      <Animated.View style={text}>
+        <Text
+          className="font-lora-bold"
+          accessibilityRole="header"
+          style={{ ...t.title, color: c.navy, marginTop: s.xs }}
+        >
+          Review
+        </Text>
+        <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: s.xs }}>
+          Strengthen what you’ve learned.{'\n'}Make it stick.
+        </Text>
 
-      <Animated.View
-        style={[
-          { marginLeft: bubbleLeft, marginTop: 12, maxWidth: bubbleMax, alignSelf: 'flex-start' },
-          bubble,
-        ]}
-      >
-        <SpeechBubble message={message} />
+        <View
+          style={{
+            marginLeft: bubbleLeft,
+            marginTop: s.lg,
+            marginBottom: s.lg,
+            maxWidth: bubbleMax,
+            alignSelf: 'flex-start',
+          }}
+        >
+          <SpeechBubble message={message} />
+        </View>
       </Animated.View>
     </View>
   )
 }
 
 /**
- * Shifu's line.
- *
- * The bubble hugs its text — `alignSelf: 'flex-start'` on the wrapper, no fixed
- * width — because a bubble stretched to fill the row is mostly empty bubble.
- *
- * The quotation mark is absolutely positioned rather than sitting above the
- * text, and that is the difference between a compact bubble and a roomy one: in
- * flow it is a whole line of pure whitespace pushing the sentence down for an
- * accent two characters wide. It is a real glyph rather than an icon, because a
- * stroked quote-mark icon at this size reads as two commas that have come loose.
+ * Shifu's line. Soft and editorial rather than a chat bubble: a warm fill, a
+ * drawn hairline, a shadow you have to look for, and a small tail pointing
+ * right at him.
  */
 function SpeechBubble({ message }: { message: string }) {
   return (
@@ -211,40 +161,37 @@ function SpeechBubble({ message }: { message: string }) {
       <View
         style={{
           backgroundColor: c.card,
-          borderRadius: revRadius.bubble,
-          paddingLeft: 16,
-          paddingRight: 14,
-          paddingTop: 11,
-          paddingBottom: 13,
+          borderRadius: revRadius.medium,
+          borderWidth: 1,
+          borderColor: c.border,
+          paddingHorizontal: s.xl,
+          paddingVertical: s.md + 2,
           ...revShadow,
         }}
       >
-        <Text
-          className="font-nunito-extrabold"
-          pointerEvents="none"
-          style={{ position: 'absolute', left: 7, top: 3, fontSize: 17, color: c.coral }}
-        >
-          &#8220;
-        </Text>
-        <Text className="font-nunito-extrabold" style={{ ...t.bubble, color: c.navy }}>
+        <Text className="font-lora" style={{ ...t.bubble, color: c.navy }}>
           {message}
         </Text>
       </View>
 
       {/*
-        The tail, pointing at Shifu. A rotated square rather than a triangle, so
-        it inherits the bubble's own fill and reads as part of the same shape; it
-        sits slightly inside the left edge to hide the seam.
+        The tail: a rotated square carrying the bubble's fill, with the border
+        drawn on only the two edges that form the point. Drawn after the body so
+        it covers the body's border where the two meet, which is what makes it
+        read as one outline rather than a triangle stuck to a box.
       */}
       <View
         pointerEvents="none"
         style={{
           position: 'absolute',
-          left: -5,
-          top: 27,
-          width: 14,
-          height: 14,
+          right: -6,
+          top: 26,
+          width: 12,
+          height: 12,
           backgroundColor: c.card,
+          borderTopWidth: 1,
+          borderRightWidth: 1,
+          borderColor: c.border,
           transform: [{ rotate: '45deg' }],
         }}
       />
@@ -255,81 +202,28 @@ function SpeechBubble({ message }: { message: string }) {
 // --- Stats --------------------------------------------------------------------
 
 /**
- * The three headline numbers, in one card with hairline dividers.
+ * The three headline numbers, in one panel with hairline dividers.
  *
- * One card rather than three tiles: these are three readings of the same deck,
- * and splitting them into separate surfaces would say they were three unrelated
- * facts. The dividers are inset top and bottom so they read as separators rather
+ * One panel rather than three tiles: these are three readings of the same
+ * deck. The dividers are inset top and bottom so they read as separators rather
  * than as a table's rules.
  */
-/**
- * A quiet row that opens the deck for reading rather than for drilling.
- *
- * Deliberately not a `DrillCard`: the three below it all *start* something, and
- * a fourth tile the same size and shape would read as a fourth drill. This is
- * one line, on the card surface rather than a tinted one, with a chevron — the
- * shape the rest of the app uses for "go and look at a list".
- */
-export function DeckPeekCard({ count, onPress }: { count: number; onPress: () => void }) {
-  return (
-    <PressableScale
-      onPress={onPress}
-      scaleTo={0.985}
-      accessibilityLabel={`My Words, ${count} ${count === 1 ? 'word' : 'words'} in your deck`}
-    >
-      <View
-        className="flex-row items-center"
-        style={{
-          backgroundColor: c.card,
-          borderRadius: revRadius.card,
-          borderWidth: 1,
-          borderColor: c.border,
-          paddingHorizontal: revCard.padding,
-          paddingVertical: s.md,
-          gap: s.md,
-          ...revShadow,
-        }}
-      >
-        <View
-          className="items-center justify-center rounded-full"
-          style={{ width: 38, height: 38, backgroundColor: c.greenSoft }}
-        >
-          <BookMarked size={19} color={c.greenDark} strokeWidth={2.2} />
-        </View>
-
-        <View style={{ flex: 1 }}>
-          <Text className="font-nunito-extrabold" style={{ ...t.cardTitle, color: c.navy }}>
-            My Words
-          </Text>
-          <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary }}>
-            {count === 0 ? 'Nothing in your deck yet' : `Look through all ${count}`}
-          </Text>
-        </View>
-
-        <ChevronRight size={20} color={c.textMuted} strokeWidth={2.4} />
-      </View>
-    </PressableScale>
-  )
-}
-
-export function StatsCard({ children }: { children: ReactNode[] }) {
+export function StatsPanel({ children }: { children: ReactNode[] }) {
   return (
     <View
       className="flex-row"
       style={{
         backgroundColor: c.card,
-        borderRadius: revRadius.card,
+        borderRadius: revRadius.large,
         borderWidth: 1,
         borderColor: c.border,
-        paddingVertical: s.lg,
+        paddingVertical: s.md + 2,
         ...revShadow,
       }}
     >
       {children.map((column, i) => (
         <View key={i} className="flex-1 flex-row">
-          {i > 0 && (
-            <View style={{ width: 1, marginVertical: 2, backgroundColor: c.border }} />
-          )}
+          {i > 0 && <View style={{ width: 1, marginVertical: s.xs, backgroundColor: c.border }} />}
           <View className="flex-1">{column}</View>
         </View>
       ))}
@@ -337,47 +231,71 @@ export function StatsCard({ children }: { children: ReactNode[] }) {
   )
 }
 
+/** The three stat icons, each drawn the way the reference draws it. */
+export function DueIcon() {
+  return (
+    <View
+      className="items-center justify-center"
+      style={{ width: 24, height: 24, borderRadius: revRadius.small - 4, backgroundColor: c.mint }}
+    >
+      <BookOpen size={14} color={c.jadeDark} strokeWidth={2} />
+    </View>
+  )
+}
+
+export function StreakIcon() {
+  return <Image source={revArt.fire} style={{ width: 22 * FIRE_RATIO, height: 22 }} resizeMode="contain" />
+}
+
+export function WeakIcon() {
+  return <ChartNoAxesColumnIncreasing size={20} color={c.steel} strokeWidth={3} />
+}
+
 /**
- * One column of the stats card.
+ * One column of the stats panel: icon beside a serif number and its label.
+ * The reference's line of small print under each label ("Words to review")
+ * was dropped — it only restated the label, and cost the panel a line.
  *
- * `onPress` is optional and only the first column has one — "Words due" opens
- * the list of them, which is behaviour the old screen had and there is no reason
- * to lose just because the reference does not draw a chevron on it.
+ * `onPress` is optional and only "Due today" has one — it opens the list of
+ * due words, which the screen has always done and there is no reason to lose
+ * because the reference does not draw a chevron on it.
  */
 export function Stat({
   value,
   label,
-  icon: Icon,
-  iconColor,
-  iconFill,
+  icon,
   onPress,
 }: {
   value: number
   label: string
-  icon: ComponentType<{ color: string; size: number; strokeWidth: number; fill?: string }>
-  iconColor: string
-  /** Painted interior. The flame and the warning triangle are solid, the calendar is not. */
-  iconFill?: string
+  icon: ReactNode
   onPress?: () => void
 }) {
   const body = (
-    <View className="items-center">
-      <Text className="font-nunito-extrabold" style={{ ...t.statValue, color: c.navy }}>
-        {value}
-      </Text>
-      <Text
-        className="font-nunito-semibold"
-        style={{ ...t.statLabel, color: c.textSecondary, marginTop: 1 }}
-      >
-        {label}
-      </Text>
-      <View style={{ marginTop: 7 }}>
-        <Icon color={iconColor} size={18} strokeWidth={2.2} fill={iconFill ?? 'transparent'} />
+    <View className="flex-row items-center" style={{ paddingLeft: s.sm + 2, paddingRight: s.xs, gap: 6 }}>
+      {icon}
+      {/* `flex: 1`, not `flexShrink`: a shrinkable text column is measured at its
+          min-content width on web, which broke "Due today" over two lines. */}
+      <View style={{ flex: 1 }}>
+        <Text className="font-lora-bold" style={{ ...t.statValue, color: c.navy }}>
+          {value}
+        </Text>
+        {/* Regular weight, and one line: a two-line "Due today" is what made
+            the panel tall. */}
+        <Text className="font-sans" numberOfLines={1} style={{ ...t.statLabel, color: c.navy }}>
+          {label}
+        </Text>
       </View>
     </View>
   )
 
-  if (!onPress) return body
+  if (!onPress) {
+    return (
+      <View accessible accessibilityLabel={`${value} ${label}`}>
+        {body}
+      </View>
+    )
+  }
 
   return (
     <Pressable
@@ -394,121 +312,97 @@ export function Stat({
 // --- Drill cards --------------------------------------------------------------
 
 /**
- * One drill: circle, tag, title, two lines, a count, and a chevron button.
+ * One drill: a painted scene on the left, a serif title and description, a
+ * quiet due pill and a slim chevron.
  *
- * The whole card is the target — one 126pt card rather than a 40pt chevron to
- * aim at. The chevron is therefore a plain View, not a Pressable: nesting one
- * pressable inside another double-fires on the web target, where the synthetic
- * event bubbles from the inner handler to the outer one and opens the session
- * twice.
+ * The whole card is the target. The chevron is therefore a plain View, not a
+ * Pressable: nesting one pressable inside another double-fires on the web
+ * target, where the synthetic event bubbles from the inner handler to the outer
+ * one and opens the session twice.
+ *
+ * Two views rather than one, because iOS clips a shadow along with everything
+ * else under `overflow: hidden`: the outer carries the shadow and the border,
+ * the inner clips the painting to the rounded corners.
  */
-export function DrillCard({
-  tag,
+export function ReviewModeCard({
   title,
   description,
+  art,
   count,
-  fill,
-  ink,
-  badge,
+  width,
   onPress,
-  minHeight = revCard.minHeight,
 }: {
-  tag: string
   title: string
   description: string
-  /**
-   * The due count, already formatted. A string rather than a number because
-   * zero is drawn as a dash: a bold `0` reads as a broken counter, where a dash
-   * reads as "nothing here", which is the truth and is not a failure.
-   */
-  count: string
-  fill: string
-  ink: string
-  badge: ReactNode
+  art: number
+  count: number
+  /** The card's own width. The painting's share, and the title size, are measured off it. */
+  width: number
   onPress: () => void
-  /**
-   * Overrides the designed height on a viewport with room to spare — see
-   * `vspace` in `lib/verticalSpace.ts`. Still a *minimum*: a long description at
-   * large accessibility text sizes may push the card past it either way.
-   */
-  minHeight?: number
 }) {
+  const artWidth = Math.round(width * revCard.artShare)
+
+  /*
+   * The text column is what is left between the painting and the pill. The
+   * title is sized to it rather than fixed: "Flashcards" at the designed 23pt
+   * needs about 130pt, which a 360pt phone does not have once the painting has
+   * its third. A Lora Bold letter averages a little under 0.6em, so ten letters
+   * in a sixth of the column is a safe bound.
+   */
+  const textColumn = width - artWidth - revCard.textInset - 104
+  const titleSize = Math.max(19, Math.min(t.cardTitle.fontSize, textColumn / 6))
+
   return (
     <PressableScale
       onPress={onPress}
-      scaleTo={0.98}
-      accessibilityLabel={`${title}. ${count === '—' ? 'None' : count} due. ${description}`}
+      scaleTo={0.985}
+      accessibilityLabel={`${title}. ${count === 0 ? 'Nothing' : count} due. ${description}`}
     >
       <View
-        className="flex-row items-center"
         style={{
-          minHeight,
-          borderRadius: revCard.radius,
-          backgroundColor: fill,
-          paddingHorizontal: revCard.padding,
-          paddingVertical: s.lg,
+          borderRadius: revRadius.large,
+          backgroundColor: c.card,
+          borderWidth: 1,
+          borderColor: c.border,
+          ...revShadow,
         }}
       >
-        {badge}
+        <View
+          className="flex-row items-center"
+          style={{ minHeight: revCard.minHeight, borderRadius: revRadius.large - 1, overflow: 'hidden' }}
+        >
+          {/* A sized box with the image filling it, rather than an absolutely
+              positioned Image stretched by top/bottom: react-native-web does not
+              apply `cover` to the latter, and drew the scene zoomed into a corner. */}
+          <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: artWidth }}>
+            <Image source={art} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
+          </View>
 
-        <View style={{ flex: 1, marginLeft: revCard.circleGap, marginRight: s.md }}>
           <View
-            className="self-start"
             style={{
-              height: 20,
-              paddingHorizontal: 9,
-              borderRadius: 10,
-              justifyContent: 'center',
-              /* A white pill on a tinted card. A *paler tint* of the card's own
-                 colour, which is what the spec asks for, is invisible against
-                 the card it sits on. */
-              backgroundColor: c.card,
+              flex: 1,
+              marginLeft: artWidth + revCard.textInset,
+              paddingVertical: revCard.paddingY,
             }}
           >
-            <Text className="font-nunito-extrabold" style={{ ...t.tag, color: ink }}>
-              {tag.toUpperCase()}
+            <Text
+              className="font-lora-bold"
+              style={{ ...t.cardTitle, fontSize: titleSize, lineHeight: titleSize * 1.22, color: c.navy }}
+            >
+              {title}
+            </Text>
+            <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.slate, marginTop: 3 }}>
+              {description}
             </Text>
           </View>
 
-          <Text
-            className="font-nunito-extrabold"
-            style={{ ...t.cardTitle, color: c.navy, marginTop: 5 }}
+          <View
+            className="flex-row items-center"
+            style={{ gap: s.sm, marginLeft: s.sm, paddingRight: revCard.paddingRight }}
           >
-            {title}
-          </Text>
-          {/*
-            Held to two lines. The reference wraps every description at two, and
-            a third would push one card taller than its neighbours — which is the
-            fastest way to lose the shared alignment the three of them depend on.
-          */}
-          <Text
-            className="font-nunito-semibold"
-            numberOfLines={2}
-            style={{ ...t.cardBody, color: c.textSecondary, marginTop: 3 }}
-          >
-            {description}
-          </Text>
-        </View>
-
-        <View className="items-center" style={{ marginRight: s.md }}>
-          <Text className="font-nunito-extrabold" style={{ ...t.count, color: ink }}>
-            {count}
-          </Text>
-          <Text className="font-nunito-semibold" style={{ ...t.countUnit, color: c.textSecondary }}>
-            due
-          </Text>
-        </View>
-
-        <View
-          className="items-center justify-center rounded-full"
-          style={{
-            width: revCard.chevron,
-            height: revCard.chevron,
-            backgroundColor: '#FFFFFF',
-            ...revShadowLifted,
-          }}
-        >
-          <ChevronRight size={20} color={c.textSecondary} strokeWidth={2.4} />
+            <DuePill count={count} />
+            <ChevronRight size={20} color={c.navy} strokeWidth={1.8} />
+          </View>
         </View>
       </View>
     </PressableScale>
@@ -516,81 +410,94 @@ export function DrillCard({
 }
 
 /**
- * The painted disc at a drill card's left edge.
- *
- * The artwork brings its own circle — see `revArt` — so there is no tint and no
- * `borderRadius` here: drawing a coloured circle behind it would only show as a
- * rim of not-quite-the-same colour wherever the two disagreed by a pixel.
- *
- * Square by construction (`processReviewIcons.mjs` centres each disc on a square
- * canvas), so one dimension is all this has to choose. React Native does not
- * size an `Image` from its intrinsic dimensions the way a browser does — a width
- * with no height lays out at zero and the icon silently vanishes — so both are
- * set from `revCard.circle`.
+ * "12 due", as a quiet mint pill that should never compete with the title.
+ * Zero reads "None" on a neutral tint — a bold 0 reads as a broken counter,
+ * where "None" is the truth and is not a failure.
  */
-export function DrillBadge({ source }: { source: number }) {
+function DuePill({ count }: { count: number }) {
+  const empty = count === 0
   return (
-    <Image
-      source={source}
-      style={{ width: revCard.circle, height: revCard.circle }}
-      resizeMode="contain"
-    />
+    <View
+      className="items-center justify-center"
+      style={{
+        height: 28,
+        minWidth: 58,
+        paddingHorizontal: s.md,
+        borderRadius: revRadius.pill,
+        backgroundColor: empty ? c.neutralTrack : c.mint,
+      }}
+    >
+      <Text className="font-nunito-extrabold" style={{ ...t.pill, color: empty ? c.slate : c.jadeDark }}>
+        {empty ? 'None' : `${count} due`}
+      </Text>
+    </View>
   )
 }
 
 // --- Calls to action ----------------------------------------------------------
 
 /**
- * The two buttons at the foot.
+ * The buttons at the foot — Start Review Session, Quick 5-min Review and My
+ * Words — one component so the three are visibly one family.
  *
- * `tone` is the whole difference: filled green for the session a learner came
- * here to start, outlined for the five-minute version. Both are full width and
- * share the cards' bounds, so the column has one left and one right edge from
- * the title down.
+ * Raised the way the Dashboard's buttons are: `LiftedFace` stands the face on a
+ * darker shoulder and sinks it flush on press, following `PressableScale`'s
+ * press through `usePressProgress`. The same object as Start Review on the
+ * Dashboard, one tap away, rather than a second idea of a 3D button.
+ *
+ * `primary` is the filled jade face with a trailing arrow; `quiet` the outlined
+ * one with a leading icon and a chevron at the right edge. Both carry the Lora
+ * Bold label the reference gives them.
  */
-export function CtaButton({
+export function ReviewButton({
   label,
   icon: Icon,
-  onPress,
   tone,
+  onPress,
+  accessibilityLabel,
 }: {
   label: string
-  icon: ComponentType<{ color: string; size: number; strokeWidth: number }>
-  onPress: () => void
+  icon?: ComponentType<{ color: string; size: number; strokeWidth: number }>
   tone: 'primary' | 'quiet'
+  onPress: () => void
+  accessibilityLabel?: string
 }) {
   const primary = tone === 'primary'
-  const ink = primary ? '#FFFFFF' : c.greenDark
+  const ink = primary ? '#FFFFFF' : c.navy
 
   return (
     <PressableScale
       onPress={onPress}
-      scaleTo={0.98}
+      /* The sink onto the shoulder is the press response; a scale on top of it
+         reads as the button being pushed twice. */
+      scaleTo={1}
       /* The haptic is fired by the caller, which knows whether this is the main
-         session (a heavier feel) or the quick one. */
+         session (a heavier feel) or something lighter. */
       haptic={false}
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
     >
-      <View
-        className="flex-row items-center justify-center"
-        style={{
-          height: primary ? 56 : 54,
-          borderRadius: revRadius.pill,
-          gap: 10,
-          backgroundColor: primary ? c.green : c.card,
-          borderWidth: primary ? 0 : 1.5,
-          borderColor: c.green,
-          ...(primary ? revShadowLifted : null),
-        }}
+      <LiftedFace
+        height={primary ? revButton.primaryHeight : revButton.quietHeight}
+        fill={primary ? c.jade : c.card}
+        shoulder={primary ? revShoulders.primary : revShoulders.quiet}
+        border={primary ? undefined : c.outline}
+        shadow={primary}
       >
-        <Icon color={ink} size={primary ? 22 : 20} strokeWidth={2.3} />
-        <Text
-          className="font-nunito-extrabold"
-          style={{ ...(primary ? t.cta : t.ctaQuiet), color: ink }}
-        >
-          {label}
-        </Text>
-      </View>
+        <View className="flex-row items-center" style={{ gap: s.md, paddingHorizontal: 40 }}>
+          {Icon && <Icon color={c.slate} size={21} strokeWidth={2} />}
+          <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.cta, color: ink }}>
+            {label}
+          </Text>
+        </View>
+
+        <View pointerEvents="none" style={{ position: 'absolute', right: s.xl }}>
+          {primary ? (
+            <ArrowRight size={24} color={ink} strokeWidth={2} />
+          ) : (
+            <ChevronRight size={20} color={c.slate} strokeWidth={2} />
+          )}
+        </View>
+      </LiftedFace>
     </PressableScale>
   )
 }
@@ -598,15 +505,15 @@ export function CtaButton({
 // --- Decoration ---------------------------------------------------------------
 
 /**
- * The bonsai and the fallen petals at the foot of the screen.
+ * The misty range and trees at the foot of the page, bleeding off both sides
+ * and the bottom.
  *
- * Painted *before* the buttons so they sit on top of it where the canopy
- * overlaps. Decoration must never be the thing that makes a label hard to read,
- * and the alternative — insetting the buttons to make room — would break the
- * one left-and-right edge every other element on the screen shares.
+ * The painting has a soft hole where the reference's buttons were
+ * (`processReviewArt.mjs`), so it shows in the corners and under the last
+ * button rather than as a picture behind the labels. Painted before the
+ * buttons, so they sit on top of it where the two overlap.
  */
-export function FootDecor({ width, run }: { width: number; run: number }) {
-  const bonsaiWidth = Math.min(126, width * 0.36)
+export function FootArt({ column, bleed, run }: { column: number; bleed: number; run: number }) {
   const reveal = useReveal({
     from: 'bottom',
     at: revEntrance.at,
@@ -618,46 +525,13 @@ export function FootDecor({ width, run }: { width: number; run: number }) {
   return (
     <Animated.View
       pointerEvents="none"
-      style={[{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0 }, reveal]}
+      style={[{ position: 'absolute', left: -s.screen, bottom: -bleed }, reveal]}
     >
-      <View style={{ position: 'absolute', right: -22, bottom: -26 }}>
-        <Image
-          source={REVIEW_ART.bonsai.source}
-          style={{ width: bonsaiWidth, height: bonsaiWidth / REVIEW_ART.bonsai.ratio }}
-          resizeMode="contain"
-        />
-      </View>
-
-      {/*
-        Petals, drawn rather than shipped as an asset — five ellipses at five
-        angles is a smaller thing than a PNG, and they need to be tuned against
-        the buttons rather than against a canvas.
-      */}
-      <Svg
-        width={width}
-        height={60}
-        style={{ position: 'absolute', left: 0, bottom: 0 }}
-        pointerEvents="none"
-      >
-        {[
-          { x: 26, y: 44, r: -24 },
-          { x: 74, y: 22, r: 38 },
-          { x: 128, y: 50, r: 12 },
-          { x: 176, y: 30, r: -46 },
-          { x: 214, y: 47, r: 24 },
-        ].map((petal) => (
-          <Ellipse
-            key={petal.x}
-            cx={petal.x}
-            cy={petal.y}
-            rx={6}
-            ry={3.4}
-            fill={c.petal}
-            opacity={0.55}
-            transform={`rotate(${petal.r} ${petal.x} ${petal.y})`}
-          />
-        ))}
-      </Svg>
+      <Image
+        source={revArt.foot}
+        style={{ width: column, height: column / REV_FOOT_RATIO }}
+        resizeMode="contain"
+      />
     </Animated.View>
   )
 }

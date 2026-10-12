@@ -69,4 +69,13 @@ export const DICT_BG = {
   green: '#4AA54B',
   greenDark: '#3E9845',
   greenPale: '#EAF5E8',
+  /**
+   * The sides of the raised buttons (the Dashboard's `LiftedFace`) — Add,
+   * Stroke order, Practice. One step down from the face each stands on.
+   */
+  greenShoulder: '#378A39',
+  greenDarkShoulder: '#2D7634',
+  /** Removing a word from My Words — the armed confirm and its button. */
+  coral: '#C8553F',
+  coralPale: '#FBECE8',
 } as const

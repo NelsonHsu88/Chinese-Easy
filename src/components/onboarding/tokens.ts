@@ -14,6 +14,13 @@
  */
 
 export const onbColors = {
+  /**
+   * The paper every page is drawn on — sampled from the Beta 2.1 references,
+   * a shade warmer than `page`. The redesign's watercolour is keyed into real
+   * alpha (`processOnboardingRedesignArt.mjs`), so it sits on this as paint.
+   */
+  paper: '#FDF9F0',
+  /** The placement test card's own fill, unchanged by the redesign. */
   page: '#FCFAF5',
 
   navy: '#14203A',
@@ -65,16 +72,24 @@ export const onbSpacing = {
  * does nothing. Pair each entry with the family named in its comment.
  */
 export const onbType = {
-  /** Nunito ExtraBold. The one big line at the top of a page. */
-  title: { fontSize: 27, lineHeight: 32, letterSpacing: -0.3 },
+  /** Lora Bold. The one big line at the top of a page, as the redesign sets it. */
+  title: { fontSize: 31, lineHeight: 37, letterSpacing: -0.6 },
+  /** Lora Bold, the welcome screen's "Chinese Easy". */
+  titleHero: { fontSize: 34, lineHeight: 40, letterSpacing: -0.7 },
+  /** Nunito ExtraBold — the placement test keeps its original title, by request. */
+  titleClassic: { fontSize: 27, lineHeight: 32, letterSpacing: -0.3 },
   /** Nunito ExtraBold, for the welcome screen's wordmark. */
   wordmark: { fontSize: 26, lineHeight: 31, letterSpacing: -0.2 },
   /** Nunito SemiBold. The supporting line under a title. */
-  body: { fontSize: 14.5, lineHeight: 21 },
+  body: { fontSize: 15.5, lineHeight: 22 },
+  /** The placement test's original subtitle size. */
+  bodyClassic: { fontSize: 14.5, lineHeight: 21 },
   /** Nunito Bold. */
-  cardTitle: { fontSize: 14.5, lineHeight: 19 },
+  cardTitle: { fontSize: 15.5, lineHeight: 20 },
   /** Nunito SemiBold. */
-  cardBody: { fontSize: 12.5, lineHeight: 17.5 },
+  cardBody: { fontSize: 13.5, lineHeight: 18.5 },
+  /** Lora Bold — a goal card's or a sign-in row's own name. */
+  cardTitleSerif: { fontSize: 17, lineHeight: 22, letterSpacing: -0.2 },
   /** Nunito ExtraBold. */
   button: { fontSize: 16 },
   /** Nunito Bold — the "Skip" / "Log in" style inline actions. */
@@ -104,6 +119,8 @@ export const onbCta = {
 export const onbRadius = {
   card: 16,
   cardLarge: 18,
+  /** The redesign's big surfaces — the welcome card, the plan summary. */
+  panel: 22,
 } as const
 
 /** Motion. Short, none of it looping. */
@@ -118,8 +135,11 @@ export const onbMotion = {
    * user is not made to sit through it.
    */
   enter: 620,
-  /** How far apart the entering pieces start, in ms. */
-  enterStagger: 110,
+  /**
+   * How far apart the entering pieces start, in ms. Zero: everything on the
+   * page starts arriving at once rather than in a cascade.
+   */
+  enterStagger: 0,
   /** How far off-screen each piece begins, in points. */
   enterSlide: 56,
   /** The result toast arriving under the placement question. */
@@ -145,8 +165,8 @@ export const onbMotion = {
    * and the learner is waiting on the last one.
    */
   rise: 420,
-  /** How far apart consecutive rising elements start, in ms. */
-  riseStagger: 50,
+  /** How far apart consecutive rising elements start, in ms. Zero — see `enterStagger`. */
+  riseStagger: 0,
   /** How far below its resting place a rising element begins, in points. */
   riseSlide: 26,
   /**

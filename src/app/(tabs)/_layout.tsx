@@ -8,7 +8,7 @@ import { useApp } from '../../context/AppContext'
 import { dueCountFor } from '../../lib/selectors'
 import { FEATURES } from '../../lib/features'
 import { tickHaptic } from '../../lib/haptics'
-import { TourPulse } from '../../components/tour/TourPulse'
+import { TAB_BAR_BODY, tabBarInset } from '../../lib/tabBar'
 
 /**
  * One tab: icon over label, both inside the pale-green pill when active.
@@ -78,14 +78,8 @@ function TabItem({
   )
 }
 
-/**
- * The tab bar's height above the safe-area inset: 6 of top padding plus one
- * `TabItem` (5 + 23 icon + 3 + 15 label + 5 = 51), plus a point of air.
- */
-const TAB_BAR_BODY = 58
-
 export default function TabsLayout() {
-  const { deck, newlyAddedWordIds, reportTourAction } = useApp()
+  const { deck, newlyAddedWordIds } = useApp()
   const dueCount = dueCountFor(deck)
   const pathname = usePathname()
 
@@ -96,6 +90,7 @@ export default function TabsLayout() {
    * the whole tab group and would otherwise leave nothing lit.
    */
   const dictionarySection = pathname.startsWith('/dictionary')
+  const reviewOpen = pathname === '/review-tab'
 
   /*
    * Room under the tabs for the system's own navigation.
@@ -116,7 +111,7 @@ export default function TabsLayout() {
    * buttons — the bar read as floating too high up the screen.
    */
   const insets = useSafeAreaInsets()
-  const barInset = Math.max(insets.bottom, 6)
+  const barInset = tabBarInset(insets.bottom)
 
   return (
     <Tabs
@@ -162,19 +157,16 @@ export default function TabsLayout() {
         options={{
           title: FEATURES.lessons ? 'Lessons' : 'Learn',
           tabBarIcon: ({ focused }) => (
-            <TourPulse target="learn-tab" radius={16} inset={3}>
-              <TabItem
-                icon={FEATURES.lessons ? GraduationCap : BookOpen}
-                label={FEATURES.lessons ? 'Lessons' : 'Learn'}
-                focused={focused}
-              />
-            </TourPulse>
+            <TabItem
+              icon={FEATURES.lessons ? GraduationCap : BookOpen}
+              label={FEATURES.lessons ? 'Lessons' : 'Learn'}
+              focused={focused}
+            />
           ),
         }}
         listeners={{
           tabPress: () => {
             tickHaptic()
-            reportTourAction('learn:open')
           },
         }}
       />
@@ -183,7 +175,13 @@ export default function TabsLayout() {
         options={{
           title: 'Review',
           tabBarIcon: ({ focused }) => <TabItem icon={Repeat} label="Review" focused={focused} />,
-          tabBarBadge: dueCount > 0 ? (dueCount > 99 ? '99+' : dueCount) : undefined,
+          /*
+           * Hidden while the Review tab is open: the learner is already looking
+           * at what's due, so the count has said what it had to. React
+           * Navigation's badge animates its own opacity when it goes, so it
+           * fades away rather than blinking out, and fades back on leaving.
+           */
+          tabBarBadge: dueCount > 0 && !reviewOpen ? (dueCount > 99 ? '99+' : dueCount) : undefined,
           /*
            * Nudged up and right so it clears the icon. The default position
            * assumes the navigator's own icon-above-label layout; `TabItem`
@@ -199,13 +197,7 @@ export default function TabsLayout() {
             marginLeft: 15,
           },
         }}
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault()
-            tickHaptic()
-            router.push('/review')
-          },
-        }}
+        listeners={{ tabPress: () => tickHaptic() }}
       />
       <Tabs.Screen
         name="dictionary-tab"

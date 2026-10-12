@@ -1,50 +1,66 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Pressable, ScrollView, Image, Animated, Easing } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { View, Text, Pressable, ScrollView, Animated, Easing, useWindowDimensions } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
-import { ChevronLeft, CalendarDays, Trophy } from 'lucide-react-native'
+import { ArrowLeft } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { playTapSound, playPositiveChime } from '../lib/sound'
-import { celebrateHaptic, tapHaptic } from '../lib/haptics'
+import { celebrateHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
 import { devNow } from '../lib/devClock'
-import { FEATURES, safeRoute } from '../lib/features'
-import { ChallengeCard, type CardState } from '../components/challenges/ChallengeCard'
-import { ChallengeHero } from '../components/challenges/ChallengeHero'
-import { SegmentedTabs, XpCounter } from '../components/challenges/ChallengeParts'
-import { CARD, CHAL, GUTTER } from '../components/challenges/tokens'
-import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
+import { safeRoute } from '../lib/features'
+import { currentWeekActivity } from '../lib/progress'
+import { addDays } from '../lib/date'
+import {
+  ChallengesHero,
+  StreakCard,
+  ShelfTabs,
+  SectionHeading,
+  ChallengeCard,
+  CompletionRewardCard,
+  type ChallengeCardState,
+} from '../components/challenges/parts'
+import {
+  chalCard,
+  chalColors as c,
+  chalSpacing as s,
+  chalEntrance as anim,
+  CHAL_CONTENT_MAX,
+} from '../components/challenges/tokens'
+import { Reveal, useEntranceRun } from '../components/dashboard/entrance'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
 import {
-  CHALLENGE_DEFS,
+  COMPLETION_REWARDS,
   challengeInstanceId,
+  challengeTarget,
+  isCompletionRewardEarned,
+  offeredChallenges,
+  weekStartISO,
+  type ChallengeCadence,
+  type ChallengeContext,
   type ChallengeDef,
 } from '../lib/challenges'
 
 /*
- * Challenges.
+ * Challenges, built to the Beta 2.1 reference (`SS 929 Redesigned
+ * Challenges.png`).
  *
- * Rebuilt against the reference mockup: warm off-white page, a hero that answers
- * "how much of today is done", and one card component in four states below it.
- * Colours come from the `chal-*` tokens in the Tailwind config and nowhere else.
+ * Its design system is `components/challenges/tokens.ts` — the ivory-and-jade
+ * family, spread from Review's — and its pieces are in
+ * `components/challenges/parts.tsx`. What lives here is the composition, the
+ * wiring from real progress to every number, and the claim animation.
  *
- * Light-only, like the reading screens — the design rests on warm paper, and a
- * dark repaint would be a different design rather than a recolour.
+ * Every count on the screen is read from the learner's own activity: nothing
+ * here shows the mockup's 6 / 10 unless they have learned six words today.
  */
 
-type Tab = 'daily' | 'milestone'
+type Shelf = ChallengeCadence
 
-/*
- * The page's arrival: the whole screen rises a little and fades up.
- *
- * One beat rather than a staggered score, matching `Books` — the Dashboard
- * assembles itself because it is six unrelated things, where this is one board
- * being put in front of the learner. The rise is short on purpose; past about
- * 40pt the movement stops reading as arrival and starts reading as a page turn.
- *
- * It replays on every focus, so coming back from a challenge's own screen hands
- * the board back the same way it was first opened.
- */
-const ENTER = { at: 0, for: 640, rise: 28 } as const
+/** `milestone` is labelled Special — see `ChallengeCadence`. */
+const SHELVES: { value: Shelf; label: string; heading: string }[] = [
+  { value: 'daily', label: 'Daily', heading: 'Daily Challenges' },
+  { value: 'weekly', label: 'Weekly', heading: 'Weekly Challenges' },
+  { value: 'milestone', label: 'Special', heading: 'Special Challenges' },
+]
 
 /**
  * How a claimed challenge leaves its place in the list.
@@ -74,15 +90,34 @@ function once(fn: () => void): () => void {
   }
 }
 
-/** Time left until the daily set rolls over, from the app's notion of "now". */
-function resetsInLabel(): string {
+/** "14h 22m" / "3d 5h" / "12m" — the largest two units that mean anything. */
+function formatRemaining(ms: number): string {
+  const minutes = Math.max(0, Math.round(ms / 60000))
+  const days = Math.floor(minutes / 1440)
+  const hours = Math.floor((minutes % 1440) / 60)
+  const mins = minutes % 60
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${mins}m`
+  return `${mins}m`
+}
+
+/**
+ * Time left until a shelf rolls over, from the app's notion of "now" — the
+ * daily set at midnight, the weekly one at the start of next Monday. Special
+ * challenges never reset, so they get no countdown at all.
+ */
+function resetsInLabel(shelf: Shelf): string | undefined {
+  if (shelf === 'milestone') return undefined
   const now = devNow()
-  const midnight = new Date(now)
-  midnight.setHours(24, 0, 0, 0)
-  const totalMinutes = Math.max(0, Math.round((midnight.getTime() - now.getTime()) / 60000))
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return hours > 0 ? `resets in ${hours}h ${minutes}m` : `resets in ${minutes}m`
+  let end: Date
+  if (shelf === 'daily') {
+    end = new Date(now)
+    end.setHours(24, 0, 0, 0)
+  } else {
+    const [y, m, d] = addDays(weekStartISO(), 7).split('-').map(Number)
+    end = new Date(y, m - 1, d)
+  }
+  return `Resets in ${formatRemaining(end.getTime() - now.getTime())}`
 }
 
 /**
@@ -167,7 +202,7 @@ function CardSlot({
           ? null
           : {
               height: leave.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }),
-              marginBottom: leave.interpolate({ inputRange: [0, 1], outputRange: [CARD.gap, 0] }),
+              marginBottom: leave.interpolate({ inputRange: [0, 1], outputRange: [chalCard.gap, 0] }),
             }),
         opacity: leave.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 0.4, 0] }),
         transform: [{ translateY: leave.interpolate({ inputRange: [0, 1], outputRange: [0, 18] }) }],
@@ -181,13 +216,24 @@ function CardSlot({
       }
     : null
 
+  /*
+   * Android applies a view's `opacity` to each layer under it separately rather
+   * than to the row as one picture, so a faded card showed its own elevation
+   * shadow through its translucent surface: the rim around the content came out
+   * darker than the middle. Compositing offscreen first fades the finished card
+   * as a whole, the way iOS and the web always do. Only while it is actually
+   * translucent — the offscreen pass is not free.
+   */
+  const translucent = dimmed || leaving || arriving
+
   return (
     <Animated.View
       onLayout={(e) => {
         if (!leaving) setHeight(e.nativeEvent.layout.height)
       }}
+      needsOffscreenAlphaCompositing={translucent}
       style={[
-        { marginBottom: CARD.gap, opacity: dimmed ? CLAIMED_OPACITY : 1, overflow: 'hidden' },
+        { marginBottom: chalCard.gap, opacity: dimmed ? CLAIMED_OPACITY : 1, overflow: 'hidden' },
         leavingStyle,
         arrivingStyle,
       ]}
@@ -198,42 +244,58 @@ function CardSlot({
 }
 
 export function Challenges() {
-  const {
-    xp,
-    claimedChallengeIds,
-    claimChallenge,
-    dailyProgress,
-    streak,
-    completedLessonIds,
-  } = useApp()
-  const [tab, setTab] = useState<Tab>('daily')
+  const { xp, claimedChallengeIds, claimChallenge, dailyProgress, streak, completedLessonIds, settings } = useApp()
+  const [shelf, setShelf] = useState<Shelf>('daily')
+
+  const { width } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
+  const column = Math.min(width, CHAL_CONTENT_MAX)
+  const contentWidth = column - s.screen * 2
 
   /*
-   * The page's arrival, on one beat — see `ENTER`. It wraps the claim animation
-   * rather than competing with it: this plays once on the way in, where that one
-   * fires on a tap long after this has settled.
+   * The page's arrival, on one beat like Review — the painting in from the
+   * right, everything else rising. It replays on every focus, so coming back
+   * from a challenge's own screen hands the board back the way it was opened.
+   * It wraps the claim animation rather than competing with it: this plays on
+   * the way in, where that one fires on a tap long after this has settled.
    */
   const run = useEntranceRun()
-  const enter = useReveal({ from: 'bottom', ...ENTER, duration: ENTER.for, distance: ENTER.rise, run })
+  const beat = { at: anim.at, duration: anim.for, run, distance: anim.slideY } as const
 
   /** The card collapsing out of its old position, if any. */
   const [leavingId, setLeavingId] = useState<string | null>(null)
   /** The card fading into its new position at the foot of the list, if any. */
   const [arrivingId, setArrivingId] = useState<string | null>(null)
 
-  const context = useMemo(
-    () => ({ dailyProgress, streak, completedLessonCount: completedLessonIds.length, xp }),
-    [dailyProgress, streak, completedLessonIds, xp],
+  const context = useMemo<ChallengeContext>(
+    () => ({
+      dailyProgress,
+      streak,
+      completedLessonCount: completedLessonIds.length,
+      xp,
+      dailyNewWordLimit: settings.dailyNewWordLimit,
+      dailyReviewLimit: settings.dailyReviewLimit,
+    }),
+    [dailyProgress, streak, completedLessonIds, xp, settings.dailyNewWordLimit, settings.dailyReviewLimit],
+  )
+
+  const week = useMemo(() => currentWeekActivity(dailyProgress), [dailyProgress])
+
+  const claim = useCallback(
+    (instanceId: string, reward: number) => {
+      playPositiveChime()
+      celebrateHaptic()
+      claimChallenge(instanceId, reward)
+    },
+    [claimChallenge],
   )
 
   const handleClaim = useCallback(
     (def: ChallengeDef) => {
-      playPositiveChime()
-      celebrateHaptic()
       setLeavingId(def.id)
-      claimChallenge(challengeInstanceId(def), def.xpReward)
+      claim(challengeInstanceId(def), def.xpReward)
     },
-    [claimChallenge],
+    [claim],
   )
 
   const handleLeft = useCallback((id: string) => {
@@ -244,6 +306,12 @@ export function Challenges() {
   const handleArrived = useCallback((id: string) => {
     setArrivingId((current) => (current === id ? null : current))
   }, [])
+
+  const changeShelf = (next: Shelf) => {
+    if (next === shelf) return
+    tickHaptic()
+    setShelf(next)
+  }
 
   /*
    * The list, with finished work sorted to the foot.
@@ -258,242 +326,167 @@ export function Challenges() {
     const claimedNow = (def: ChallengeDef) =>
       claimedChallengeIds.includes(challengeInstanceId(def)) && def.id !== leavingId
 
-    const list = CHALLENGE_DEFS.filter((d) => d.cadence === tab)
-      // A goal whose whole feature is hidden can't be worked on, so it isn't offered.
-      .filter((d) => !d.requires || FEATURES[d.requires])
-
-    return list
+    return offeredChallenges(shelf)
       .map((def) => {
-        const current = Math.min(def.target, def.progress(context))
+        const target = challengeTarget(def, context)
+        const current = Math.min(target, def.progress(context))
         const claimed = claimedNow(def)
-        const complete = current >= def.target
-        const state: CardState = claimed
-          ? 'claimed'
-          : complete
-            ? 'claimable'
-            : current > 0
-              ? 'inProgress'
-              : 'notStarted'
-        return { def, current, claimed, complete, state }
+        const state: ChallengeCardState = claimed ? 'claimed' : current >= target ? 'claimable' : 'open'
+        return { def, target, current, claimed, state }
       })
       // Stable: finished work drops to the bottom, everything else keeps the
       // order the definitions declare.
       .sort((a, b) => Number(a.claimed) - Number(b.claimed))
-  }, [tab, claimedChallengeIds, leavingId, context])
+  }, [shelf, claimedChallengeIds, leavingId, context])
 
-  /** Today's tally — the number the hero exists to show. */
-  const summary = useMemo(() => {
-    const completed = rows.filter((r) => r.complete).length
-    const xpAvailable = rows.reduce((sum, r) => sum + r.def.xpReward, 0)
-    const xpEarned = rows.filter((r) => r.claimed).reduce((sum, r) => sum + r.def.xpReward, 0)
-    return { completed, total: rows.length, xpEarned, xpAvailable }
-  }, [rows])
+  /** The bonus for the whole set — daily and weekly only; milestones have no "all". */
+  const reward = useMemo(() => {
+    if (shelf === 'milestone') return null
+    const def = COMPLETION_REWARDS[shelf]
+    const instanceId = challengeInstanceId(def)
+    const state: ChallengeCardState = claimedChallengeIds.includes(instanceId)
+      ? 'claimed'
+      : isCompletionRewardEarned(shelf, context)
+        ? 'claimable'
+        : 'open'
+    return { def, instanceId, state }
+  }, [shelf, claimedChallengeIds, context])
 
-  const resetsIn = useMemo(resetsInLabel, [])
+  const heading = SHELVES.find((x) => x.value === shelf)?.heading ?? ''
+  /* Recomputed per shelf and per focus rather than ticking live: a countdown
+     that moves while you read it is a distraction on a board like this. */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const resets = useMemo(() => resetsInLabel(shelf), [shelf, run])
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 items-center" style={{ backgroundColor: CHAL.bg }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
       {/*
         The navigator's own push transition is switched off for this route so the
-        fade-up below is the only animation playing. Left on, a native build
-        would slide the whole page in from the right *and* run this one inside
-        it — two transitions at different speeds, which reads as a stutter
-        rather than as either one. Same call `Books` and `DetailShell` make.
+        entrance below is the only animation playing — two transitions at
+        different speeds read as a stutter. Same call `Books` and `DetailShell`
+        make.
       */}
       <Stack.Screen options={{ animation: 'none' }} />
 
-      <View className="w-full flex-1" style={{ maxWidth: 430 }}>
-        {/*
-          Plain styles on the animated view with the page in a plain View inside
-          it — NativeWind drops `className` on an `Animated.View` entirely, and
-          the column's own `flex-1` would go with it.
-        */}
-        <Animated.View style={[{ flex: 1 }, enter]}>
-          <View className="flex-1">
-        {/* Header */}
-        <View
-          style={{
-            height: 52,
-            marginTop: 16,
-            paddingHorizontal: GUTTER,
-            flexDirection: 'row',
-            alignItems: 'center',
-          }}
-        >
-          <Pressable
-            onPress={() => {
-              playTapSound()
-              tapHaptic()
-              router.back()
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-            style={{ width: 34 }}
-          >
-            <ChevronLeft size={26} color={CHAL.navy} strokeWidth={2.25} />
-          </Pressable>
-
-          <Text
-            className="flex-1 text-center font-nunito-extrabold"
-            style={{ fontSize: 30, lineHeight: 38, color: CHAL.navy, letterSpacing: -0.5 }}
-          >
-            Challenges
-          </Text>
-
-          <XpCounter xp={xp} />
-        </View>
-
-        <View style={{ paddingHorizontal: GUTTER, marginTop: 20 }}>
-          <SegmentedTabs
-            value={tab}
-            onChange={setTab}
-            options={[
-              {
-                value: 'daily' as Tab,
-                label: 'Daily',
-                icon: <CalendarDays size={20} color={CHAL.body} strokeWidth={2.1} />,
-                activeIcon: <CalendarDays size={20} color={CHAL.greenInk} strokeWidth={2.25} />,
-              },
-              {
-                value: 'milestone' as Tab,
-                label: 'Milestones',
-                icon: <Trophy size={20} color={CHAL.body} strokeWidth={2.1} />,
-                activeIcon: <Trophy size={20} color={CHAL.greenInk} strokeWidth={2.25} />,
-              },
-            ]}
-          />
-        </View>
-
-        <ScrollView
-          contentContainerStyle={{ paddingHorizontal: GUTTER, paddingTop: 20, paddingBottom: 32 }}
-          showsVerticalScrollIndicator={false}
-        >
-          <ChallengeHero
-            title={tab === 'daily' ? 'Daily Challenges' : 'Milestones'}
-            subtitle={
-              tab === 'daily'
-                ? 'Complete challenges, earn XP, and grow your skills!'
-                : 'Long-run goals that stay until you reach them.'
-            }
-            completed={summary.completed}
-            total={summary.total}
-            xpEarned={summary.xpEarned}
-            xpAvailable={summary.xpAvailable}
-            // Only the daily set rolls over, so only it gets the countdown.
-            footnote={tab === 'daily' ? resetsIn : undefined}
-          />
-
-          {/* No `gap` on the container: each slot carries its own bottom margin
-              so it can collapse along with its height on the way out. */}
-          <View style={{ marginTop: 22 }}>
-            {rows.map(({ def, current, state }) => (
-              <CardSlot
-                key={def.id}
-                id={def.id}
-                leaving={leavingId === def.id}
-                arriving={arrivingId === def.id}
-                dimmed={state === 'claimed' && arrivingId !== def.id}
-                onLeft={handleLeft}
-                onArrived={handleArrived}
-              >
-                <ChallengeCard
-                  def={def}
-                  current={current}
-                  state={state}
-                  onOpen={() => {
-                    playTapSound()
-                    tapHaptic()
-                    // "Earn 200 XP" points at the lesson path, but XP also comes
-                    // from reviews — so when Lessons is switched off the link
-                    // falls back to Review rather than losing its way in.
-                    router.push(safeRoute(def.route, '/review') as Parameters<typeof router.push>[0])
-                  }}
-                  onClaim={() => handleClaim(def)}
-                />
-              </CardSlot>
-            ))}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1, alignItems: 'center', paddingBottom: Math.max(s.xxl, insets.bottom + s.md) }}
+      >
+        <View style={{ width: column, paddingHorizontal: s.screen }}>
+          <View className="flex-row items-center" style={{ height: 48 }}>
+            {/* Guarded, never a bare `back()`: reached by deep link or after a
+                web reload there is nothing to pop, and the arrow would be inert. */}
+            <Pressable
+              onPress={() => {
+                playTapSound()
+                tapHaptic()
+                if (router.canGoBack()) router.back()
+                else router.replace('/')
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={12}
+              className="items-center justify-center active:opacity-60"
+              style={{ width: 40, height: 44, marginLeft: -6 }}
+            >
+              <ArrowLeft size={26} color={c.jadeDark} strokeWidth={2} />
+            </Pressable>
           </View>
 
-          {rows.length === 0 && (
-            <View style={{ alignItems: 'center', paddingTop: 40 }}>
-              <Text className="font-nunito-extrabold" style={{ fontSize: 19, color: CHAL.navy }}>
-                Nothing here yet
-              </Text>
-              <Text className="mt-1.5 font-nunito-semibold" style={{ fontSize: 15, color: CHAL.body }}>
-                A fresh set arrives tomorrow.
-              </Text>
-            </View>
-          )}
+          <ChallengesHero column={column} run={run} />
 
-          {rows.length > 0 && <EncouragementBanner tab={tab} remaining={summary.total - summary.completed} />}
+          {/* No gap: the card's top edge is where the hero painting ends. */}
+          <Reveal from="bottom" {...beat}>
+            <StreakCard streak={streak} week={week} />
+          </Reveal>
+
+          <Reveal from="bottom" {...beat}>
+            <View style={{ marginTop: s.lg }}>
+              <ShelfTabs value={shelf} options={SHELVES} onChange={changeShelf} />
+            </View>
+
+            <View style={{ marginTop: s.xl, marginBottom: s.md }}>
+              <SectionHeading title={heading} resets={resets} />
+            </View>
+
+            {/* No `gap` on the container: each slot carries its own bottom margin
+                so it can collapse along with its height on the way out. */}
+            <View>
+              {rows.map(({ def, current, target, state }) => (
+                <CardSlot
+                  key={def.id}
+                  id={def.id}
+                  leaving={leavingId === def.id}
+                  arriving={arrivingId === def.id}
+                  dimmed={state === 'claimed' && arrivingId !== def.id}
+                  onLeft={handleLeft}
+                  onArrived={handleArrived}
+                >
+                  <ChallengeCard
+                    title={def.title}
+                    description={def.description(target)}
+                    scene={def.scene}
+                    current={current}
+                    target={target}
+                    xpReward={def.xpReward}
+                    state={state}
+                    width={contentWidth}
+                    onOpen={() => {
+                      playTapSound()
+                      // "Earn 200 XP" points at the lesson path, but XP also comes
+                      // from reviews — so when Lessons is switched off the link
+                      // falls back to Review rather than losing its way in.
+                      const route = safeRoute(def.route, '/review-tab') as Parameters<typeof router.push>[0]
+                      // A tab is switched to, not pushed: pushing it from here
+                      // would stack a second copy of the whole tab bar.
+                      if (String(route).endsWith('-tab')) router.navigate(route)
+                      else router.push(route)
+                    }}
+                    onClaim={() => handleClaim(def)}
+                  />
+                </CardSlot>
+              ))}
+            </View>
+
+            {rows.length === 0 && (
+              <View style={{ alignItems: 'center', paddingVertical: s.xxl }}>
+                <Text className="font-lora-bold" style={{ fontSize: 18, color: c.navy }}>
+                  Nothing here yet
+                </Text>
+                <Text className="font-lora" style={{ marginTop: 4, fontSize: 14, color: c.slate }}>
+                  A fresh set arrives soon.
+                </Text>
+              </View>
+            )}
+
+            {reward && (
+              <>
+                <View style={{ marginTop: s.md, marginBottom: s.md }}>
+                  <SectionHeading title="Completion Reward" />
+                </View>
+                <CompletionRewardCard
+                  title={reward.def.title}
+                  description={reward.def.description}
+                  xpReward={reward.def.xpReward}
+                  state={reward.state}
+                  width={contentWidth}
+                  onClaim={() => claim(reward.instanceId, reward.def.xpReward)}
+                />
+              </>
+            )}
+          </Reveal>
 
           {/*
-            Last, and deliberately outside the `CardSlot` list.
-
-            Those slots animate their own height and bottom margin as a claimed
-            challenge collapses out of position and fades back in at the foot of
-            the list. A banner inside that list would be one more thing whose
-            height changes during an animation that is already backstopped by
-            timers — and an advert loading mid-claim could land exactly where
-            the collapsing card is being measured. Out here it is a static
-            sibling that the claim animation never touches.
+            Last, and deliberately outside the `CardSlot` list: those slots
+            animate their own height as a claimed challenge collapses and fades
+            back in at the foot, and an advert loading mid-claim could land
+            exactly where the collapsing card is being measured.
           */}
-          <AppBannerAd placement="challenges" />
-        </ScrollView>
+          <View style={{ marginTop: s.lg }}>
+            <AppBannerAd placement="challenges" />
           </View>
-        </Animated.View>
-      </View>
+        </View>
+      </ScrollView>
     </SafeAreaView>
-  )
-}
-
-/**
- * The footer banner.
- *
- * The mockup pairs a panda with a treasure chest here; this project has neither,
- * so the app's own Shifu mascot stands in and the chest is dropped rather than
- * faked with an icon that would look borrowed from somewhere else.
- */
-function EncouragementBanner({ tab, remaining }: { tab: Tab; remaining: number }) {
-  const done = remaining <= 0
-  const daily = tab === 'daily'
-
-  return (
-    <View
-      className="shadow-chal"
-      style={{
-        marginTop: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 14,
-        borderRadius: 20,
-        padding: 16,
-        backgroundColor: CHAL.warm,
-        borderWidth: 1,
-        borderColor: CHAL.warmLine,
-      }}
-    >
-      <Image
-        source={require('../assets/images/mascot-shifu.png')}
-        style={{ width: 62, height: 62 }}
-        resizeMode="contain"
-        accessibilityIgnoresInvertColors
-      />
-      <View style={{ flex: 1 }}>
-        <Text className="font-nunito-extrabold" style={{ fontSize: 19, lineHeight: 25, color: CHAL.navy }}>
-          {done ? (daily ? 'All done today!' : 'Every milestone reached!') : 'Keep it up!'}
-        </Text>
-        <Text className="mt-0.5 font-nunito-semibold" style={{ fontSize: 15, lineHeight: 20, color: CHAL.body }}>
-          {done
-            ? daily
-              ? 'Every challenge finished — come back tomorrow for a fresh set.'
-              : 'Nothing left on the board. More will be added.'
-            : daily
-              ? `Finish ${remaining} more for today's full set.`
-              : `${remaining} still to reach — they'll wait for you.`}
-        </Text>
-      </View>
-    </View>
   )
 }

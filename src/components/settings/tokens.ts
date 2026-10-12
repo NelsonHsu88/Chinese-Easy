@@ -15,7 +15,7 @@
  * paper under watercolour; a dark repaint would be a different design.
  */
 
-import { dashColors, dashRadius, dashShadow, dashSpacing, dashSurfaces } from '../dashboard/tokens'
+import { dashColors, dashRadius, dashShadow, dashSpacing } from '../dashboard/tokens'
 
 export const setColors = {
   ...dashColors,
@@ -51,16 +51,6 @@ export const setColors = {
   sage: '#9BB295',
 } as const
 
-/** Tinted surfaces that are not the plain card. */
-export const setSurfaces = {
-  /**
-   * The streak card. Literally the Dashboard's "This Week" tint, because it is
-   * the same information wearing a different hat — two greens a shade apart for
-   * the same idea is how a palette starts to drift.
-   */
-  streak: dashSurfaces.week,
-} as const
-
 /**
  * The spacing scale, restricted.
  *
@@ -86,32 +76,24 @@ export const setSpacing = {
  * *family*, because React Native cannot synthesise one.
  */
 export const setType = {
-  /** Nunito ExtraBold. "Settings". */
-  title: { fontSize: 36, lineHeight: 42, letterSpacing: -0.8 },
-  /** Nunito SemiBold, the line under it. */
-  subtitle: { fontSize: 15.5, lineHeight: 21 },
-  /** Nunito ExtraBold — "Study", "Account & App". */
-  section: { fontSize: 15.5, lineHeight: 21, letterSpacing: -0.1 },
-  /** Nunito Bold, a row's own name. */
-  rowTitle: { fontSize: 16, lineHeight: 21 },
+  /** Lora Bold. "Settings" — the same heading face as Learn, Review and the Dictionary. */
+  title: { fontSize: 38, lineHeight: 44, letterSpacing: -0.6 },
+  /** Lora, the line under it. */
+  subtitle: { fontSize: 15, lineHeight: 21 },
+  /** Lora Bold — "Study", "Account & App". */
+  section: { fontSize: 20, lineHeight: 25, letterSpacing: -0.2 },
+  /** Lora Bold, a hub row's own name. */
+  rowTitle: { fontSize: 16.5, lineHeight: 21 },
   /** Nunito SemiBold, the line under it. */
   rowSubtitle: { fontSize: 13.5, lineHeight: 18 },
   /** Nunito Bold, the green summary at the right of a row. */
   rowValue: { fontSize: 14, lineHeight: 19 },
-  /** Nunito ExtraBold, the profile card's name. */
-  profileName: { fontSize: 19, lineHeight: 25, letterSpacing: -0.2 },
+  /** Lora Bold, the profile card's name. */
+  profileName: { fontSize: 19, lineHeight: 24, letterSpacing: -0.2 },
   /** Nunito SemiBold, the email under it. */
   profileMeta: { fontSize: 13.5, lineHeight: 18 },
   /** Nunito ExtraBold, the avatar's initial. */
   avatar: { fontSize: 27, lineHeight: 34 },
-  /** Nunito ExtraBold, "Keep your streak growing!". */
-  streakTitle: { fontSize: 16, lineHeight: 21, letterSpacing: -0.1 },
-  /** Nunito SemiBold, the line under it. */
-  streakBody: { fontSize: 13.5, lineHeight: 18 },
-  /** Nunito ExtraBold, the streak number. */
-  streakCount: { fontSize: 30, lineHeight: 34, letterSpacing: -1 },
-  /** Nunito Bold, the Mon/Tue/Wed labels. */
-  streakDay: { fontSize: 11, lineHeight: 15 },
   /** Nunito ExtraBold, a detail screen's own heading. */
   detailTitle: { fontSize: 20, lineHeight: 26, letterSpacing: -0.2 },
   /** Nunito ExtraBold, a control group's heading on a detail screen. */

@@ -803,6 +803,38 @@ export function characterList(bank: VocabWord[], hskLevel: number, size = 40): V
     .slice(0, size)
 }
 
+/** Longest example, in characters other than punctuation, that Word to discover will show. */
+export const DISCOVER_EXAMPLE_MAX = 12
+
+/**
+ * The English names Tatoeba's Chinese is full of, transliterated, in both
+ * scripts. Its translators keep the English sentences' cast — Tom and Mary
+ * above all — so a sentence about 湯姆 reads as a translation exercise rather
+ * than as Chinese. Multi-character only: 肯 and 簡 are names there too, but
+ * also ordinary words.
+ */
+const TRANSLITERATED_NAMES =
+  /湯姆|汤姆|瑪麗|玛丽|約翰|约翰|傑克|杰克|比爾|比尔|露西|喬治|乔治|鮑勃|鲍勃|愛麗絲|爱丽丝|麥克|麦克|邁克|迈克|保羅|保罗|吉姆|南希|貝蒂|贝蒂|凱特|凯特|艾倫|艾伦|湯米|汤米|大衛|大卫|珍妮|彼得|安娜|約翰遜|约翰逊|史密斯|布朗|瓊斯|琼斯/
+
+/**
+ * Whether an example sentence is plain enough to lead with: no longer than
+ * `DISCOVER_EXAMPLE_MAX` (punctuation and spaces are not counted), and none of
+ * the three things that make a corpus sentence read as off —
+ *
+ * - **Latin letters**: an English name or acronym left in the Chinese ("Tom沒有…").
+ * - **A transliterated English name** (`TRANSLITERATED_NAMES`).
+ * - **CJK Extension A characters** (U+3400–U+4DBF): rare variant forms the
+ *   corpus's script conversion produced in place of ordinary ones — 㨿 for 據,
+ *   㕥 for 以. Real everyday Chinese never needs that block.
+ */
+export function isSimpleExample(sentence: string): boolean {
+  if (/[A-Za-zＡ-Ｚａ-ｚ]/.test(sentence)) return false
+  if (TRANSLITERATED_NAMES.test(sentence)) return false
+  if (/[㐀-䶿]/.test(sentence)) return false
+  const body = sentence.replace(/[\s\p{P}\p{S}]/gu, '')
+  return [...body].length <= DISCOVER_EXAMPLE_MAX
+}
+
 /**
  * The landing's "Word to discover": one word per calendar day.
  *
@@ -812,6 +844,14 @@ export function characterList(bank: VocabWord[], hskLevel: number, size = 40): V
  * example sentence qualify: the card is built around its example, and example
  * sentences come from the corpus and are never generated, so a word without
  * one is skipped rather than shown half-finished.
+ *
+ * The example also has to be **simple** (`isSimpleExample`): short, with no
+ * English names (in Latin letters or transliterated) and no stray variant
+ * characters. The corpus is Tatoeba, whose Chinese often keeps English names
+ * in Latin script — 意圖 came with "Tom沒有意圖去邀請Mary去即將來臨的舞會。" —
+ * and this card is a single sentence presented as the way into a new word.
+ * A word whose only sentence is long or half-English is passed over for one
+ * that reads cleanly; it is still in the dictionary with its sentence.
  *
  * Stable for the whole day (`dayISO` indexes a fixed ordering), so opening the
  * dictionary twice does not change the word underneath the learner.
@@ -826,6 +866,7 @@ export function wordToDiscover(bank: VocabWord[], hskLevel: number, dayISO: stri
       w.hskLevel <= high &&
       [...w.traditional].length === 2 &&
       Boolean(w.example?.traditional && w.example.translation) &&
+      isSimpleExample(w.example!.traditional) &&
       isTeachableWord(w) &&
       !isFunctionWord(w),
   )

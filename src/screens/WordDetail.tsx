@@ -4,7 +4,14 @@ import { router, useLocalSearchParams } from 'expo-router'
 import { useApp } from '../context/AppContext'
 import { LOOKUP_HSK_LEVEL } from '../data/lookupWords'
 import { displayExample, displayPinyin, displayWord } from '../lib/hanzi'
-import { DetailShell, DetailCard, StrokeOrderModal } from '../components/dictionary/DetailShell'
+import {
+  DetailShell,
+  DetailCard,
+  StrokeOrderModal,
+  openCharacterDetail,
+  openWordDetail,
+  useInDictionaryTab,
+} from '../components/dictionary/DetailShell'
 import {
   AppearsInCard,
   ExampleCard,
@@ -16,11 +23,11 @@ import {
   type HeroStat,
 } from '../components/dictionary/DetailSections'
 import { SentencesModal, WordsModal } from '../components/dictionary/AppearsInModals'
-import { DeckStateButton } from '../components/dictionary/DictionaryControls'
+import { DeckStateButton, FavoriteButton, RemoveFromDeckButton } from '../components/dictionary/DictionaryControls'
 import { PressScale } from '../components/dictionary/PressScale'
 import { DICT_BG, DICT_BUTTON_SHADOW } from '../components/dictionary/shadows'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
-import { TourPulse } from '../components/tour/TourPulse'
+import { TourTarget } from '../components/tour/targets'
 import {
   appearsIn,
   buildDeckIndex,
@@ -46,6 +53,7 @@ import type { VocabWord } from '../types'
  */
 export function WordDetail() {
   const { wordId } = useLocalSearchParams<{ wordId?: string }>()
+  const inTab = useInDictionaryTab()
   const {
     wordBank,
     settings,
@@ -54,13 +62,17 @@ export function WordDetail() {
     addToReviewDeck,
     getWord,
     pushRecentSearch,
-    reportTourAction,
+    favoriteWordIds,
+    toggleFavorite,
+    removeFromReviewDeck,
   } = useApp()
 
   const [watching, setWatching] = useState(false)
   const [practising, setPractising] = useState(false)
   /** Which half of "Appears in" is open, if either. */
   const [appearsInList, setAppearsIn] = useState<'words' | 'sentences' | null>(null)
+  /** Whether "Remove from My Words" has been armed — see `RemoveFromDeckButton`. */
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   const word = wordId ? getWord(decodeURIComponent(wordId)) : undefined
 
@@ -165,7 +177,7 @@ export function WordDetail() {
             onPress={() => {
               tapHaptic()
               if (router.canGoBack()) router.back()
-              else router.replace('/dictionary-tab')
+              else router.replace(inTab ? '/dictionary-tab' : '/my-words')
             }}
             style={[{ height: 48, marginTop: 16 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
             className="items-center justify-center rounded-full bg-dict-green"
@@ -189,46 +201,48 @@ export function WordDetail() {
 
   const openCharacter = (character: string) => {
     tapHaptic()
-    router.push(`/dictionary-tab/character/${encodeURIComponent(character)}`)
+    openCharacterDetail(character, inTab)
   }
 
   const openWord = (next: VocabWord) => {
     tapHaptic()
     pushRecentSearch(next.id)
-    router.push(`/dictionary-tab/word/${encodeURIComponent(next.id)}`)
+    openWordDetail(next.id, inTab)
   }
 
   return (
     <DetailShell title="Word">
-      <HeroCard
-        glyph={form}
-        pinyin={displayPinyin(word, settings.phoneticScript)}
-        stats={stats}
-        onWatch={() => {
-          tapHaptic()
-          setWatching(true)
-          reportTourAction('word:watch')
-        }}
-        onPractice={() => {
-          tapHaptic()
-          setPractising(true)
-          reportTourAction('word:practice')
-        }}
-      />
+      {/* The four `TourTarget`s are where Shifu's word-card guide points
+          (`lib/screenTours.ts`). */}
+      <TourTarget id="word-hero" radius={20}>
+        <HeroCard
+          glyph={form}
+          pinyin={displayPinyin(word, settings.phoneticScript)}
+          stats={stats}
+          onWatch={() => {
+            tapHaptic()
+            setWatching(true)
+          }}
+          onPractice={() => {
+            tapHaptic()
+            setPractising(true)
+          }}
+        />
+      </TourTarget>
 
-      <View className="flex-row justify-center">
-        <TourPulse target="word-add" radius={22}>
+      <TourTarget id="word-save" radius={16} style={{ alignSelf: 'center' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
           <DeckStateButton
             state={entryStateFor(word.id, deckIndex)}
-            onAdd={() => {
-              addToReviewDeck(word.id)
-              reportTourAction('word:add')
-            }}
+            onAdd={() => addToReviewDeck(word.id)}
           />
-        </TourPulse>
-      </View>
+          <FavoriteButton favorite={favoriteWordIds.includes(word.id)} onToggle={() => toggleFavorite(word.id)} />
+        </View>
+      </TourTarget>
 
-      <MeaningCard word={word} />
+      <TourTarget id="word-meaning" radius={20}>
+        <MeaningCard word={word} />
+      </TourTarget>
 
       {word.example && (
         <ExampleCard
@@ -245,16 +259,18 @@ export function WordDetail() {
        * character screen, and anything longer gets a row per character that
        * doubles as the drill-down into that screen.
        */}
-      {characters.length === 1 ? (
-        <RadicalCard
-          character={form}
-          info={radicals[0].info}
-          related={radicals[0].info ? relatedCharacters(radicals[0].info, form) : []}
-          onOpenCharacter={openCharacter}
-        />
-      ) : (
-        <WordRadicalsCard characters={radicals} onOpenCharacter={openCharacter} />
-      )}
+      <TourTarget id="word-radicals" radius={20}>
+        {characters.length === 1 ? (
+          <RadicalCard
+            character={form}
+            info={radicals[0].info}
+            related={radicals[0].info ? relatedCharacters(radicals[0].info, form) : []}
+            onOpenCharacter={openCharacter}
+          />
+        ) : (
+          <WordRadicalsCard characters={radicals} onOpenCharacter={openCharacter} />
+        )}
+      </TourTarget>
 
       <WordsContainingCard
         character={related.term}
@@ -277,6 +293,21 @@ export function WordDetail() {
         onOpenWords={() => setAppearsIn('words')}
         onOpenSentences={() => setAppearsIn('sentences')}
       />
+
+      {/* Opened from My Words (the standalone route), the card is also where a
+          word leaves it — the job the old My Words sheet used to do. */}
+      {!inTab && isInDeck(word.id, deckIndex) && (
+        <RemoveFromDeckButton
+          armed={confirmRemove}
+          onArm={() => setConfirmRemove(true)}
+          onCancel={() => setConfirmRemove(false)}
+          onConfirm={() => {
+            removeFromReviewDeck([word.id])
+            if (router.canGoBack()) router.back()
+            else router.replace('/my-words')
+          }}
+        />
+      )}
 
       {appearsInList === 'words' && (
         <WordsModal

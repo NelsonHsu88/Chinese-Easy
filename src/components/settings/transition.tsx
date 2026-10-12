@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useRef } from 'react
 import { Animated, Easing, Platform } from 'react-native'
 import { useFocusEffect } from 'expo-router'
 import { setTransition } from './tokens'
+import { SHADOW_EASING, shadowDuration } from '../shadowReveal'
 
 /*
  * The Settings ⇄ category transition.
@@ -42,6 +43,14 @@ export function useScreenTransition() {
   /* 0 = resting; 1 = displaced below the page and transparent. */
   const displaced = useRef(new Animated.Value(1)).current
 
+  /*
+   * 0 = no card shadow; 1 = full. The cards' `elevation` can't ride the native
+   * driver `displaced` runs on, so it gets its own JS-driven value, handed to
+   * the shell's `ShadowRevealProvider`: it starts with the arrival and creeps
+   * in on the app's shared slow shadow curve (`shadowReveal.tsx`).
+   */
+  const shadow = useRef(new Animated.Value(0)).current
+
   /* Guards a second tap landing mid-exit, which would otherwise push twice. */
   const leaving = useRef(false)
 
@@ -55,10 +64,13 @@ export function useScreenTransition() {
 
   useEffect(() => {
     const rescue = setTimeout(() => {
-      if (!arrived.current) displaced.setValue(0)
-    }, setTransition.in + setTransition.backstop)
+      if (!arrived.current) {
+        displaced.setValue(0)
+        shadow.setValue(1)
+      }
+    }, shadowDuration(setTransition.in) + setTransition.backstop)
     return () => clearTimeout(rescue)
-  }, [displaced])
+  }, [displaced, shadow])
 
   /*
    * Arrival runs on *focus*, not on mount, and the difference matters: a
@@ -72,6 +84,7 @@ export function useScreenTransition() {
       leaving.current = false
       arrived.current = true
       displaced.setValue(1)
+      shadow.setValue(0)
 
       const animation = Animated.timing(displaced, {
         toValue: 0,
@@ -81,11 +94,24 @@ export function useScreenTransition() {
       })
       animation.start()
 
+      const shadowDurationMs = shadowDuration(setTransition.in)
+      const shadowAnimation = Animated.timing(shadow, {
+        toValue: 1,
+        duration: shadowDurationMs,
+        easing: SHADOW_EASING,
+        useNativeDriver: false, // elevation/shadowOpacity can't ride the native driver
+      })
+      shadowAnimation.start()
+
       const settle = setTimeout(() => displaced.setValue(0), setTransition.in + setTransition.backstop)
+      const settleShadow = setTimeout(() => shadow.setValue(1), shadowDurationMs + setTransition.backstop)
 
       return () => {
         animation.stop()
+        shadowAnimation.stop()
         clearTimeout(settle)
+        clearTimeout(settleShadow)
+        shadow.setValue(0)
         /*
          * Parked below again on the way out, so the rest state stays the rest
          * state. Leaving through `leave` already ends here, but a tab press
@@ -97,7 +123,7 @@ export function useScreenTransition() {
          */
         displaced.setValue(1)
       }
-    }, [displaced]),
+    }, [displaced, shadow]),
   )
 
   const leave = useCallback(
@@ -125,10 +151,17 @@ export function useScreenTransition() {
       animation.start(({ finished }) => {
         if (finished) depart()
       })
+      // Leaving, the shadow simply goes with the card — only the arrival is slow.
+      Animated.timing(shadow, {
+        toValue: 0,
+        duration: setTransition.out,
+        easing: DEPART,
+        useNativeDriver: false,
+      }).start()
 
       settle = setTimeout(depart, setTransition.out + setTransition.backstop)
     },
-    [displaced],
+    [displaced, shadow],
   )
 
   /* Positive is down: the resting screen is at 0, and both the screen being
@@ -153,7 +186,7 @@ export function useScreenTransition() {
     outputRange: [1, 0.85, 0],
   })
 
-  return { style: { opacity, transform: [{ translateY }] }, leave }
+  return { style: { opacity, transform: [{ translateY }] }, shadow, leave }
 }
 
 /**

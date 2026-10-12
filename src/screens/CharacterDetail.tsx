@@ -2,7 +2,14 @@ import { useMemo, useState } from 'react'
 import { Text } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useApp } from '../context/AppContext'
-import { DetailShell, DetailCard, StrokeOrderModal } from '../components/dictionary/DetailShell'
+import {
+  DetailShell,
+  DetailCard,
+  StrokeOrderModal,
+  openCharacterDetail,
+  openWordDetail,
+  useInDictionaryTab,
+} from '../components/dictionary/DetailShell'
 import {
   AppearsInCard,
   HeroCard,
@@ -38,6 +45,7 @@ import type { VocabWord } from '../types'
  */
 export function CharacterDetail() {
   const { character } = useLocalSearchParams<{ character?: string }>()
+  const inTab = useInDictionaryTab()
   const { wordBank, deck, newlyAddedWordIds, addToReviewDeck, pushRecentSearch, settings } = useApp()
 
   const [watching, setWatching] = useState(false)
@@ -106,7 +114,7 @@ export function CharacterDetail() {
             onPress={() => {
               tapHaptic()
               if (router.canGoBack()) router.back()
-              else router.replace('/dictionary-tab')
+              else router.replace(inTab ? '/dictionary-tab' : '/my-words')
             }}
             style={[{ height: 48, marginTop: 16 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
             className="items-center justify-center rounded-full bg-dict-green"
@@ -130,7 +138,7 @@ export function CharacterDetail() {
   const openWord = (word: VocabWord) => {
     tapHaptic()
     pushRecentSearch(word.id)
-    router.push(`/dictionary-tab/word/${encodeURIComponent(word.id)}`)
+    openWordDetail(word.id, inTab)
   }
 
   return (
@@ -172,7 +180,7 @@ export function CharacterDetail() {
         related={related}
         onOpenCharacter={(char) => {
           tapHaptic()
-          router.push(`/dictionary-tab/character/${encodeURIComponent(char)}`)
+          openCharacterDetail(char, inTab)
         }}
       />
 

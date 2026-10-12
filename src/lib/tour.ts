@@ -1,170 +1,213 @@
-import type { Href } from 'expo-router'
-
 /*
- * Shifu's guided tour of the app, as data.
+ * Shifu's guided tour, as data.
  *
  * Pure definitions — no React, no navigation, no side effects — so the whole
- * script can be read in one place and reordered without touching the component
- * that draws it. `components/tour/` is the only consumer.
+ * script can be read in one place. `components/tour/` draws it.
  *
- * Three rules shaped this list:
+ * The tour teaches one mental model and stops: **learn new words → save the
+ * useful ones → review them later.** It does not walk through every tab. The
+ * old tour did (fourteen steps, Dictionary to Settings), and a slideshow of
+ * features is something people click through rather than read.
  *
- * **The tour never takes the wheel for something it is asking the learner to
- * do.** A step that says "tap Watch" must leave them to tap Watch; the overlay
- * sits beside the app rather than over it, and every screen underneath stays
- * live. `goTo` exists only for the jumps between sections, where making somebody
- * find a screen they have never seen is a worse introduction than being taken
- * there.
+ * Three rules shaped it:
  *
- * **A step that asks for an action waits for that action.** Steps carrying
- * `awaits` (or `advanceOn`) have no Next button at all — the tour moves when the
- * learner does the thing, and not before. A tour you can click past teaches
- * nothing, because clicking past it is easier than reading it.
- *
- * **Nobody is ever trapped.** "Skip tour" ends the whole thing and is on every
- * step including the gated ones. Removing the per-step Next is about making the
- * lazy path the useful one, not about locking the door.
+ * - **The real app does the work.** Steps that point at something are finished
+ *   by doing that thing — tapping the real New Words card, the real Add button —
+ *   not by a Next button standing in for it.
+ * - **It is offered, not imposed.** A small prompt asks first; "Maybe later"
+ *   ends it for good, and Settings → General can replay it.
+ * - **Nobody is ever trapped.** Every step has a way out, and a step whose
+ *   target cannot be found falls back to a plain card with a button rather than
+ *   leaving a dimmed screen with nothing to press.
  */
 
-/** Something the learner does that a step can be waiting for. */
-export type TourAction =
-  | 'dictionary:search'
-  | 'word:watch'
-  | 'word:practice'
-  | 'word:add'
-  | 'learn:open'
+/** Where the tour is, in the terms the rest of the app cares about. */
+export type TourStatus = 'not_started' | 'in_progress' | 'completed' | 'dismissed'
 
-/** A control the overlay draws attention to while its step is up. */
-export type TourHighlight =
+export type TourStepId = 'home' | 'new-words' | 'save' | 'review'
+
+/** A control a step can put the spotlight on. Registered by `TourTarget`. */
+export type TourTargetId =
+  | 'dashboard-review'
+  | 'dashboard-new-word'
+  | 'new-words-add'
+  // Screen guides (`lib/screenTours.ts`)
+  | 'learn-new-words'
+  | 'learn-books'
+  | 'learn-third'
   | 'dictionary-search'
-  | 'word-watch'
-  | 'word-practice'
-  | 'word-add'
-  | 'learn-tab'
+  | 'dictionary-filters'
+  | 'dictionary-explore'
+  | 'dictionary-discover'
+  | 'word-hero'
+  | 'word-save'
+  | 'word-meaning'
+  | 'word-radicals'
+  | 'settings-profile'
+  | 'settings-study'
+  | 'settings-app'
+  | 'review-stats'
+  | 'review-drills'
+  | 'review-sessions'
+
+/** Something the learner does that a step can be waiting for. */
+export type TourAction = 'word:add'
+
+/**
+ * How a step is finished.
+ *
+ * - `nextButton` — the tooltip's own button.
+ * - `targetPress` — the learner uses the real control in the spotlight; the
+ *   tooltip's button does the same thing, for anyone who reads it first.
+ * - `externalEvent` — a screen reports the action (`reportTourAction`).
+ */
+export type TourCompletion = 'nextButton' | 'targetPress' | 'externalEvent'
+
+export type TourShifu = 'welcome' | 'point' | 'celebrate' | 'thinking'
 
 export interface TourStep {
-  id: string
-  /**
-   * Route to open when this step begins, if the learner is not already there.
-   * Left undefined for steps that ask the learner to navigate themselves.
-   */
-  goTo?: Href
-  /** What Shifu says. Kept to a couple of sentences — it renders in a bubble. */
+  id: TourStepId
+  /** The route this step is about. The overlay opens it if the learner is elsewhere. */
+  screen: '/' | '/new-words'
+  targetId?: TourTargetId
+  title: string
   body: string
-  /**
-   * The action this step is waiting for. Its presence removes the Next button:
-   * the only way forward is to do it.
-   */
+  completion: TourCompletion
+  /** The action an `externalEvent` step waits for. */
   awaits?: TourAction
-  /** Same gate, expressed as a route the learner has to reach. */
-  advanceOn?: (pathname: string) => boolean
-  /** Control to pulse while this step is up, so the instruction has a target. */
-  highlight?: TourHighlight
-  /**
-   * This step is spoken while the Learn menu is open.
-   *
-   * A React Native `Modal` draws above every other layer, so the sheet hosts its
-   * own copy of the card — and needs to know when the tour has moved on past it,
-   * or it would still be sitting there over the next screen.
-   */
-  inSheet?: boolean
-  /** Label for the forward button, on the steps that have one. */
-  cta?: string
+  /** Label for the tooltip's button. Absent on a step only the action can finish. */
+  primaryLabel?: string
+  /** The small Shifu beside the copy. Every card carries one. */
+  shifu: TourShifu
 }
 
-const isWordEntry = (pathname: string) => pathname.startsWith('/dictionary-tab/word/')
-
-/** True when the learner has typed something that finds 水. */
-export function matchesWaterSearch(query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (q.length < 3) return false
-  return 'water'.startsWith(q) || q.includes('水') || q.startsWith('shui') || q.startsWith('shuǐ')
-}
-
-export const TOUR_STEPS: TourStep[] = [
+export const TOUR_STEPS: readonly TourStep[] = [
   {
-    id: 'dashboard',
-    goTo: '/',
-    body: 'Welcome in. This is your dashboard — what is due, what you have done this week, and where you pick up each day. Let me show you where it all comes from.',
+    id: 'home',
+    screen: '/',
+    targetId: 'dashboard-review',
+    title: 'Your home base',
+    body: 'See what to learn, review, and work toward today.',
+    completion: 'nextButton',
+    primaryLabel: 'Next',
+    shifu: 'point',
   },
   {
-    id: 'dictionary-intro',
-    goTo: '/dictionary-tab',
-    body: 'This is the dictionary. Around twenty thousand words, all stored on your phone — it works with no signal at all.',
+    id: 'new-words',
+    screen: '/',
+    targetId: 'dashboard-new-word',
+    title: 'Learn something new',
+    body: 'Pick up a few useful words each day.',
+    completion: 'targetPress',
+    primaryLabel: 'Try New Words',
+    shifu: 'welcome',
   },
   {
-    id: 'dictionary-search',
-    body: 'Let us look one up together. Type water into the search box.',
-    awaits: 'dictionary:search',
-    highlight: 'dictionary-search',
-  },
-  {
-    id: 'dictionary-open',
-    body: 'There it is — 水, shuǐ. Tap it to open the full entry.',
-    advanceOn: isWordEntry,
-  },
-  {
-    id: 'word-scroll',
-    body: 'This is everything I know about a word. Scroll down: what it means, a real sentence using it, the radical it is built from, and other words that contain it.',
-  },
-  {
-    id: 'word-watch',
-    body: 'Tap Stroke order to see it drawn properly. Chinese characters have a fixed stroke order, and it is far easier to learn now than to correct later.',
-    awaits: 'word:watch',
-    highlight: 'word-watch',
-  },
-  {
-    id: 'word-practice',
-    body: 'Now tap Practice and write it yourself a few times. Tracing a character is what makes the shape stay with you.',
-    awaits: 'word:practice',
-    highlight: 'word-practice',
-  },
-  {
-    id: 'word-add',
-    body: 'Happy with it? Add it to your words. Your deck starts completely empty — everything in it will be a word you chose.',
+    id: 'save',
+    screen: '/new-words',
+    targetId: 'new-words-add',
+    title: 'Save what matters',
+    body: 'Add useful words and I’ll bring them back for review.',
+    completion: 'externalEvent',
     awaits: 'word:add',
-    highlight: 'word-add',
+    shifu: 'point',
   },
   {
-    id: 'learn-tab',
-    body: 'Now open Learn in the bar at the bottom. It gives you a short menu rather than a screen.',
-    awaits: 'learn:open',
-    highlight: 'learn-tab',
-  },
-  {
-    id: 'learn-books',
-    body: 'Books holds short stories in Chinese, graded by level. While you read, tap any word you do not know and it goes straight into your deck.',
-    inSheet: true,
-  },
-  {
-    id: 'learn-writing',
-    body: 'How to write Chinese is a four-page primer — stroke order, radicals, and why characters are put together the way they are.',
-    inSheet: true,
-  },
-  {
-    id: 'challenges',
-    goTo: '/challenges',
-    body: 'Challenges give you something to aim at: a few each day, and longer milestones underneath. Finish one and come back to claim it.',
-  },
-  {
-    id: 'settings',
-    goTo: '/settings',
-    body: 'Last stop — Settings. How many new words a day, when to remind you, pinyin or zhuyin, and how much you want to take on.',
-  },
-  {
-    id: 'done',
-    body: 'That is everything. Your deck is empty and your streak starts the day you add your first word. Take your time.',
-    cta: 'Start learning',
+    id: 'review',
+    screen: '/',
+    targetId: 'dashboard-review',
+    title: 'I’ll help you remember',
+    body: 'Words come back at the right time so they stick.',
+    completion: 'nextButton',
+    primaryLabel: 'Got it',
+    shifu: 'thinking',
   },
 ]
 
-/** Whether a step waits on the learner rather than offering a button. */
-export function isGated(step: TourStep): boolean {
-  return step.awaits !== undefined || step.advanceOn !== undefined
+export const WELCOME_COPY = {
+  title: 'Welcome to Chinese Easy!',
+  body: 'Want me to show you how learning works?',
+  accept: 'Show me',
+  decline: 'Maybe later',
+} as const
+
+export const SAVED_TOAST = 'Nice! It’s in My Words.'
+
+export function tourStepById(id: TourStepId | null): TourStep | null {
+  if (id === null) return null
+  return TOUR_STEPS.find((step) => step.id === id) ?? null
 }
 
-/** Whether a pathname is one of the five screens that sit behind the tab bar. */
+/** The step after this one, or null at the end. */
+export function nextTourStep(id: TourStepId): TourStepId | null {
+  const index = TOUR_STEPS.findIndex((step) => step.id === id)
+  return TOUR_STEPS[index + 1]?.id ?? null
+}
+
+/** What the app persists. One object under the existing `tourStep` key. */
+export interface TourState {
+  status: TourStatus
+  step: TourStepId | null
+}
+
+export const INITIAL_TOUR: TourState = { status: 'not_started', step: null }
+
+const STATUSES: readonly TourStatus[] = ['not_started', 'in_progress', 'completed', 'dismissed']
+
+/**
+ * Reads whatever is stored under `tourStep` back into a `TourState`.
+ *
+ * Two older shapes can be there, both from the fourteen-step tour, which stored
+ * a bare step index:
+ *
+ * - `null` was written when that tour ended, finished or skipped — so this
+ *   install has had a tour, and is not offered another one unasked.
+ * - A number is a tour that was interrupted. Its steps do not exist any more,
+ *   so it is offered the new one, once, through the small prompt.
+ *
+ * A tour that was **in progress** when the app closed is not reopened mid-step
+ * on launch — landing back on New Words with a spotlight on a button, out of
+ * nowhere, is exactly the aggressive behaviour to avoid. It becomes
+ * `not_started`, which offers it again through the prompt, where "Maybe later"
+ * ends it for good.
+ */
+export function normalizeTour(raw: unknown): TourState {
+  if (raw === null) return { status: 'completed', step: null }
+  if (typeof raw === 'number') return INITIAL_TOUR
+  if (typeof raw !== 'object' || raw === undefined) return INITIAL_TOUR
+  const status = (raw as { status?: unknown }).status
+  if (!STATUSES.includes(status as TourStatus)) return INITIAL_TOUR
+  if (status === 'in_progress') return INITIAL_TOUR
+  return { status: status as TourStatus, step: null }
+}
+
+/**
+ * What a learner's action does to the tour.
+ *
+ * The step waiting for it moves on, as you would expect. One shortcut on top:
+ * the Dashboard's word card has its own "Add this word" button, and it sits
+ * inside the New Words spotlight. A learner who presses it has saved a word —
+ * the thing the next step was going to ask for — so the tour goes straight to
+ * Review rather than sending them to New Words to do it a second time.
+ */
+export function tourAfterAction(state: TourState, action: TourAction): TourState {
+  if (state.status !== 'in_progress') return state
+  const step = tourStepById(state.step)
+  if (!step) return state
+  if (step.awaits === action || (action === 'word:add' && step.id === 'new-words')) {
+    const next = step.id === 'new-words' ? 'review' : nextTourStep(step.id)
+    return next ? { status: 'in_progress', step: next } : { status: 'completed', step: null }
+  }
+  return state
+}
+
+/** Whether a pathname is one of the screens that sit behind the tab bar. */
 export function hasTabBar(pathname: string): boolean {
-  if (pathname === '/' || pathname === '/settings') return true
+  if (pathname === '/' || pathname === '/settings' || pathname === '/lessons-tab') return true
   return pathname.startsWith('/dictionary-tab')
+}
+
+/** Whether the current route is the screen a step belongs on. */
+export function onStepScreen(step: TourStep, pathname: string): boolean {
+  return pathname === step.screen
 }

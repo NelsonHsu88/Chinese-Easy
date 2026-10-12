@@ -43,7 +43,7 @@ export const subColors = {
   jadeFace: '#568C70',
   /** A filled jade surface at rest: the benefit icon discs and tick circles. */
   jadeDisc: '#4B8467',
-  /** Selected plan tint, and the "Save 25%" pill. */
+  /** Selected plan tint, and the "Save 58%" pill. */
   jadeSoft: '#E9F1E8',
   /** The faintest jade there is — the selected card's ground. */
   jadeFaint: '#F3F7F1',
@@ -146,11 +146,16 @@ export const subShadowBubble = {
  * A range rather than a number, and this is the screen's whole responsive
  * strategy: the artwork is the one region allowed to change size, so a tall
  * phone spends its extra height on scenery while the type, the plan cards and
- * the button stay exactly the size they were drawn. Below the minimum the page
- * scrolls instead of compressing further.
+ * the button stay exactly the size they were drawn. The screen does not
+ * scroll — a scrolling offer reads as busier than it is — so the floor is low
+ * enough for the page to fit on an ordinary phone: at 224 a 393×852 phone was
+ * left 24pt over and scrolled. Below the floor (a very small phone, or large
+ * system text) scrolling comes back rather than cutting the button off.
+ * 150 is as low as the speech bubble, which is drawn at a fixed size, still
+ * clears the hero's foot.
  */
 export const subHero = {
-  min: 224,
+  min: 150,
   /**
    * The ceiling is the reference's own proportion: there, the headline's cap
    * height begins about 41% of the way down the screen, so the scene is a

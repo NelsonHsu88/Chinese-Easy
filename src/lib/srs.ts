@@ -61,7 +61,26 @@ export const FSRS_CONFIG = {
   relearning_steps: ['10m'],
 } as const
 
-const scheduler = fsrs(generatorParameters({ ...FSRS_CONFIG }))
+/**
+ * How long Easy sends a brand-new word away, in days.
+ *
+ * FSRS's default starting memory for Easy (`w[3]`) is 8.3 days, so a word seen
+ * for the first time came back in a week. For a learner that is too far: a
+ * character that felt obvious the moment it was introduced is often gone by
+ * day eight, and the first lapse throws away the head start Easy was meant to
+ * give. Three days is still a clear reward over Good's ten-minute step.
+ *
+ * This lowers the memory estimate itself rather than overriding the due date,
+ * so FSRS's later intervals grow from a figure that matches the schedule the
+ * learner actually got. Fuzz still applies, so the button reads 2d–4d.
+ */
+export const EASY_FIRST_INTERVAL_DAYS = 3
+
+const baseParameters = generatorParameters({ ...FSRS_CONFIG })
+const scheduler = fsrs({
+  ...baseParameters,
+  w: baseParameters.w.map((weight, i) => (i === 3 ? EASY_FIRST_INTERVAL_DAYS : weight)),
+})
 
 /** Chinese Easy's grade names ↔ FSRS's ratings. Hard is a *pass*, never a fail. */
 const RATINGS: Record<Grade, FsrsGrade> = {

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, type ReactNode } from 'react'
 import {
   View,
   Text,
@@ -157,6 +157,19 @@ export function PressableScale({
     /* Keep going up: a claim is against every ancestor, not just the nearest. */
     claimOuter()
   }, [claimOuter])
+
+  /*
+   * Losing `onPress` unmounts the Pressable, and a press caught mid-flight then
+   * never hears its release — on native `onPressOut` lands on a short delay
+   * after `onPress`, by which time a button that disabled itself in its own
+   * handler (onboarding's "Next question" → a disabled Confirm) is gone. The
+   * press value stayed at 1, and when the button came back its face was still
+   * sunk onto its shoulder: a flat green slab in a cream rim. Settle it here.
+   */
+  const hasPress = !!onPress
+  useEffect(() => {
+    if (!hasPress) press.setValue(0)
+  }, [hasPress, press])
 
   if (!onPress) return <View style={[wrapperStyle, style]}>{children}</View>
 
@@ -455,12 +468,15 @@ export function LiftedFace({
   shoulder,
   border,
   shadow = true,
+  radius,
   style,
   children,
 }: {
   height: number
   fill: string
   shoulder: string
+  /** Corner radius. Defaults to a full pill; the dictionary's hero buttons are squarer. */
+  radius?: number
   /** Outlined faces only — the quiet button keeps its hairline. */
   border?: string
   /** The shoulder carries it, not the face. Off for the quiet button. */
@@ -477,6 +493,7 @@ export function LiftedFace({
   const press = usePressProgress() ?? resting
 
   const sink = press.interpolate({ inputRange: [0, 1], outputRange: [0, DASH_LIFT] })
+  const corner = radius ?? height / 2
 
   return (
     <View style={[{ height: height + DASH_LIFT }, style]}>
@@ -492,7 +509,7 @@ export function LiftedFace({
           left: 0,
           right: 0,
           height,
-          borderRadius: height / 2,
+          borderRadius: corner,
           backgroundColor: shoulder,
           ...(shadow ? dashShadowLifted : null),
         }}
@@ -502,13 +519,22 @@ export function LiftedFace({
       <Animated.View
         style={{
           height,
-          borderRadius: height / 2,
+          borderRadius: corner,
           backgroundColor: fill,
           ...(border ? { borderWidth: 1.5, borderColor: border } : null),
+          /* Android draws siblings in elevation order, not tree order, so a
+             shoulder carrying `elevation` and a face carrying none puts the
+             shoulder on top — the button turns into a dark slab with its label
+             hidden underneath. That is exactly what Check Answer did the moment
+             an option was picked and its shadow switched on. Matching the
+             elevation puts both on one layer, where tree order decides again. */
+          ...(shadow && Platform.OS === 'android' ? { elevation: dashShadowLifted.elevation } : null),
           transform: [{ translateY: sink }],
         }}
       >
-        <View className="h-full flex-row items-center justify-center" style={{ gap: s.sm }}>
+        {/* Plain styles, not classes: this face is used in the dictionary's
+            hero row, where NativeWind-derived layout was dropped on Android. */}
+        <View style={{ height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s.sm }}>
           {children}
         </View>
       </Animated.View>

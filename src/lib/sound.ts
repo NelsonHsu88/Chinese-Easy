@@ -9,6 +9,7 @@ import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-aud
 const sources = {
   stroke: require('../assets/sounds/stroke.wav'),
   chime: require('../assets/sounds/chime.wav'),
+  correct: require('../assets/sounds/correct.wav'),
   retry: require('../assets/sounds/retry.wav'),
   tap: require('../assets/sounds/tap.wav'),
   fanfare: require('../assets/sounds/fanfare.wav'),
@@ -110,6 +111,14 @@ export function playStrokeSound(): void {
 /** Bright ascending three-note chime — grading a card Easy or Good. */
 export function playPositiveChime(): void {
   void play('chime')
+}
+
+/**
+ * A bright, ringing two-note "ding-ding" — a checked answer in the drills came
+ * back right. Pair it with `correctHaptic`, which lands on the same two strikes.
+ */
+export function playCorrectSound(): void {
+  void play('correct')
 }
 
 /** Soft, low downward tone — grading a card Again or Hard. Not punishing, just distinct. */

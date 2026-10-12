@@ -1,20 +1,27 @@
 import { useEffect, useMemo, useState } from 'react'
-import { View, Text, Pressable, useWindowDimensions } from 'react-native'
+import { View, Text, Pressable } from 'react-native'
 import { router } from 'expo-router'
 import {
-  Target,
-  Briefcase,
-  BookOpen,
+  Sprout,
+  Luggage,
+  GraduationCap,
   Flower2,
   Mail,
   Bell,
-  BarChart3,
+  ChartColumn,
   Footprints,
   CalendarDays,
   Volume2,
   Star,
   Rocket,
   Check,
+  ArrowRight,
+  ChevronRight,
+  Settings as SettingsIcon,
+  User,
+  Sunrise,
+  Sun,
+  Moon,
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import {
@@ -38,19 +45,12 @@ import {
   ResultToast,
   DontKnowButton,
   toneColors,
-  ONB_CONTENT_MAX,
   type OnbTone,
 } from '../components/onboarding/parts'
 import { GoogleMark } from '../components/onboarding/GoogleMark'
 import { useAuth } from '../context/AuthContext'
-import {
-  ArtLayer,
-  SakuraCorner,
-  PagodaScene,
-  MountainBase,
-  Cloud,
-} from '../components/onboarding/PageArt'
-import { Shifu } from '../components/onboarding/Shifu'
+import { ArtLayer } from '../components/onboarding/PageArt'
+import { CornerBranch, PageFoot, HeroArt } from '../components/onboarding/RedesignArt'
 import {
   onbColors as c,
   onbSpacing as s,
@@ -58,12 +58,13 @@ import {
   onbRadius,
   onbMotion,
   onbVerdict,
+  onbShadow,
   type VerdictKind,
 } from '../components/onboarding/tokens'
 import { newPlacementSeed, placementDistractorPool, samplePlacementItems } from '../data/placementTest'
 import { buildPlacementQuestions } from '../lib/placementQuiz'
 import { computeEstimatedHsk } from '../lib/placement'
-import { displayWord, displayPinyin } from '../lib/hanzi'
+import { displayWord, displayPinyin, defaultPhoneticFor } from '../lib/hanzi'
 import { speak } from '../lib/speech'
 import { todayISO } from '../lib/date'
 import { playPositiveChime, playRetryTone, playFanfare, playTapSound } from '../lib/sound'
@@ -82,6 +83,13 @@ import type { LearningGoal, PlacementAnswer, ScriptMode } from '../types'
  * walk up and down the screen as the learner advances. The middle region is the
  * only one that grows, which is what lets a 667pt phone and an 844pt one both
  * look deliberate rather than one of them looking padded.
+ *
+ * Built to the Beta 2.1 references "Onboarding New UI Redesign" 1–7 (and 4.1
+ * for the email route). Their watercolour — Shifu's four scenes, each page's
+ * branch and foot — is cropped out of the references themselves (see
+ * `RedesignArt`), which replaced the stand-in mascot assembled from props. The
+ * placement test is the exception: by request it keeps its original card,
+ * title and sizes, and only its scenery changed.
  */
 
 type Step = 'welcome' | 'script' | 'goal' | 'account' | 'profile' | 'notifications' | 'test' | 'ready'
@@ -110,26 +118,26 @@ const DOT_TOTAL = STEP_ORDER.length
  */
 type AuthMode = 'google' | 'email'
 
-const GOALS: { id: LearningGoal; title: string; body: string; icon: typeof Target; tone: OnbTone }[] = [
+const GOALS: { id: LearningGoal; title: string; body: string; icon: typeof Sprout; tone: OnbTone }[] = [
   {
     id: 'daily-life',
     title: 'Learn for daily life',
     body: 'Start conversations and understand the basics.',
-    icon: Target,
+    icon: Sprout,
     tone: 'green',
   },
   {
     id: 'travel',
     title: 'Travel with confidence',
     body: 'Navigate trips and connect with locals.',
-    icon: Briefcase,
+    icon: Luggage,
     tone: 'coral',
   },
   {
     id: 'exam',
     title: 'Study & exam prep',
     body: 'Prepare for HSK and academic goals.',
-    icon: BookOpen,
+    icon: GraduationCap,
     tone: 'blue',
   },
   {
@@ -150,10 +158,21 @@ const GOAL_LABEL: Record<LearningGoal, string> = {
 
 const LEVEL_LABEL = ['Beginner', 'Beginner', 'Elementary', 'Intermediate', 'Upper intermediate', 'Advanced', 'Fluent']
 
+/**
+ * The three reminder times the reminders page offers, as the reference draws
+ * them. They write the same `settings.reminderTime` (24-hour `HH:MM`) that
+ * Settings → Reminders edits with a full time picker, so any other time is
+ * still one screen away.
+ */
+type ReminderSlot = 'morning' | 'afternoon' | 'evening'
+const REMINDER_SLOTS: { id: ReminderSlot; label: string; time: string; display: string }[] = [
+  { id: 'morning', label: 'Morning', time: '09:00', display: '9:00 AM' },
+  { id: 'afternoon', label: 'Afternoon', time: '12:00', display: '12:00 PM' },
+  { id: 'evening', label: 'Evening', time: '20:00', display: '8:00 PM' },
+]
+
 export function Onboarding() {
-  const { completeOnboarding, updateSettings, settings, onboardingComplete, startTour } = useApp()
-  const { width, height } = useWindowDimensions()
-  const columnWidth = Math.min(width, ONB_CONTENT_MAX)
+  const { completeOnboarding, updateSettings, settings, onboardingComplete, offerTour } = useApp()
 
   /*
    * Reaching this screen with onboarding already done means Settings sent the
@@ -255,6 +274,18 @@ export function Onboarding() {
     goTo('profile')
   }
 
+  /*
+   * The reminders page's choices, committed only by its buttons. Seeded from
+   * what is stored, so returning to the page shows the real setting; a stored
+   * time that is none of the three (set in Settings) leaves Morning picked,
+   * as the reference does, rather than silently rewriting it until the learner
+   * presses the button.
+   */
+  const [remindersOn, setRemindersOn] = useState(true)
+  const [reminderSlot, setReminderSlot] = useState<ReminderSlot>(
+    () => REMINDER_SLOTS.find((slot) => slot.time === settings.reminderTime)?.id ?? 'morning',
+  )
+
   const submitProfile = () => {
     updateSettings({ username: trimmedName, email: emailInput.trim() })
     playPositiveChime()
@@ -325,8 +356,8 @@ export function Onboarding() {
   const skipToTest = () => goTo('test')
 
   /*
-   * Out of onboarding and straight into Shifu's tour, which opens on the
-   * Dashboard — its first stop, and the screen a learner lands on anyway.
+   * Out of onboarding and onto the Dashboard, where Shifu offers the tour once
+   * the page has settled — offered, not started: the learner can say no.
    *
    * A retake is exempt. It comes from Settings and only redoes the placement
    * test; the learner has already been round the app once, and walking them
@@ -335,7 +366,7 @@ export function Onboarding() {
   const finish = () => {
     playFanfare()
     successHaptic()
-    if (!isRetake) startTour()
+    if (!isRetake) offerTour()
     router.replace('/')
   }
 
@@ -435,97 +466,75 @@ export function Onboarding() {
       <OnbShell
         art={
           <ArtLayer>
-            {/*
-              The hero scene, back to front: the panorama is lifted off the
-              bottom edge so its ridges band *behind the mascot* rather than
-              hiding behind the feature card, which is where the reference puts
-              them. The pagoda sits on the right at the mascot's shoulder, and
-              the branch enters from the left at roughly the subtitle's line.
-              Both run off the edge and are clipped by the page.
-
-              Each half enters from the side it belongs to — branch from the
-              left, mountains and pagoda from the right — so the scene assembles
-              outward from the middle instead of sliding in as one slab. The
-              mountains and their pagoda travel together because they are one
-              landscape; splitting them would have the pagoda arrive at a ridge
-              that is still moving under it.
-            */}
-            <SlideIn from="right" fill delay={0}>
-              <MountainBase width={columnWidth} bottom={height * 0.3} opacity={0.55} />
-              <PagodaScene width={columnWidth * 0.62} top={height * 0.34} right={-40} />
-            </SlideIn>
-            {/*
-              Anchored to a fixed offset, not a fraction of the screen height.
-              Everything above the branch — top bar, logo, wordmark, subtitle —
-              is fixed-height, so the header always ends at the same y whatever
-              the phone; a proportional `top` was therefore *lower* on a tall
-              screen and, on a short one, sat straight across the subtitle.
-            */}
+            {/* The branch enters from the side it grows from. */}
             <SlideIn from="left" fill delay={onbMotion.enterStagger}>
-              <SakuraCorner side="left" width={columnWidth * 0.62} top={244} inset={-92} />
+              <CornerBranch piece="welcome-branch" side="left" />
             </SlideIn>
           </ArtLayer>
         }
-        top={<OnbTopBar right={<OnbSkip onPress={skipToTest} />} />}
         /*
          * No scrolling here. Everything is sized to fit the viewport, and the
-         * mascot below absorbs the slack — a welcome screen you can nudge up
-         * and down by a few pixels reads as broken rather than as scrollable.
+         * hero scene absorbs the slack — a welcome screen you can nudge up and
+         * down by a few pixels reads as broken rather than as scrollable.
+         *
+         * No Skip either: the reference has none, and the page's one button
+         * already moves on.
          */
         scroll={false}
         footer={
           <SlideIn from="bottom" delay={onbMotion.enterStagger * 3}>
             <View style={{ gap: s.lg }}>
-              <OnbButton label="Let's get started" onPress={() => goTo('script')} />
+              <OnbButton
+                label="Let's get started"
+                icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
+                onPress={() => goTo('script')}
+              />
               <OnbDots index={DOT_INDEX.welcome!} total={DOT_TOTAL} />
             </View>
           </SlideIn>
         }
       >
-        <View className="items-center" style={{ paddingTop: s.md }}>
-          <AppMark />
-          <Text
-            className="text-center font-nunito-extrabold"
-            style={{ ...t.wordmark, color: c.navy, marginTop: s.lg }}
-          >
-            Chinese Easy
-          </Text>
-          <OnbBody style={{ marginTop: s.sm }}>{'Learn Mandarin the natural,\nstress-free way.'}</OnbBody>
-        </View>
+        <SlideIn from="bottom" delay={0}>
+          <View className="items-center" style={{ paddingTop: s.xxxl }}>
+            <AppMark />
+            <View style={{ marginTop: s.lg }}>
+              <OnbTitle hero>Chinese Easy</OnbTitle>
+            </View>
+            <OnbBody style={{ marginTop: s.sm }}>{'Learn Mandarin the natural,\nstress-free way.'}</OnbBody>
+          </View>
+        </SlideIn>
 
         {/*
-          The mascot overlaps the scenery, so it sits in the flex column (which
-          renders above the art layer) while the mountains behind it do not.
-          `fill` lets it shrink into whatever height is left over once the
-          header, card and footer have taken theirs, which is what keeps the
-          page on one screen across phone sizes without a scroll view.
+          Shifu at his writing desk, in the garden. The scene is the page's
+          slack: it takes whatever the header, card and footer leave, so the
+          page stays on one screen on every phone without a scroll view.
         */}
         <SlideIn from="bottom" delay={onbMotion.enterStagger * 2} style={{ flex: 1, minHeight: 0 }}>
-          <Shifu pose="wave" width={columnWidth * 0.5} fill />
+          <HeroArt piece="welcome-hero" />
         </SlideIn>
 
         <SlideIn from="bottom" delay={onbMotion.enterStagger * 3}>
-          <OnbCard style={{ marginTop: s.md, paddingHorizontal: s.lg, paddingVertical: s.xs }}>
-          <FeatureRow
-            tone="green"
-            glyph="字"
-            title="Understand characters"
-            body="Learn the building blocks of Chinese."
-          />
-          <RowRule />
-          <FeatureRow
-            tone="coral"
-            icon={<Volume2 size={19} color="#ffffff" strokeWidth={2.4} />}
-            title="Learn naturally"
-            body="Real pronunciations and useful examples."
-          />
-          <RowRule />
-          <FeatureRow
-            tone="gold"
-            icon={<Star size={19} color="#ffffff" strokeWidth={2.4} fill="#ffffff" />}
-            title="Track your progress"
-            body="Stay motivated and build real confidence."
-          />
+          <OnbCard radius={onbRadius.panel} style={{ paddingHorizontal: s.lg, paddingVertical: s.xs, marginBottom: s.xs }}>
+            <FeatureRow
+              tone="green"
+              glyph="字"
+              title="Understand characters"
+              body="Learn the building blocks of Chinese."
+            />
+            <RowRule />
+            <FeatureRow
+              tone="coral"
+              icon={<Volume2 size={18} color="#ffffff" strokeWidth={2.4} />}
+              title="Learn naturally"
+              body="Real pronunciations and useful examples."
+            />
+            <RowRule />
+            <FeatureRow
+              tone="gold"
+              icon={<Star size={17} color="#ffffff" strokeWidth={2.4} fill="#ffffff" />}
+              title="Track your progress"
+              body="Stay motivated and build real confidence."
+            />
           </OnbCard>
         </SlideIn>
       </OnbShell>
@@ -537,28 +546,8 @@ export function Onboarding() {
       <OnbShell
         art={
           <ArtLayer>
-            {/*
-              Sakura from the top-left, as drawn, and deliberately larger and
-              further off the edge than the goal page's corner sprig: here it is
-              the only decoration above the fold and it has the whole upper-left
-              to itself. Bleeding past the 22pt content margin is what makes it
-              read as a branch rather than as a sticker.
-            */}
             <OnbArtEnter>
-              <SakuraCorner side="left" width={columnWidth * 0.52} top={-24} inset={-64} />
-            </OnbArtEnter>
-            {/*
-              The landscape the mascot stands in. Pinned to the bottom and wider
-              than the column so the ridges run off both edges instead of
-              stopping at a hard vertical line, with the pagoda on its own ridge
-              to the right exactly as the reference has it.
-            */}
-            <OnbArtEnter delay={onbMotion.riseStagger}>
-              <MountainBase width={columnWidth} bottom={0} opacity={0.66} />
-              {/* On its own ridge to the right of the mascot, as drawn. Placed
-                  from the bottom rather than the top so it stays with the range
-                  it stands on when the viewport height changes. */}
-              <PagodaScene width={columnWidth * 0.4} bottom={70} right={-18} />
+              <CornerBranch piece="script-branch" side="left" />
             </OnbArtEnter>
           </ArtLayer>
         }
@@ -568,25 +557,23 @@ export function Onboarding() {
           </OnbRise>
         }
         /*
-         * Button, then dots, with `s.lg` between them — the same three-part
-         * footer every other page has, and it has to stay that way. The footer
-         * is bottom-anchored, so anything extra in here pushes the primary
-         * button *up* and this one page's Continue lands on a different line
-         * from the other seven. The reassurance line that used to sit between
-         * them is now in the content region below the cards, where it belongs
-         * anyway: it is about the choice, not about the button.
+         * Button, then dots — the same footer every other page has, so this
+         * page's Continue lands on the same line as theirs. The reassurance line
+         * sits under the cards instead, where it belongs: it is about the
+         * choice, not about the button.
          */
         footer={
           <OnbRise index={4}>
             <View style={{ gap: s.lg }}>
               <OnbButton
                 label="Continue"
+                icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
                 onPress={() => {
                   /* Written to the one global preference, not an onboarding-only
                      copy — Settings → Learning preferences reads and writes the
                      same field, so the choice is already made when the learner
                      gets there. */
-                  updateSettings({ script })
+                  updateSettings({ script, phoneticScript: defaultPhoneticFor(script) })
                   goTo('goal')
                 }}
               />
@@ -596,7 +583,7 @@ export function Onboarding() {
         }
       >
         <OnbRise index={0}>
-          <View style={{ paddingTop: s.md }}>
+          <View style={{ paddingTop: s.lg }}>
             <OnbTitle>Which characters?</OnbTitle>
             <OnbBody style={{ marginTop: s.sm }}>
               {'Both teach the same language —\nthey’re just written differently.'}
@@ -611,7 +598,7 @@ export function Onboarding() {
           the column turns out to have.
         */}
         <OnbRise index={1}>
-          <View className="flex-row" style={{ gap: s.md, marginTop: s.xl }}>
+          <View className="flex-row" style={{ gap: s.md, marginTop: s.xxl }}>
             <OnbScriptCard
               glyph="學"
               script="traditional"
@@ -634,45 +621,25 @@ export function Onboarding() {
         {/*
           Said out loud because the choice looks more permanent than it is. A
           learner who thinks they are locking in a writing system for good will
-          stall on it; one who knows it is reversible picks the one they have
-          heard of and moves on.
-
-          It sits under the cards rather than in the footer so the footer keeps
-          the button-then-dots shape every other page has — see the note there.
+          stall on it; one who knows it is reversible picks one and moves on.
         */}
         <OnbRise index={2}>
-          <Text
-            className="font-nunito-semibold"
-            style={{ ...t.footnote, color: c.textMuted, textAlign: 'center', marginTop: s.md }}
-          >
-            You can change this any time in Settings.
-          </Text>
+          <View className="flex-row items-center justify-center" style={{ gap: s.sm, marginTop: s.lg }}>
+            <SettingsIcon size={16} color={c.textMuted} strokeWidth={2.2} />
+            <Text className="font-nunito-semibold" style={{ ...t.footnote, color: c.textMuted }}>
+              You can change this any time in Settings.
+            </Text>
+          </View>
         </OnbRise>
 
         {/*
-          Shifu, in front of the range he is standing in.
-          
-          The flexed wrapper is outside `OnbRise`, not inside it: `OnbRise`
-          renders an `Animated.View` sized to its content, so a `flex-1` child of
-          it has no height to claim and the mascot collapses to nothing. This is
-          the same shape the goal page uses for its card list, and it is what
-          absorbs the page's spare height so a tall phone doesn't end in a band
-          of bare cream under the cards.
-          
-          Left-aligned rather than centred, and allowed past the content margin,
-          so he sits at the foot of the page the way the reference has him rather
-          than standing in the middle of the range.
+          Shifu writing at his desk by the lake. The flexed wrapper is outside
+          `OnbRise` as well as on it: `OnbRise` renders a content-sized
+          `Animated.View`, and a flexing child of one has no height to claim.
         */}
-        <View className="flex-1 justify-end" style={{ minHeight: 0 }}>
-          {/*
-            `flex: 1` on the riser as well as its wrapper. `OnbRise` renders an
-            `Animated.View` that is content-sized by default, and a `fill` mascot
-            inside one has no slot to shrink into — which is the difference
-            between him sizing himself to the space left over and being clipped
-            in half by the footer on a short phone.
-          */}
+        <View className="flex-1" style={{ minHeight: 0, marginTop: s.md }}>
           <OnbRise index={3} style={{ flex: 1, minHeight: 0 }}>
-            <Shifu pose="bow" width={columnWidth * 0.46} align="start" fill />
+            <HeroArt piece="script-hero" />
           </OnbRise>
         </View>
       </OnbShell>
@@ -684,23 +651,17 @@ export function Onboarding() {
       <OnbShell
         art={
           <ArtLayer>
-            {/*
-              Small and tucked hard into the corner. At the welcome screen's
-              size the branch reached across the title, and a decoration that
-              sits on top of the one line the page is asking a question with is
-              not decoration any more.
-
-              It drifts in from the right, the side the page itself arrived
-              from, and takes longer over it than anything in front of it.
-            */}
             <OnbArtEnter>
-              <SakuraCorner side="right" width={columnWidth * 0.36} top={-14} inset={-18} />
+              <CornerBranch piece="goal-branch" side="right" />
             </OnbArtEnter>
-            {/* Barely any travel — clouds want to appear, not to fly past. */}
-            <OnbArtEnter delay={onbMotion.riseStagger * 2} distance={20}>
-              <Cloud variant="a" width={62} top={150} left={10} />
-              <Cloud variant="b" width={58} top={158} right={12} />
-            </OnbArtEnter>
+            {/*
+              The lake and pagodas rise rather than drifting sideways: the foot
+              is pinned to the bottom edge, and a landscape entering from the
+              side slides its own shoreline past the page border.
+            */}
+            <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
+              <PageFoot piece="goal-foot" />
+            </SlideIn>
           </ArtLayer>
         }
         top={
@@ -713,6 +674,7 @@ export function Onboarding() {
             <View style={{ gap: s.lg }}>
               <OnbButton
                 label="Continue"
+                icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
                 onPress={() => {
                   updateSettings({ learningGoal: goal })
                   goTo('account')
@@ -724,19 +686,19 @@ export function Onboarding() {
         }
       >
         <OnbRise index={0}>
-          <View style={{ paddingTop: s.md }}>
+          <View style={{ paddingTop: s.xl }}>
             <OnbTitle>What's your goal?</OnbTitle>
             <OnbBody style={{ marginTop: s.sm }}>{'This helps us personalise your\nlearning experience.'}</OnbBody>
           </View>
         </OnbRise>
 
         {/*
-          The four cards come up one after another rather than as a block. The
-          stagger is what makes the list read as being dealt out, and it is
-          also what stops the page arriving as a single slab the moment the
-          previous one has left.
+          The four cards come up one after another rather than as a block — the
+          stagger is what makes the list read as being dealt out. The column is
+          inset a little past the page margin, as drawn, so the landscape shows
+          either side of the cards.
         */}
-        <View className="flex-1 justify-center" style={{ gap: s.md, paddingVertical: s.xl }}>
+        <View className="flex-1" style={{ gap: s.md, paddingTop: s.xxl, paddingBottom: s.xl, paddingHorizontal: s.sm }}>
           {GOALS.map((option, i) => {
             const Icon = option.icon
             return (
@@ -747,7 +709,7 @@ export function Onboarding() {
                   tone={option.tone}
                   selected={goal === option.id}
                   onPress={() => setGoal(option.id)}
-                  icon={<Icon size={21} color={toneColors(option.tone).solid} strokeWidth={2.3} />}
+                  icon={<Icon size={26} color={toneColors(option.tone).solid} strokeWidth={2.2} />}
                 />
               </OnbRise>
             )
@@ -763,19 +725,10 @@ export function Onboarding() {
         art={
           <ArtLayer>
             <OnbArtEnter>
-              <SakuraCorner side="right" width={columnWidth * 0.44} top={-12} inset={-22} />
+              <CornerBranch piece="account-branch" side="right" />
             </OnbArtEnter>
-            <OnbArtEnter delay={onbMotion.riseStagger * 2} distance={20}>
-              <Cloud variant="c" width={56} top={168} left={8} />
-              <Cloud variant="a" width={52} top={180} right={16} />
-            </OnbArtEnter>
-            {/*
-              The panorama rises rather than drifting sideways. It is pinned to
-              the bottom edge, and a landscape entering from the side slides
-              its own ridges past the page border.
-            */}
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
-              <MountainBase width={columnWidth} opacity={0.45} />
+              <PageFoot piece="account-foot" />
             </SlideIn>
           </ArtLayer>
         }
@@ -786,13 +739,12 @@ export function Onboarding() {
         }
       >
         {/*
-          Header and buttons are centred in the middle region *as one group*
-          rather than the header pinning to the top and the buttons centring
-          under it. Split, the two drifted apart and left a band of empty cream
-          between them; together they sit where the reference puts them, with
-          the page's breathing room below, where the mountains are.
+          Header and options sit together in the upper part of the page, with
+          the lake and pagoda taking the room below — the reference's balance.
+          The bottom padding is that room: it keeps the options clear of the
+          painting on a tall phone, and the page scrolls on a short one.
         */}
-        <View className="flex-1 justify-center" style={{ paddingBottom: s.huge }}>
+        <View className="flex-1 justify-center" style={{ paddingBottom: s.huge * 3 }}>
           <OnbRise index={0}>
             <View className="items-center">
               <AppMark />
@@ -805,79 +757,81 @@ export function Onboarding() {
             </View>
           </OnbRise>
 
-          <View style={{ gap: s.md, paddingTop: s.xxxl }}>
-          {/*
-            Neither button collects a password. Google's hands off to Google's
-            own page and comes back with a session; the email route leads to the
-            profile step, which asks for a name and an address. This screen
-            never sees a credential.
+          <View style={{ gap: s.md, paddingTop: s.xxl, paddingHorizontal: s.sm }}>
+            {/*
+              Neither option collects a password. Google's hands off to Google's
+              own page and comes back with a session; the email route leads to
+              the details step, which asks for a name and an address.
 
-            **No account is ever suggested here.** This used to open a mock
-            picker listing a hardcoded address, which meant every learner was
-            shown the developer's own email as the account to sign in with.
-            Whose account this is, is Google's answer to give, not ours.
-          */}
-          <OnbRise index={1}>
-            <AuthButton
-              label={googleBusy ? 'Opening Google…' : 'Continue with Google'}
-              icon={<GoogleMark />}
-              disabled={googleBusy}
-              onPress={continueWithGoogle}
-            />
-            {googleError !== null && (
-              <Text
-                className="text-center font-nunito-semibold"
-                style={{ ...t.body, color: onbVerdict.incorrect.text, marginTop: s.sm }}
-              >
-                {googleError}
-              </Text>
-            )}
-          </OnbRise>
-          <OnbRise index={2}>
-            <AuthButton
-              label="Sign up with Email"
-              icon={
-                <View
-                  className="items-center justify-center"
-                  style={{ width: 32, height: 26, borderRadius: 7, backgroundColor: c.green }}
+              **No account is ever suggested here.** This used to open a mock
+              picker listing a hardcoded address, which meant every learner was
+              shown the developer's own email as the account to sign in with.
+              Whose account this is, is Google's answer to give, not ours.
+
+              The reference also draws "Continue with Apple". There is no Apple
+              sign-in behind this app, and a button that does nothing is worse
+              than one that isn't there, so it is left out until there is.
+            */}
+            <OnbRise index={1}>
+              <AuthButton
+                label={googleBusy ? 'Opening Google…' : 'Continue with Google'}
+                icon={<GoogleMark />}
+                disabled={googleBusy}
+                onPress={continueWithGoogle}
+              />
+              {googleError !== null && (
+                <Text
+                  className="text-center font-nunito-semibold"
+                  style={{ ...t.body, color: onbVerdict.incorrect.text, marginTop: s.sm }}
                 >
-                  <Mail size={16} color="#ffffff" strokeWidth={2.4} />
-                </View>
-              }
-              onPress={() => {
-                tapHaptic()
-                startEmailSignUp()
-              }}
-            />
-          </OnbRise>
-
-          <OnbRise index={3}>
-            <View className="flex-row items-center" style={{ gap: s.md, marginTop: s.sm }}>
-              <View style={{ flex: 1, height: 1, backgroundColor: c.hairline }} />
-              <Text className="font-nunito-semibold" style={{ ...t.footnote, color: c.textMuted }}>
-                or
-              </Text>
-              <View style={{ flex: 1, height: 1, backgroundColor: c.hairline }} />
-            </View>
-          </OnbRise>
-
-          <OnbRise index={4}>
-            <View className="flex-row items-center justify-center" style={{ gap: 6, marginTop: s.xs }}>
-              <Text className="font-nunito-semibold" style={{ fontSize: 14, color: c.textSecondary }}>
-                Already have an account?
-              </Text>
-              {/*
-                Also the profile step rather than a skip. There is no backend to
-                log in against, and letting this one route past the name box is
-                how a returning learner ends up greeted as "Learner" forever.
-              */}
-              <Pressable onPress={startEmailSignUp} accessibilityRole="button" hitSlop={10}>
-                <Text className="font-nunito-bold" style={{ fontSize: 14, color: c.greenDark }}>
-                  Log in
+                  {googleError}
                 </Text>
-              </Pressable>
-            </View>
-          </OnbRise>
+              )}
+            </OnbRise>
+
+            <OnbRise index={2}>
+              <View className="flex-row items-center" style={{ gap: s.md, marginVertical: s.xs, paddingHorizontal: s.lg }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: c.hairline }} />
+                <Text className="font-nunito-semibold" style={{ ...t.footnote, color: c.textMuted }}>
+                  or
+                </Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: c.hairline }} />
+              </View>
+            </OnbRise>
+
+            {/*
+              Drawn like a field, as the reference has it, but it is a button:
+              the address itself is asked for on the next page, beside the name.
+            */}
+            <OnbRise index={3}>
+              <AuthButton
+                label="Email address"
+                muted
+                icon={<Mail size={22} color={c.textSecondary} strokeWidth={1.9} />}
+                onPress={() => {
+                  tapHaptic()
+                  startEmailSignUp()
+                }}
+              />
+            </OnbRise>
+
+            <OnbRise index={4}>
+              <View className="flex-row items-center justify-center" style={{ gap: 6, marginTop: s.lg }}>
+                <Text className="font-nunito-semibold" style={{ fontSize: 14.5, color: c.textSecondary }}>
+                  Already have an account?
+                </Text>
+                {/*
+                  Also the details step rather than a skip. Letting this one
+                  route past the name box is how a returning learner ends up
+                  greeted as "Learner" forever.
+                */}
+                <Pressable onPress={startEmailSignUp} accessibilityRole="button" hitSlop={10}>
+                  <Text className="font-lora-bold" style={{ fontSize: 15.5, color: c.greenDark }}>
+                    Log in
+                  </Text>
+                </Pressable>
+              </View>
+            </OnbRise>
           </View>
         </View>
       </OnbShell>
@@ -885,15 +839,10 @@ export function Onboarding() {
   }
 
   /*
-   * The same screen as `account` — same artwork, same mark, same title, arrived
-   * at through the same slide-and-rise transition — with the sign-in options
-   * swapped for the details themselves. Keeping the page identical either side
-   * of that swap is the point: it reads as the card turning over rather than as
-   * a new screen replacing it.
-   *
-   * The field list is the only thing that differs by route. Google has already
-   * supplied an address, so that path asks for a name alone and shows the
-   * account it signed in with; the email path asks for both.
+   * The details step, reached from either sign-in option: the reference's
+   * "A few details". The field list is the only thing that differs by route.
+   * Google has already supplied an address, so that path asks for a name alone
+   * and shows the account it signed in with; the email path asks for both.
    */
   if (step === 'profile') {
     return (
@@ -901,14 +850,10 @@ export function Onboarding() {
         art={
           <ArtLayer>
             <OnbArtEnter>
-              <SakuraCorner side="right" width={columnWidth * 0.44} top={-12} inset={-22} />
-            </OnbArtEnter>
-            <OnbArtEnter delay={onbMotion.riseStagger * 2} distance={20}>
-              <Cloud variant="c" width={56} top={168} left={8} />
-              <Cloud variant="a" width={52} top={180} right={16} />
+              <CornerBranch piece="profile-branch" side="right" />
             </OnbArtEnter>
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
-              <MountainBase width={columnWidth} opacity={0.45} />
+              <PageFoot piece="profile-foot" />
             </SlideIn>
           </ArtLayer>
         }
@@ -920,18 +865,23 @@ export function Onboarding() {
         footer={
           <OnbRise index={4}>
             <View style={{ gap: s.lg }}>
-              <OnbButton label="Continue" onPress={submitProfile} disabled={!canSubmitProfile} />
+              <OnbButton
+                label="Continue"
+                icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
+                onPress={submitProfile}
+                disabled={!canSubmitProfile}
+              />
               <OnbDots index={DOT_INDEX.profile!} total={DOT_TOTAL} />
             </View>
           </OnbRise>
         }
       >
-        <View className="flex-1 justify-center" style={{ paddingBottom: s.xxl }}>
+        <View className="flex-1" style={{ paddingTop: s.xl, paddingBottom: s.huge * 2 }}>
           <OnbRise index={0}>
             <View className="items-center">
               <AppMark />
               <View style={{ marginTop: s.xl }}>
-                <OnbTitle>Create your account</OnbTitle>
+                <OnbTitle>A few details</OnbTitle>
               </View>
               <OnbBody style={{ marginTop: s.sm }}>
                 {authMode === 'google'
@@ -941,7 +891,7 @@ export function Onboarding() {
             </View>
           </OnbRise>
 
-          <View style={{ gap: s.xl, paddingTop: s.xxxl }}>
+          <View style={{ gap: s.xl, paddingTop: s.xxl, paddingHorizontal: s.sm }}>
             {authMode === 'google' && (
               <OnbRise index={1}>
                 <SignedInRow email={emailInput} />
@@ -950,14 +900,14 @@ export function Onboarding() {
 
             <OnbRise index={authMode === 'google' ? 2 : 1}>
               <OnbTextField
-                label="Username"
+                label="What should we call you?"
                 value={nameInput}
                 onChangeText={setNameInput}
-                placeholder="What should we call you?"
+                placeholder="Your name"
                 autoCapitalize="words"
                 autoComplete="username"
                 maxLength={24}
-                hint="This is the name on your Dashboard."
+                icon={<User size={22} color={c.textSecondary} strokeWidth={1.9} />}
               />
             </OnbRise>
 
@@ -971,6 +921,7 @@ export function Onboarding() {
                   autoCapitalize="none"
                   keyboardType="email-address"
                   autoComplete="email"
+                  icon={<Mail size={22} color={c.textSecondary} strokeWidth={1.9} />}
                 />
               </OnbRise>
             )}
@@ -981,12 +932,18 @@ export function Onboarding() {
   }
 
   if (step === 'notifications') {
+    const slot = REMINDER_SLOTS.find((option) => option.id === reminderSlot) ?? REMINDER_SLOTS[0]
     return (
       <OnbShell
         art={
           <ArtLayer>
+            <OnbArtEnter>
+              <CornerBranch piece="reminders-branch" side="right" />
+            </OnbArtEnter>
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
-              <MountainBase width={columnWidth} opacity={0.5} />
+              {/* The footer's padding, "Maybe later" under the button, and half
+                  the button: where the button's centre sits above the safe area. */}
+              <PageFoot piece="reminders-foot" buttonCenter={s.md + 20 + s.md + 51 / 2} />
             </SlideIn>
           </ArtLayer>
         }
@@ -996,13 +953,23 @@ export function Onboarding() {
           </OnbRise>
         }
         footer={
-          <OnbRise index={3}>
+          <OnbRise index={4}>
             <View style={{ gap: s.md }}>
+              {/*
+                With the switch off, the primary action is plainly "Continue" —
+                a button saying "Turn on notifications" under a switch that says
+                off would be the page contradicting itself.
+              */}
               <OnbButton
-                label="Turn on notifications"
+                label={remindersOn ? 'Turn on notifications' : 'Continue'}
+                icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
                 onPress={() => {
-                  updateSettings({ notificationsEnabled: true })
-                  playPositiveChime()
+                  if (remindersOn) {
+                    updateSettings({ notificationsEnabled: true, reminderTime: slot.time })
+                    playPositiveChime()
+                  } else {
+                    updateSettings({ notificationsEnabled: false })
+                  }
                   goTo('test')
                 }}
               />
@@ -1026,42 +993,63 @@ export function Onboarding() {
           </View>
         </OnbRise>
 
-        {/* The wrapper carries the flex, or the mascot loses the slack it absorbs. */}
-        <OnbRise index={1} style={{ flex: 1 }}>
-          <View className="flex-1 items-center justify-center" style={{ paddingVertical: s.lg }}>
-            <Shifu pose="bow" width={columnWidth * 0.5} bell />
-          </View>
-        </OnbRise>
+        {/* Shifu reading by the lake — the page's slack. The wrapper carries
+            the flex, or the scene loses the room it absorbs. */}
+        <View className="flex-1" style={{ minHeight: 0 }}>
+          <OnbRise index={1} style={{ flex: 1, minHeight: 0 }}>
+            <HeroArt piece="reminders-hero" />
+          </OnbRise>
+        </View>
 
         <OnbRise index={2}>
-        <OnbCard style={{ padding: s.lg }}>
-          <View className="flex-row items-center" style={{ gap: s.md }}>
-            <View
-              className="items-center justify-center rounded-full"
-              style={{ width: 42, height: 42, backgroundColor: c.greenSoft }}
-            >
-              <Bell size={20} color={c.green} strokeWidth={2.2} />
-            </View>
-            <View className="flex-1">
-              <Text className="font-nunito-bold" style={{ ...t.cardTitle, color: c.navy }}>
-                Daily reminders
-              </Text>
-              <Text
-                className="font-nunito-semibold"
-                style={{ ...t.cardBody, color: c.textSecondary, marginTop: 2 }}
+          <OnbCard radius={onbRadius.panel} style={{ padding: s.lg }}>
+            <View className="flex-row items-center" style={{ gap: s.md }}>
+              <View
+                className="items-center justify-center rounded-full"
+                style={{ width: 46, height: 46, backgroundColor: c.greenSoft }}
               >
-                Get a gentle nudge to practice and reach your daily goal.
-              </Text>
+                <Bell size={21} color={c.green} strokeWidth={2.1} />
+              </View>
+              <View className="flex-1">
+                <Text className="font-nunito-bold" style={{ ...t.cardTitle, color: c.navy }}>
+                  Daily reminders
+                </Text>
+                <Text
+                  className="font-nunito-semibold"
+                  style={{ ...t.cardBody, color: c.textSecondary, marginTop: 2 }}
+                >
+                  Get a gentle nudge to practice and reach your daily goal.
+                </Text>
+              </View>
+              <Toggle
+                value={remindersOn}
+                label="Daily reminders"
+                onChange={(next) => {
+                  tickHaptic()
+                  setRemindersOn(next)
+                }}
+              />
             </View>
-            {/* Reads as on because the primary button below is what turns it on. */}
-            <View
-              className="justify-center"
-              style={{ width: 46, height: 27, borderRadius: 14, backgroundColor: c.green, paddingHorizontal: 3 }}
-            >
-              <View className="self-end rounded-full" style={{ width: 21, height: 21, backgroundColor: '#ffffff' }} />
-            </View>
+          </OnbCard>
+        </OnbRise>
+
+        <OnbRise index={3}>
+          <View className="flex-row" style={{ gap: s.sm, marginTop: s.md, marginBottom: s.xs, opacity: remindersOn ? 1 : 0.45 }}>
+            {REMINDER_SLOTS.map((option) => (
+              <TimeChip
+                key={option.id}
+                slot={option.id}
+                label={option.label}
+                time={option.display}
+                selected={reminderSlot === option.id}
+                disabled={!remindersOn}
+                onPress={() => {
+                  if (reminderSlot !== option.id) tickHaptic()
+                  setReminderSlot(option.id)
+                }}
+              />
+            ))}
           </View>
-        </OnbCard>
         </OnbRise>
       </OnbShell>
     )
@@ -1075,10 +1063,18 @@ export function Onboarding() {
 
     return (
       <OnbShell
+        /*
+          The redesign changed this page's scenery and nothing else, by request:
+          the card, its type and its spacing are exactly as they were, and the
+          title keeps its original face (`classic`).
+        */
         art={
           <ArtLayer>
+            <OnbArtEnter>
+              <CornerBranch piece="test-branch" side="right" />
+            </OnbArtEnter>
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
-              <MountainBase width={columnWidth} opacity={0.45} />
+              <PageFoot piece="test-foot" />
             </SlideIn>
           </ArtLayer>
         }
@@ -1127,9 +1123,11 @@ export function Onboarding() {
         <OnbRise index={0}>
           <View style={{ paddingTop: s.sm }}>
             <View style={{ marginTop: s.lg }}>
-              <OnbTitle>Placement test</OnbTitle>
+              <OnbTitle classic>Placement test</OnbTitle>
             </View>
-            <OnbBody style={{ marginTop: s.sm }}>{'This short test finds the right starting\npoint for you.'}</OnbBody>
+            <OnbBody classic style={{ marginTop: s.sm }}>
+              {'This short test finds the right starting\npoint for you.'}
+            </OnbBody>
           </View>
         </OnbRise>
 
@@ -1194,7 +1192,7 @@ export function Onboarding() {
                 {question.translation && (
                   <Text
                     className="text-center font-nunito-semibold"
-                    style={{ ...t.body, color: c.textSecondary, marginTop: s.sm }}
+                    style={{ ...t.bodyClassic, color: c.textSecondary, marginTop: s.sm }}
                   >
                     {question.translation}
                   </Text>
@@ -1298,31 +1296,18 @@ export function Onboarding() {
     <OnbShell
       art={
         <ArtLayer>
-          {/*
-            Starts below the top bar, not at the very top edge. This is the one
-            page with both a Skip control and a right-hand branch, and at the
-            corner the blossoms sat directly behind the word.
-          */}
-          <OnbArtEnter>
-            <SakuraCorner side="right" width={columnWidth * 0.38} top={40} inset={-16} />
-          </OnbArtEnter>
-          <OnbArtEnter delay={onbMotion.riseStagger * 2} distance={20}>
-            <Cloud variant="a" width={54} top={150} left={10} />
-            <Cloud variant="c" width={48} top={268} right={14} />
-          </OnbArtEnter>
+          <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
+            <PageFoot piece="ready-foot" />
+          </SlideIn>
         </ArtLayer>
       }
-      top={
-        <OnbRise distance={0}>
-          <OnbTopBar right={<OnbSkip onPress={finish} />} />
-        </OnbRise>
-      }
+      /* No Skip: the reference has none, and Start learning does the same. */
       footer={
         <OnbRise index={3}>
           <View style={{ gap: s.md }}>
             <OnbButton
               label="Start learning"
-              icon={<Rocket size={18} color="#ffffff" strokeWidth={2.4} />}
+              icon={<Rocket size={19} color="#ffffff" strokeWidth={2.3} />}
               onPress={finish}
             />
             <Text className="text-center font-nunito-semibold" style={{ ...t.footnote, color: c.textMuted }}>
@@ -1332,50 +1317,46 @@ export function Onboarding() {
         </OnbRise>
       }
     >
-      <OnbRise index={0} style={{ flex: 1 }}>
-        <View className="flex-1 items-center justify-center" style={{ minHeight: 160, paddingTop: s.sm }}>
-          <Shifu pose="thumb" width={columnWidth * 0.46} halo />
-        </View>
-      </OnbRise>
+      {/*
+        Shifu with his hands together under the sun and the blossom, confetti
+        round him — the whole top of the reference. It is the page's slack, so
+        a short phone gives up sky before anything else moves.
+      */}
+      <View className="flex-1" style={{ minHeight: 0 }}>
+        <OnbRise index={0} style={{ flex: 1, minHeight: 0 }}>
+          <HeroArt piece="ready-hero" />
+        </OnbRise>
+      </View>
 
       <OnbRise index={1}>
-        <View className="items-center" style={{ marginTop: s.lg }}>
+        <View className="items-center" style={{ marginTop: s.sm }}>
           <OnbTitle>You're all set!</OnbTitle>
-          <OnbBody style={{ marginTop: s.sm }}>{'We’ve created a learning plan\njust for you.'}</OnbBody>
+          <OnbBody style={{ marginTop: s.sm }}>{'We’ve created a personalised\nlearning plan just for you.'}</OnbBody>
         </View>
       </OnbRise>
 
       <OnbRise index={2}>
-      <View
-        style={{
-          marginTop: s.xl,
-          marginBottom: s.sm,
-          backgroundColor: c.greenSoft,
-          borderColor: '#DEEFE1',
-          borderWidth: 1,
-          borderRadius: onbRadius.cardLarge,
-          paddingHorizontal: s.lg,
-          paddingVertical: s.xs,
-        }}
-      >
-        {/*
-          The HSK number rides alongside the word, because only one of them is
-          actionable. "Beginner" says how it feels; "HSK 2" is the thing the
-          learner can look up, compare a word list against, and use to tell
-          which vocabulary is meant to be inside their range and which isn't.
-        */}
-        <SummaryRow icon={<BarChart3 size={18} color={c.greenDark} strokeWidth={2.4} />} label="Your level">
-          {`${LEVEL_LABEL[estimatedHsk] ?? 'Beginner'} · HSK ${estimatedHsk}`}
-        </SummaryRow>
-        <RowRule tint="#DEEFE1" />
-        <SummaryRow icon={<Footprints size={18} color={c.greenDark} strokeWidth={2.4} />} label="Learning path">
-          {GOAL_LABEL[goal]}
-        </SummaryRow>
-        <RowRule tint="#DEEFE1" />
-        <SummaryRow icon={<CalendarDays size={18} color={c.greenDark} strokeWidth={2.4} />} label="Daily goal">
-          {settings.dailyNewWordLimit} words
-        </SummaryRow>
-      </View>
+        <OnbCard
+          radius={onbRadius.panel}
+          style={{ marginTop: s.xl, marginBottom: s.sm, marginHorizontal: s.sm, paddingHorizontal: s.lg, paddingVertical: s.xs }}
+        >
+          {/*
+            The HSK number rides alongside the word, because only one of them is
+            actionable. "Beginner" says how it feels; "HSK 2" is the thing the
+            learner can look up and compare a word list against.
+          */}
+          <SummaryRow tone="green" icon={<ChartColumn size={20} color={c.greenDark} strokeWidth={2.5} />} label="Your level">
+            {`${LEVEL_LABEL[estimatedHsk] ?? 'Beginner'} · HSK ${estimatedHsk}`}
+          </SummaryRow>
+          <RowRule />
+          <SummaryRow tone="coral" icon={<Footprints size={20} color={c.coral} strokeWidth={2.4} />} label="Learning path">
+            {GOAL_LABEL[goal]}
+          </SummaryRow>
+          <RowRule />
+          <SummaryRow tone="gold" icon={<CalendarDays size={20} color={c.gold} strokeWidth={2.4} />} label="Daily goal">
+            {settings.dailyNewWordLimit} words per day
+          </SummaryRow>
+        </OnbCard>
       </OnbRise>
     </OnbShell>
   )
@@ -1405,31 +1386,31 @@ function AppMark() {
     <View>
       <View
         className="items-center justify-center"
-        style={{ width: 66, height: 66, borderRadius: 19, backgroundColor: c.green }}
+        style={{ width: 70, height: 70, borderRadius: 20, backgroundColor: c.green, ...onbShadow }}
       >
-        <Text className="font-hanzi-sans-bold text-white" style={{ fontSize: 33, lineHeight: 42 }}>
+        <Text className="font-hanzi-sans-bold text-white" style={{ fontSize: 36, lineHeight: 46 }}>
           中
         </Text>
       </View>
-      <Bloom style={{ position: 'absolute', right: -7, bottom: -4 }} />
+      <Bloom style={{ position: 'absolute', right: -8, bottom: -6 }} />
     </View>
   )
 }
 
-/** A five-petal sakura bloom, drawn rather than imported — it is 14pt wide. */
+/** A five-petal sakura bloom, drawn rather than imported — it is 22pt wide. */
 function Bloom({ style }: { style?: object }) {
   return (
-    <View style={[{ width: 20, height: 20, alignItems: 'center', justifyContent: 'center' }, style]}>
+    <View style={[{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }, style]}>
       {[0, 72, 144, 216, 288].map((angle) => (
         <View
           key={angle}
           style={{
             position: 'absolute',
-            width: 9,
-            height: 9,
-            borderRadius: 4.5,
+            width: 10,
+            height: 10,
+            borderRadius: 5,
             backgroundColor: '#F6B8B0',
-            transform: [{ rotate: `${angle}deg` }, { translateY: -5 }],
+            transform: [{ rotate: `${angle}deg` }, { translateY: -5.5 }],
           }}
         />
       ))}
@@ -1440,6 +1421,29 @@ function Bloom({ style }: { style?: object }) {
 
 function RowRule({ tint = c.hairline }: { tint?: string }) {
   return <View style={{ height: 1, backgroundColor: tint }} />
+}
+
+/** A tinted disc inside a paler ring — the redesign's icon badge. */
+function RingIcon({ tone, size = 50, solid = false, children }: { tone: OnbTone; size?: number; solid?: boolean; children: React.ReactNode }) {
+  const colors = toneColors(tone)
+  const inner = Math.round(size * 0.72)
+  return (
+    <View
+      className="items-center justify-center rounded-full"
+      style={{ width: size, height: size, backgroundColor: colors.soft }}
+    >
+      {solid ? (
+        <View
+          className="items-center justify-center rounded-full"
+          style={{ width: inner, height: inner, backgroundColor: colors.solid }}
+        >
+          {children}
+        </View>
+      ) : (
+        children
+      )}
+    </View>
+  )
 }
 
 function FeatureRow({
@@ -1456,11 +1460,8 @@ function FeatureRow({
   body: string
 }) {
   return (
-    <View className="flex-row items-center" style={{ gap: s.md, paddingVertical: s.md }}>
-      <View
-        className="items-center justify-center rounded-full"
-        style={{ width: 38, height: 38, backgroundColor: toneColors(tone).solid }}
-      >
+    <View className="flex-row items-center" style={{ gap: s.lg, paddingVertical: s.md }}>
+      <RingIcon tone={tone} solid>
         {glyph ? (
           <Text className="font-hanzi-sans-bold text-white" style={{ fontSize: 18, lineHeight: 24 }}>
             {glyph}
@@ -1468,12 +1469,12 @@ function FeatureRow({
         ) : (
           icon
         )}
-      </View>
+      </RingIcon>
       <View className="flex-1">
         <Text className="font-nunito-bold" style={{ ...t.cardTitle, color: c.navy }}>
           {title}
         </Text>
-        <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 1 }}>
+        <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 2 }}>
           {body}
         </Text>
       </View>
@@ -1493,7 +1494,7 @@ function SignedInRow({ email }: { email: string }) {
     <View
       className="flex-row items-center"
       style={{
-        borderRadius: onbRadius.card,
+        borderRadius: onbRadius.cardLarge,
         borderWidth: 1,
         borderColor: c.border,
         backgroundColor: c.greenSoft,
@@ -1504,10 +1505,10 @@ function SignedInRow({ email }: { email: string }) {
     >
       <GoogleMark />
       <View style={{ flex: 1 }}>
-        <Text className="font-nunito-semibold" style={{ fontSize: 12, color: c.textSecondary }}>
+        <Text className="font-nunito-semibold" style={{ fontSize: 12.5, color: c.textSecondary }}>
           Signed in with Google
         </Text>
-        <Text className="font-nunito-bold" style={{ fontSize: 14, color: c.navy }} numberOfLines={1}>
+        <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.navy }} numberOfLines={1}>
           {email}
         </Text>
       </View>
@@ -1516,11 +1517,13 @@ function SignedInRow({ email }: { email: string }) {
   )
 }
 
+/** A sign-in option: icon, serif label, chevron, on a white pill-cornered card. */
 function AuthButton({
   label,
   icon,
   onPress,
   disabled = false,
+  muted = false,
 }: {
   label: string
   icon: React.ReactNode
@@ -1529,44 +1532,161 @@ function AuthButton({
      target with nothing pressable inside it, so the `pointer-events: none` that
      a disabled Pressable takes on under react-native-web has nothing to swallow. */
   disabled?: boolean
+  /** The email row, drawn in the quieter ink of a field's placeholder. */
+  muted?: boolean
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={muted ? `Continue with ${label.toLowerCase()}` : label}
       accessibilityState={{ disabled }}
       className="active:opacity-90"
       style={{ opacity: disabled ? 0.6 : 1 }}
     >
-      <OnbCard style={{ height: 58, flexDirection: 'row', alignItems: 'center', paddingHorizontal: s.xl, gap: s.md }}>
-        {icon}
-        <Text className="font-nunito-bold" style={{ fontSize: 15.5, color: c.navy }}>
+      <OnbCard
+        radius={24}
+        style={{ height: 54, flexDirection: 'row', alignItems: 'center', paddingLeft: s.xl, paddingRight: s.lg, gap: s.lg }}
+      >
+        <View style={{ width: 26, alignItems: 'center' }}>{icon}</View>
+        <Text
+          className="flex-1 font-lora-bold"
+          style={{ fontSize: 16.5, color: muted ? c.textSecondary : c.navy }}
+          numberOfLines={1}
+        >
           {label}
         </Text>
+        <ChevronRight size={20} color={c.textSecondary} strokeWidth={2.2} />
       </OnbCard>
     </Pressable>
   )
 }
 
+/**
+ * The on/off switch on the reminders card.
+ *
+ * Drawn rather than the platform `Switch`, whose track and thumb colours are
+ * set differently on each platform and never quite land on this palette.
+ */
+function Toggle({ value, label, onChange }: { value: boolean; label: string; onChange: (next: boolean) => void }) {
+  return (
+    <Pressable
+      onPress={() => onChange(!value)}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: value }}
+      hitSlop={8}
+    >
+      <View
+        className="justify-center"
+        style={{
+          width: 52,
+          height: 30,
+          borderRadius: 15,
+          backgroundColor: value ? c.green : c.dotInactive,
+          paddingHorizontal: 3,
+        }}
+      >
+        <View
+          className="rounded-full"
+          style={{
+            width: 24,
+            height: 24,
+            backgroundColor: '#ffffff',
+            alignSelf: value ? 'flex-end' : 'flex-start',
+            ...onbShadow,
+          }}
+        />
+      </View>
+    </Pressable>
+  )
+}
+
+const SLOT_ICON: Record<ReminderSlot, { icon: typeof Sun; color: string }> = {
+  morning: { icon: Sunrise, color: c.green },
+  afternoon: { icon: Sun, color: c.gold },
+  evening: { icon: Moon, color: c.blue },
+}
+
+/** One of the three reminder times, with a tick badge on the chosen one. */
+function TimeChip({
+  slot,
+  label,
+  time,
+  selected,
+  disabled,
+  onPress,
+}: {
+  slot: ReminderSlot
+  label: string
+  time: string
+  selected: boolean
+  disabled: boolean
+  onPress: () => void
+}) {
+  const { icon: Icon, color } = SLOT_ICON[slot]
+  return (
+    <Pressable
+      onPress={disabled ? undefined : onPress}
+      accessibilityRole="radio"
+      accessibilityLabel={`${label}, ${time}`}
+      accessibilityState={{ selected, disabled }}
+      className="active:opacity-90"
+      style={{ flex: 1 }}
+    >
+      <View
+        className="items-center"
+        style={{
+          borderRadius: onbRadius.cardLarge,
+          borderWidth: 1.5,
+          borderColor: selected ? c.green : c.border,
+          backgroundColor: selected ? c.greenSoft : c.card,
+          paddingVertical: s.md,
+          ...onbShadow,
+        }}
+      >
+        <Icon size={24} color={color} strokeWidth={2.1} />
+        <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.navy, marginTop: 6 }}>
+          {label}
+        </Text>
+        <Text className="font-nunito-semibold" style={{ fontSize: 13.5, color: c.textSecondary, marginTop: 1 }}>
+          {time}
+        </Text>
+        {selected && (
+          <View
+            className="items-center justify-center rounded-full"
+            style={{ position: 'absolute', top: 6, right: 6, width: 20, height: 20, backgroundColor: c.green }}
+          >
+            <Check size={12} color="#ffffff" strokeWidth={3.2} />
+          </View>
+        )}
+      </View>
+    </Pressable>
+  )
+}
+
 function SummaryRow({
+  tone,
   icon,
   label,
   children,
 }: {
+  tone: OnbTone
   icon: React.ReactNode
   label: string
   children: React.ReactNode
 }) {
   return (
-    <View className="flex-row items-center" style={{ gap: s.md, paddingVertical: s.md }}>
-      <View style={{ width: 22, alignItems: 'center' }}>{icon}</View>
+    <View className="flex-row items-center" style={{ gap: s.lg, paddingVertical: s.md }}>
+      <RingIcon tone={tone} size={48}>
+        {icon}
+      </RingIcon>
       <View className="flex-1">
-        <Text className="font-nunito-semibold" style={{ fontSize: 12.5, color: c.greenDark }}>
+        <Text className="font-nunito-semibold" style={{ fontSize: 13.5, color: c.greenDark }}>
           {label}
         </Text>
-        <Text className="font-nunito-bold" style={{ fontSize: 15, color: c.navy, marginTop: 1 }}>
+        <Text className="font-nunito-bold" style={{ fontSize: 16.5, color: c.navy, marginTop: 2 }}>
           {children}
         </Text>
       </View>

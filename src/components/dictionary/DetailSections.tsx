@@ -2,11 +2,11 @@ import { Fragment } from 'react'
 import { View, Text } from 'react-native'
 import { PlayCircle, PencilLine, ChevronRight, BookOpen, FileText } from 'lucide-react-native'
 import { PressScale } from './PressScale'
+import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { ReadingSentence } from './ReadingSentence'
 import { DetailCard, CardTitle } from './DetailShell'
 import { AddCircleButton, ICON_GREEN, ICON_STROKE, SpeakChip } from './DictionaryControls'
 import { DICT_BG, DICT_BUTTON_SHADOW } from './shadows'
-import { TourPulse } from '../tour/TourPulse'
 import { allSenses, shortGloss } from '../../lib/definitions'
 import { tapHaptic } from '../../lib/haptics'
 import { displayWord, hanziFont } from '../../lib/hanzi'
@@ -14,15 +14,8 @@ import { useApp } from '../../context/AppContext'
 import type { RadicalInfo } from '../../lib/dictionary'
 import type { KangxiRadical, VocabWord } from '../../types'
 
-/** The hero card's two action buttons — see the comment above their row for why these are not classes. */
-const HERO_BUTTON = {
-  flexDirection: 'row',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 6,
-  paddingVertical: 16,
-  borderRadius: 14,
-} as const
+/** The hero card's two action buttons' face height — see the comment above their row for why nothing there is a class. */
+const HERO_BUTTON_HEIGHT = 50
 const HERO_LABEL = { fontFamily: 'NunitoSansBold', fontSize: 15 } as const
 
 /** One cell of the hero card's fact strip. `hanzi` renders its value in the serif face. */
@@ -121,34 +114,44 @@ export function HeroCard({
         same treatment for the same reason.
       */}
       <View style={{ marginTop: 16, flexDirection: 'row', gap: 12 }}>
-          <TourPulse target="word-watch" radius={14} style={{ flex: 1 }}>
-            <PressScale
-              onPress={onWatch}
-              outerStyle={{ flex: 1 }}
-              style={[DICT_BUTTON_SHADOW, { borderRadius: 14, backgroundColor: DICT_BG.greenDark }]}
-              innerStyle={[HERO_BUTTON, { backgroundColor: DICT_BG.greenDark }]}
-              accessibilityLabel="Watch stroke order"
-            >
+          {/* Raised 3D buttons — the Dashboard's `LiftedFace`, sinking onto
+              their shoulder on press, so they read as the same object as
+              Start Review rather than a second idea of a button. */}
+          <PressableScale
+            onPress={onWatch}
+            wrapperStyle={{ flex: 1 }}
+            scaleTo={1}
+            haptic={false}
+            accessibilityLabel="Watch stroke order"
+          >
+            <LiftedFace height={HERO_BUTTON_HEIGHT} radius={14} fill={DICT_BG.greenDark} shoulder={DICT_BG.greenDarkShoulder}>
               <PlayCircle size={18} color="#ffffff" strokeWidth={ICON_STROKE} />
               <Text numberOfLines={1} style={[HERO_LABEL, { color: '#ffffff' }]}>
                 Stroke order
               </Text>
-            </PressScale>
-          </TourPulse>
-          <TourPulse target="word-practice" radius={14} style={{ flex: 1 }}>
-            <PressScale
-              onPress={onPractice}
-              outerStyle={{ flex: 1 }}
-              style={[DICT_BUTTON_SHADOW, { borderRadius: 14, backgroundColor: DICT_BG.card }]}
-              innerStyle={[HERO_BUTTON, { backgroundColor: DICT_BG.card, borderWidth: 1, borderColor: DICT_BG.green }]}
-              accessibilityLabel="Practice writing"
+            </LiftedFace>
+          </PressableScale>
+          <PressableScale
+            onPress={onPractice}
+            wrapperStyle={{ flex: 1 }}
+            scaleTo={1}
+            haptic={false}
+            accessibilityLabel="Practice writing"
+          >
+            <LiftedFace
+              height={HERO_BUTTON_HEIGHT}
+              radius={14}
+              fill={DICT_BG.card}
+              border={DICT_BG.green}
+              shoulder={DICT_BG.green}
+              shadow={false}
             >
               <PencilLine size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
               <Text numberOfLines={1} style={[HERO_LABEL, { color: DICT_BG.greenDark }]}>
                 Practice
               </Text>
-            </PressScale>
-          </TourPulse>
+            </LiftedFace>
+          </PressableScale>
       </View>
     </DetailCard>
   )

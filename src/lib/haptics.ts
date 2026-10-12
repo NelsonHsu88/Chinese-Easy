@@ -115,6 +115,18 @@ export function celebrateHaptic(): () => void {
 }
 
 /**
+ * Correct — felt on the two strikes of `playCorrectSound`: a light tap on the
+ * first note and the success pattern on the second, 110ms later (the sound's
+ * NOTE_GAP in scripts/generateSounds.mjs — they move together).
+ */
+export function correctHaptic(): () => void {
+  return sequence([
+    { at: 0, fire: tapHaptic },
+    { at: 110, fire: successHaptic },
+  ])
+}
+
+/**
  * Ladder — ascending, so it feels like climbing. For a streak ticking over: two
  * light steps and a heavier one, resolving into success.
  */

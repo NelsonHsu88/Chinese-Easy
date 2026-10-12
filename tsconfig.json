@@ -26,5 +26,8 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "nativewind-env.d.ts"
-  ]
+  ],
+  /* Supabase Edge Functions run on Deno (`Deno.serve`, `npm:` imports), not in
+     the app — type-check them with `deno check`, not with this project. */
+  "exclude": ["node_modules", "supabase/functions"]
 }

@@ -31,6 +31,11 @@ export const guideColors = {
   greenSoft: '#EBF7EC',
   /** The CTA fill, a shade firmer than `green` so white text carries on it. */
   greenCta: '#3FA953',
+  /**
+   * The CTA's raised side (the Dashboard's `LiftedFace`), one step down from
+   * `greenCta` — the same 3D button as Start Review and Add to my words.
+   */
+  greenCtaShoulder: '#2B7A3C',
 
   border: '#DEE6E2',
   card: '#FFFDFC',
@@ -103,6 +108,21 @@ export const rhythm = {
   cardToControls: spacing.md,
   controlsToCta: spacing.md,
 } as const
+
+/**
+ * The same rhythm on a short phone (see `GuideCompact` in `parts.tsx`): every
+ * gap tightened, so the page fits without the character shrinking to a stamp.
+ */
+export const rhythmCompact: { [K in keyof typeof rhythm]: number } = {
+  headerToProgress: spacing.sm,
+  progressToHeading: spacing.md,
+  headingToCopy: 6,
+  copyToCharacter: spacing.md,
+  characterToExplanation: 10,
+  explanationToCard: spacing.sm,
+  cardToControls: spacing.sm,
+  controlsToCta: 10,
+}
 
 /*
  * Type scale. Sizes and line heights only — the weight is carried by the font

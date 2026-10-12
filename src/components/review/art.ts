@@ -1,17 +1,27 @@
 /*
- * The Review hub's drill icons.
+ * The Review hub's artwork.
  *
- * One painted disc per drill, replacing the tinted circle with a Lucide glyph
- * (and, on flashcards, a bare 學) that stood here before. Each disc's own colour
- * is the same `circle` value its `revDrills` entry already carried, so they drop
- * into the existing 58pt slot without the cards being repainted around them.
+ * Everything here except the flame is cropped out of the reference mockup by
+ * `scripts/processReviewArt.mjs` and keyed into real alpha — the hero and foot
+ * against the page colour, the card scenes against the card colour — so each
+ * sits on its surface with no rectangle behind it. Those two colours are
+ * `revColors.background` and `revColors.card`; change either and re-run the
+ * script, or the paintings grow a faint halo.
  *
- * No ratio field, unlike `dashboard/art.ts`: `processReviewIcons.mjs` centres
- * every one of these on a square canvas precisely so a caller can draw them at
- * `width === height` and not have to know anything about the render's framing.
+ * Ratios are the trimmed renders' own: React Native does not size an `Image`
+ * from its intrinsic dimensions, so a width with no height lays out at zero.
  */
 export const revArt = {
-  flashcards: require('../../assets/images/review/flashcards.png'),
-  listening: require('../../assets/images/review/listening.png'),
-  mistakes: require('../../assets/images/review/mistakes.png'),
+  hero: require('../../assets/images/review/hero.png'),
+  foot: require('../../assets/images/review/foot.png'),
+  cards: {
+    flashcards: require('../../assets/images/review/card-flashcards.png'),
+    listening: require('../../assets/images/review/card-listening.png'),
+    mistakes: require('../../assets/images/review/card-mistakes.png'),
+  },
+  /** The app's own painted flame, shared with the Dashboard. */
+  fire: require('../../assets/images/icons/fire.png'),
 } as const
+
+/** The fire render is 328×384. */
+export const FIRE_RATIO = 328 / 384

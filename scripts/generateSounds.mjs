@@ -27,6 +27,7 @@ const PEAKS = {
   'tap.wav': 0.42,
   'retry.wav': 0.62,
   'chime.wav': 0.92,
+  'correct.wav': 0.95,
   'fanfare.wav': 0.88,
   'gong.wav': 0.8,
 }
@@ -220,6 +221,67 @@ function addRoom(dry, mix, decay) {
   return out
 }
 
+// --- 2b. Correct answer: a bright two-note "ding-ding" that rings ------------
+/*
+ * The answer sheet's sound, and deliberately a different object from the chime:
+ * the chime is a quick rippled triad for grading a card, this is the moment a
+ * checked answer comes back right, and it wants to be catchy — the kind of
+ * sound a learner starts to look forward to.
+ *
+ * Two struck notes a rising fifth apart (A5 → E6), the second landing ~110ms
+ * after the first, so it reads as a figure rather than a chord. What makes it
+ * *ring*:
+ *
+ *  - Each partial is a detuned pair a few cents apart. The two beat slowly
+ *    against each other, which is the shimmer of a real bell's sustain — a
+ *    single sine just stops.
+ *  - The second note decays far slower than the first, so the figure ends on
+ *    a long, singing tail instead of cutting off.
+ *  - A glassy partial near 4.2× sparkles on the strike and is gone in 60ms.
+ *  - More room than the chime: it should hang in the air a moment.
+ *
+ * The haptic in `correctHaptic` (lib/haptics.ts) lands on these two strikes —
+ * NOTE_GAP here and its second beat there move together.
+ */
+function renderCorrectSound() {
+  const NOTE_GAP = 0.11
+  const notes = [
+    { freq: 880.0, len: 0.55, gain: 0.5, ring: 0.32 }, // A5
+    { freq: 1318.51, len: 1.25, gain: 0.62, ring: 0.62 }, // E6
+  ]
+  const tail = 0.55
+  const out = samplesFor(NOTE_GAP + notes[1].len + tail)
+
+  const partials = [
+    { ratio: 1, gain: 0.55, decay: 1 },
+    { ratio: 2.0, gain: 0.2, decay: 0.55 },
+    { ratio: 3.01, gain: 0.09, decay: 0.3 },
+    { ratio: 4.23, gain: 0.07, decay: 0.06 }, // the sparkle on the strike
+  ]
+  const DETUNE = 1.0035 // ~6 cents: a slow, bell-like beat
+
+  notes.forEach((note, i) => {
+    const start = Math.floor(i * NOTE_GAP * SAMPLE_RATE)
+    const length = Math.floor(note.len * SAMPLE_RATE)
+    for (let s = 0; s < length; s++) {
+      const t = s / SAMPLE_RATE
+      const strike = t < 0.003 ? t / 0.003 : 1
+      // Fade the last 40ms so a long ring never ends on a click.
+      const release = note.len - t < 0.04 ? (note.len - t) / 0.04 : 1
+      let sample = 0
+      for (const p of partials) {
+        const env = p.gain * Math.exp(-t / (p.decay * note.ring))
+        const f = note.freq * p.ratio
+        sample += (Math.sin(2 * Math.PI * f * t) + Math.sin(2 * Math.PI * f * DETUNE * t + 0.7)) * 0.5 * env
+      }
+      const idx = start + s
+      if (idx < out.length) out[idx] += sample * strike * release * note.gain
+    }
+  })
+
+  return addRoom(out, 0.14, 0.42)
+}
+
 // --- 3. Retry tone: descending sine chirp ------------------------------------
 function renderRetryTone() {
   const duration = 0.24
@@ -338,6 +400,7 @@ function renderGongSound() {
 
 writeWav('stroke.wav', renderStrokeSound())
 writeWav('chime.wav', renderPositiveChime())
+writeWav('correct.wav', renderCorrectSound())
 writeWav('retry.wav', renderRetryTone())
 writeWav('tap.wav', renderTapSound())
 writeWav('fanfare.wav', renderFanfareSound())

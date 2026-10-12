@@ -3,7 +3,7 @@ import { View, Text, Animated } from 'react-native'
 import { BrushHighlight } from '../BrushHighlight'
 import { CardArt } from './parts'
 import { dashArt } from './art'
-import { ARRIVE, useReveal, useTypewriter } from './entrance'
+import { useReveal, useTypewriter } from './entrance'
 import { revealedShadow, useShadowReveal } from '../shadowReveal'
 import {
   dashColors as c,
@@ -287,12 +287,13 @@ function SpeechBubble({
   /*
    * The bubble's own shadow ramp — there's no `ShadowRevealProvider` here
    * because this bubble arrives on its own stagger via `useReveal` directly,
-   * rather than through the shared `Reveal` wrapper the other cards use. Same
-   * timing as `bubble` above, same reason: `elevation` can't ride the native
-   * driver that reveal runs on, so it needs its own always-JS value or it
-   * snaps to full strength partway through instead of growing in with it.
+   * rather than through the shared `Reveal` wrapper the other cards use. It
+   * starts with `bubble` above and then creeps in on the shared slow shadow
+   * curve (see `shadowReveal.tsx`); `elevation` can't ride the native driver
+   * that reveal runs on, so it needs its own always-JS value or it snaps to
+   * full strength partway through instead of growing in.
    */
-  const shadowProgress = useShadowReveal({ at: e.bubble.at, duration: e.bubble.for, run, easing: ARRIVE })
+  const shadowProgress = useShadowReveal({ at: e.bubble.at, duration: e.bubble.for, run })
 
   return (
     /*

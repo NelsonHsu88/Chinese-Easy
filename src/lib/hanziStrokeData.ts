@@ -87,6 +87,22 @@ function loadShard(index: number): Promise<Record<string, CharacterJson>> {
  * character outside the dataset, and callers handle it the same way — see
  * HanziStage's CDN fallback.
  */
+/**
+ * Starts reading the shards a piece of text will need, without waiting for
+ * them. A screen calls this for what it is *about* to show — the next card in
+ * a session, a word whose writing pad has not laid out yet — so the read and
+ * parse are already done, or in flight, by the time the writer asks.
+ * Characters the bundle lacks are simply skipped; failures are swallowed,
+ * since the real request will retry and report.
+ */
+export function prefetchStrokeData(text: string): void {
+  const shards = new Set<number>()
+  for (const ch of text) {
+    if (/\p{Script=Han}/u.test(ch)) shards.add(shardFor(ch))
+  }
+  for (const index of shards) loadShard(index).catch(() => {})
+}
+
 export async function bundledCharacterData(character: string): Promise<CharacterJson | null> {
   const shard = await loadShard(shardFor(character))
   return shard[character] ?? null

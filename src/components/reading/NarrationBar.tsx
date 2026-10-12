@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, Animated, Easing, Platform, PanResponder, useWindowDimensions } from 'react-native'
 import { Play, Pause, RotateCcw, RotateCw, X } from 'lucide-react-native'
 import type { Story } from '../../types'
-import { SKIP_SECONDS } from '../../lib/narration'
+import { SKIP_SECONDS, formatClock } from '../../lib/narration'
 import { StoryArt } from './StoryArt'
 import { useApp } from '../../context/AppContext'
 import { hanziFont } from '../../lib/hanzi'
@@ -20,7 +20,7 @@ import { forScript } from '../../lib/scriptConversion'
  * react-native-web, so gating the entrance on a measured height leaves the bar
  * parked off-screen in a browser — this is the distance it travels.
  */
-const BAR_HEIGHT = 330
+const BAR_HEIGHT = 352
 
 /** The reading design's content cap, matching `ReadingShell`. */
 const CONTENT_WIDTH = 430
@@ -42,6 +42,8 @@ interface Props {
   story: Story
   /** How far through the whole story the narrator is, 0 to 1. */
   progress: number
+  /** The whole story's estimated reading time, in seconds. Elapsed is `progress` of it. */
+  totalSeconds: number
   onTogglePlay: () => void
   /** Signed seconds — negative rewinds. */
   onSkip: (seconds: number) => void
@@ -83,6 +85,7 @@ export function NarrationBar({
   playing,
   story,
   progress,
+  totalSeconds,
   onTogglePlay,
   onSkip,
   onSeek,
@@ -201,7 +204,7 @@ export function NarrationBar({
         */}
         <View className="mt-2 items-center px-9">
           <View className="rounded-[10px] shadow-paper">
-            <StoryArt story={story} width={54} height={81} radius={10} />
+            <StoryArt story={story} width={60} height={80} radius={10} />
           </View>
           <Text
             numberOfLines={1}
@@ -283,6 +286,16 @@ export function NarrationBar({
               }}
             />
           </View>
+        </View>
+
+        {/* Time elapsed and the whole story's length, following the knob — a drag previews where it will land. */}
+        <View className="flex-row justify-between" style={{ marginTop: -2 }}>
+          <Text className="font-inter-medium text-[12px]" style={{ color: '#55545d', fontVariant: ['tabular-nums'] }}>
+            {formatClock(shown * totalSeconds)}
+          </Text>
+          <Text className="font-inter-medium text-[12px]" style={{ color: '#8a8a99', fontVariant: ['tabular-nums'] }}>
+            {formatClock(totalSeconds)}
+          </Text>
         </View>
       </View>
     </Animated.View>

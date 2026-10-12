@@ -1,10 +1,13 @@
 import { useApp } from '../../context/AppContext'
+import { defaultPhoneticFor } from '../../lib/hanzi'
 import {
   DetailShell,
   ControlGroup,
   Field,
   ChoiceList,
   NumberField,
+  InlineRow,
+  Toggle,
 } from '../../components/settings/parts'
 import type { PhoneticScript, ReviewDirection, ReviewOrder, ScriptMode } from '../../types'
 
@@ -38,7 +41,13 @@ export function LearningPreferences() {
         >
           <ChoiceList<ScriptMode>
             value={settings.script}
-            onChange={(script) => updateSettings({ script })}
+            onChange={(script) =>
+              /* Picking a script brings its usual phonetic system with it; the
+                 picker below can still change that on its own. */
+              script === settings.script
+                ? undefined
+                : updateSettings({ script, phoneticScript: defaultPhoneticFor(script) })
+            }
             options={[
               { value: 'traditional', label: 'Traditional', hint: 'Used in Taiwan, Hong Kong and Macau — 學習' },
               { value: 'simplified', label: 'Simplified', hint: 'Used in mainland China and Singapore — 学习' },
@@ -59,6 +68,17 @@ export function LearningPreferences() {
             ]}
           />
         </Field>
+
+        <InlineRow
+          label={settings.phoneticScript === 'zhuyin' ? 'Zhuyin under sentences' : 'Pinyin under sentences'}
+          hint="Off shows the characters alone, in the reader and every example sentence. The text stays exactly where it is."
+        >
+          <Toggle
+            label={settings.phoneticScript === 'zhuyin' ? 'Zhuyin under sentences' : 'Pinyin under sentences'}
+            value={settings.showReadings}
+            onChange={(showReadings) => updateSettings({ showReadings })}
+          />
+        </InlineRow>
       </ControlGroup>
 
       <ControlGroup title="Review & study">

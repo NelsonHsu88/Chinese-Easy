@@ -19,6 +19,7 @@ import { DICT_BG, DICT_BUTTON_SHADOW, DICT_CARD_SHADOW } from './shadows'
 import { useRevealedShadow } from '../shadowReveal'
 import { displayExample, displayPinyin, displayWord, hanziFont } from '../../lib/hanzi'
 import { shortGloss } from '../../lib/definitions'
+import { ZHUYIN_SYLLABLE_GAP } from '../../lib/zhuyin'
 import { SEARCH_FIELDS, type SearchField } from '../../lib/dictionary'
 import { speak } from '../../lib/speech'
 import { playPositiveChime } from '../../lib/sound'
@@ -499,7 +500,7 @@ export function ExploreGrid({
           mark={{ kind: 'icon', icon: Sprout }}
           ink={EXPLORE_INK.lavender}
           title="Radicals"
-          subtitle="The building blocks"
+          subtitle="The building blocks of Chinese"
           script={script}
           onPress={onRadicals}
         />
@@ -548,6 +549,23 @@ export function WordToDiscover({
 }) {
   const hanzi = displayWord(word, settings.script)
   const example = displayExample(word, settings.script)
+  const reading = displayPinyin(word, settings.phoneticScript)
+
+  /*
+   * Zhuyin sits under each character rather than in the text column beside the
+   * word. That column is only ~90pt wide once the word and the two round
+   * buttons have their share, and bopomofo is full-width: a two-syllable
+   * reading like ㄒㄩㄝˊ ㄒㄧㄠˋ runs ~130pt at the column's type size, so it was
+   * cut off after a syllable. Under a 44pt character, one syllable (at most
+   * three symbols and a tone mark) fits at 11.5pt — and the line heights are
+   * chosen so the word block is exactly as tall as the pinyin layout's text
+   * column, so switching systems never changes the card's size.
+   */
+  const zhuyin = settings.phoneticScript === 'zhuyin'
+  const characters = Array.from(hanzi)
+  const syllables = reading.split(ZHUYIN_SYLLABLE_GAP)
+  const zhuyinPerCharacter = zhuyin && syllables.length === characters.length
+  const hanziClass = `${hanziFont(settings.script, 'medium')} text-dict-heading`
 
   return (
     // `overflow-hidden` below clips the watercolour wash to the card's rounded
@@ -576,14 +594,34 @@ export function WordToDiscover({
             className="flex-row items-center"
             accessibilityLabel={`Open ${hanzi}`}
           >
-            <Text className={`${hanziFont(settings.script, 'medium')} text-dict-heading`} style={{ fontSize: 44, lineHeight: 56 }}>
-              {hanzi}
-            </Text>
-            <View className="ml-4 flex-1">
-              <Text numberOfLines={1} className="font-dict-semibold text-[16px] leading-[21px] text-dict-heading">
-                {displayPinyin(word, settings.phoneticScript)}
+            {zhuyin ? (
+              <View className="flex-row items-start" style={{ gap: 2 }}>
+                {(zhuyinPerCharacter ? characters : [hanzi]).map((glyph, i) => (
+                  <View key={i} className="items-center">
+                    <Text className={hanziClass} style={{ fontSize: 44, lineHeight: 47 }}>
+                      {glyph}
+                    </Text>
+                    <Text
+                      className="font-dict-semibold text-dict-green-dark"
+                      style={{ fontSize: 11.5, lineHeight: 14 }}
+                    >
+                      {zhuyinPerCharacter ? syllables[i] : reading}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <Text className={hanziClass} style={{ fontSize: 44, lineHeight: 56 }}>
+                {hanzi}
               </Text>
-              <Text numberOfLines={2} className="mt-0.5 font-dict-sans text-[14.5px] leading-[19px] text-dict-soft">
+            )}
+            <View className="ml-4 flex-1">
+              {!zhuyin && (
+                <Text numberOfLines={1} className="mb-0.5 font-dict-semibold text-[16px] leading-[21px] text-dict-heading">
+                  {reading}
+                </Text>
+              )}
+              <Text numberOfLines={2} className="font-dict-sans text-[14.5px] leading-[19px] text-dict-soft">
                 {shortGloss(word)}
               </Text>
             </View>

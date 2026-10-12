@@ -58,6 +58,28 @@ export const WRITER_HTML = `<!doctype html>
     transform-origin: 50% 50%;
     animation: strokePlace 330ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
+
+  /*
+   * Writing mode only (body.quiz): the trace under the finger is green, and
+   * each stroke the learner gets right arrives green and then dries to ink.
+   *
+   * hanzi-writer draws a finished stroke as a thick *stroked* path clipped to
+   * the stroke's outline, writing the colour into its \`stroke\` attribute as
+   * rgba() — so that is what these match, and a CSS declaration beats the
+   * attribute. The clip-path keeps this off the learner's own trace, which is
+   * a stroked path too. Demo playback has no body.quiz and stays as it was.
+   */
+  body.quiz #target path[clip-path][stroke="rgba(34,197,94,1)"],
+  body.quiz #target path[clip-path][stroke="rgba(22,163,74,1)"] {
+    stroke: #1d2622;
+  }
+  @keyframes inkDry {
+    0%, 35% { stroke: #22c55e; }
+    100%    { stroke: #1d2622; }
+  }
+  body.quiz #target path.ink-fresh {
+    animation: inkDry 1100ms ease-in both;
+  }
 </style>
 </head>
 <body>
@@ -100,6 +122,15 @@ export const WRITER_HTML = `<!doctype html>
   var HINT_AFTER_MISSES = 3;
   // Whether to leave the finished character painted once a quiz completes.
   var holdOnComplete = false;
+  /*
+   * Which writer is current. The same document is re-initialised in place
+   * (a mode change, a reset, a resize) instead of the WebView being rebuilt,
+   * so a writer that has just been replaced may still have an animation or a
+   * quiz callback in flight. Each callback checks the generation it was
+   * started under and stays silent if it is no longer the current one —
+   * otherwise a stale "demoComplete" could finish the new writer's demo.
+   */
+  var generation = 0;
 
   function post(payload) {
     var json = JSON.stringify(payload);
@@ -136,6 +167,28 @@ export const WRITER_HTML = `<!doctype html>
     newest.classList.remove('stroke-place');
     void newest.getBoundingClientRect();
     newest.classList.add('stroke-place');
+  }
+
+  /*
+   * Lets the stroke the learner just wrote dry from green to ink. Every stroke
+   * of the main character is mounted up front, in stroke order, so the path
+   * for stroke n is the nth one carrying the stroke or radical colour — "the
+   * last one in the DOM" would always be the character's final stroke.
+   */
+  function inkStroke(strokeNum) {
+    var paths = document.querySelectorAll(
+      '#target path[clip-path][stroke="rgba(34,197,94,1)"], #target path[clip-path][stroke="rgba(22,163,74,1)"]'
+    );
+    var path = paths[strokeNum];
+    if (!path) return;
+    path.classList.remove('ink-fresh');
+    void path.getBoundingClientRect();
+    path.classList.add('ink-fresh');
+  }
+
+  function clearInk() {
+    var fresh = document.querySelectorAll('#target path.ink-fresh');
+    for (var i = 0; i < fresh.length; i++) fresh[i].classList.remove('ink-fresh');
   }
 
   function showHint(size, padding, firstStrokePath) {
@@ -189,10 +242,17 @@ export const WRITER_HTML = `<!doctype html>
     }
 
     if (msg.type === 'init') {
+      if (writer) {
+        try { writer.cancelQuiz(); } catch (e) {}
+        try { writer.pauseAnimation(); } catch (e) {}
+      }
+      generation += 1;
+      var initGen = generation;
       mode = msg.mode;
       stageSize = msg.size;
       var speedScale = msg.speed === 'slow' ? 0.5 : 1;
       holdOnComplete = !!msg.holdCharacterOnComplete;
+      document.body.classList.toggle('quiz', mode === 'quiz');
       document.getElementById('target').innerHTML = '';
       hideHint();
       if (msg.showGuides) drawGuides(msg.size);
@@ -224,7 +284,8 @@ export const WRITER_HTML = `<!doctype html>
         radicalColor: '#16a34a',
         outlineColor: '#dedede',
         highlightColor: '#ff6b6b',
-        drawingColor: '#0f172a',
+        // The live trace under the finger, green as in the SS930 reference.
+        drawingColor: '#22c55e',
         drawingWidth: msg.drawingWidth,
         strokeWidth: msg.strokeWidth,
         outlineWidth: msg.strokeWidth,
@@ -238,12 +299,14 @@ export const WRITER_HTML = `<!doctype html>
         // recognisably the right form.
         leniency: 2.2,
         onLoadCharDataSuccess: function (data) {
+          if (initGen !== generation) return;
           if (msg.showStartHint && data.strokes[0]) {
             showHint(msg.size, msg.padding, data.strokes[0]);
           }
           post({ type: 'loadSuccess' });
         },
         onLoadCharDataError: function () {
+          if (initGen !== generation) return;
           post({ type: 'loadError' });
         },
       });
@@ -254,9 +317,11 @@ export const WRITER_HTML = `<!doctype html>
       if (writer) writer.showCharacter();
     } else if (msg.type === 'start' || msg.type === 'restart') {
       if (!writer) return;
+      var runGen = generation;
       if (mode === 'demo') {
         writer.animateCharacter({
           onComplete: function () {
+            if (runGen !== generation) return;
             /*
              * Same reason as the quiz branch below: hanzi-writer fades the
              * strokes it drew once the animation ends, so a screen that stays
@@ -272,12 +337,14 @@ export const WRITER_HTML = `<!doctype html>
       } else {
         strokeIndex = 0;
         hideHint();
+        clearInk();
         // A restart calls into the exact same writer.quiz() a fresh start
         // does -- hanzi-writer clears its own drawn strokes and mistake count
         // each time this is called, which is the whole reason resetting the
         // active glyph doesn't need to touch the WebView at all.
         writer.quiz({
           onMistake: function (strokeData) {
+            if (runGen !== generation) return;
             /*
              * Announced on the miss that first trips hanzi-writer's own hint and
              * on every miss after it, so the gong keeps sounding for as long as
@@ -289,12 +356,14 @@ export const WRITER_HTML = `<!doctype html>
             }
           },
           onCorrectStroke: function (strokeData) {
+            if (runGen !== generation) return;
             hideHint();
             strokeIndex += 1;
             // Deferred a frame: hanzi-writer appends the finished stroke's path
             // during this callback, so querying synchronously can still find the
             // previous stroke as the last one.
             requestAnimationFrame(placeNewestStroke);
+            inkStroke(strokeData.strokeNum);
             post({
               type: 'correctStroke',
               strokesRemaining: strokeData.strokesRemaining,
@@ -302,6 +371,7 @@ export const WRITER_HTML = `<!doctype html>
             });
           },
           onComplete: function (summary) {
+            if (runGen !== generation) return;
             /*
              * hanzi-writer fades the drawn strokes back out when a quiz ends,
              * which leaves the learner staring at the faint grey outline the

@@ -2,6 +2,7 @@ import { View, Text, Pressable } from 'react-native'
 import { ArrowDown, ArrowRight, Plus, Square, SquareDashedBottom } from 'lucide-react-native'
 import { guideColors as c, spacing, type as t } from './tokens'
 import { tapHaptic } from '../../lib/haptics'
+import { useGuideCompact } from './parts'
 
 /*
  * The stroke-order rules, as things you can pick rather than a paragraph.
@@ -63,8 +64,9 @@ export function RuleList({
   selected: number
   onSelect: (index: number) => void
 }) {
+  const compact = useGuideCompact()
   return (
-    <View style={{ gap: spacing.sm }}>
+    <View style={{ gap: compact ? 6 : spacing.sm }}>
       {STROKE_RULES.map((rule, i) => {
         const Icon = rule.icon
         const active = selected === i
@@ -85,13 +87,15 @@ export function RuleList({
               borderWidth: 1,
               borderRadius: 16,
               paddingHorizontal: spacing.lg,
-              paddingVertical: 13,
+              /* 42pt rows compact: still a comfortable target, and the five of
+                 them give the character back ~70pt on a short phone. */
+              paddingVertical: compact ? 7 : 13,
               gap: spacing.md,
             }}
           >
             <View
               className="items-center justify-center rounded-full"
-              style={{ width: 30, height: 30, backgroundColor: c.green }}
+              style={{ width: compact ? 28 : 30, height: compact ? 28 : 30, backgroundColor: c.green }}
             >
               <Icon size={16} color="#ffffff" strokeWidth={2.6} />
             </View>

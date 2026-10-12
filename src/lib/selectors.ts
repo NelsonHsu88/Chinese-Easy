@@ -56,9 +56,13 @@ export function mistakeCardsFor(deck: SrsCard[]): SrsCard[] {
 }
 
 /**
- * The pool the listening drill runs on: due cards that have been studied at
- * least once. A word you've never seen can't meaningfully be *recognised* by
- * ear, so brand-new cards are left to the flashcard phase to introduce.
+ * The drill half of a Full or Quick review: due cards that have been studied at
+ * least once. Those sessions run flashcards first, so a brand-new card has just
+ * been introduced there and is left out here rather than met twice in a row.
+ *
+ * Standalone Mixed Drills does *not* use this — it runs on {@link dueCardsFor},
+ * so a word the learner has just added is drillable straight away, the same as
+ * in Flashcards.
  */
 export function listeningCardsFor(deck: SrsCard[], settings: AppSettings): SrsCard[] {
   return dueCardsFor(deck, settings).filter((c) => c.reps > 0)

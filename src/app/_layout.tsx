@@ -69,6 +69,8 @@ import { AppProvider, useApp } from '../context/AppContext'
 import { AuthProvider, useAuth } from '../context/AuthContext'
 import { AdsProvider } from '../context/AdsContext'
 import { TourOverlay } from '../components/tour/TourOverlay'
+import { ScreenTourOverlay } from '../components/tour/ScreenTourOverlay'
+import { ProgressionCelebration } from '../components/profile/Celebration'
 import { useSubscribePrompt } from '../components/subscription/useSubscribePrompt'
 import { configureAudioSession } from '../lib/sound'
 
@@ -183,6 +185,13 @@ function RootNavigator() {
         when no tour is running.
       */}
       <TourOverlay />
+      {/* The first-visit guides on Learn, Dictionary and Settings. */}
+      <ScreenTourOverlay />
+      {/*
+        Level-ups and achievements, noticed on whichever screen they happen on.
+        It holds its queue while the learner is mid-task — see the component.
+      */}
+      <ProgressionCelebration />
     </>
   )
 }
