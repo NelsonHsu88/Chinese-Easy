@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 import { View, ActivityIndicator, Platform } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
-import { useAuth } from '../../context/AuthContext'
+import { isGoogleSignInRedirect, useAuth } from '../../context/AuthContext'
 import { getSupabase, isSupabaseConfigured } from '../../lib/supabase'
 import { dashColors } from '../../components/dashboard/tokens'
 
 /*
  * Where Google sends the learner back to.
  *
- * On **native** Google never lands here: `signInWithGoogle` opens the browser
- * itself with `skipBrowserRedirect`, so the redirect comes back as a return
- * value from `WebBrowser.openAuthSessionAsync` and the code is exchanged inline.
- * See AuthContext. An email confirmation link does land here — see below.
+ * On **native**, `signInWithGoogle` opens the browser itself with
+ * `skipBrowserRedirect`, so the redirect comes back as a return value from
+ * `WebBrowser.openAuthSessionAsync` and the code is exchanged there. But on
+ * Android the same redirect *also* arrives as a deep link and opens this
+ * screen. That one must neither spend the code nor reset to '/' — doing so sent
+ * the learner back to the first page of onboarding mid-sign-in. It closes
+ * itself, uncovering the onboarding step underneath, which finishes the
+ * sign-in. An email confirmation link does land here for real — see below.
  *
  * On **web** there is no in-app browser to hand a value back. The page navigates
  * to Google and Google navigates it here — to the exact path
@@ -30,6 +34,8 @@ import { dashColors } from '../../components/dashboard/tokens'
 export default function AuthCallback() {
   const { ready, session } = useAuth()
   const { code } = useLocalSearchParams<{ code?: string }>()
+  /* Read once: by the time the effects run, the sign-in may have finished. */
+  const [googleRedirect] = useState(() => Platform.OS !== 'web' && isGoogleSignInRedirect(code))
   /*
    * The one native visitor: the link in a sign-up confirmation email, opened on
    * a phone, arrives as `chineseeasy://auth/callback?code=…`. Nothing else
@@ -38,7 +44,15 @@ export default function AuthCallback() {
    * here — but the address is already confirmed by then, so logging in with the
    * password works either way.
    */
-  const [exchanging, setExchanging] = useState(Platform.OS !== 'web' && typeof code === 'string' && isSupabaseConfigured)
+  const [exchanging, setExchanging] = useState(
+    Platform.OS !== 'web' && !googleRedirect && typeof code === 'string' && isSupabaseConfigured,
+  )
+
+  useEffect(() => {
+    if (!googleRedirect) return
+    if (router.canGoBack()) router.back()
+    else router.replace('/')
+  }, [googleRedirect])
 
   useEffect(() => {
     if (!exchanging || typeof code !== 'string') return
@@ -49,7 +63,7 @@ export default function AuthCallback() {
   }, [exchanging, code])
 
   useEffect(() => {
-    if (!ready || exchanging) return
+    if (googleRedirect || !ready || exchanging) return
     /*
      * Both outcomes go to the same place. The root layout already redirects to
      * onboarding when it is incomplete and to the tabs when it is not, so
@@ -62,7 +76,7 @@ export default function AuthCallback() {
      * onboarding account step is built to handle.
      */
     router.replace('/')
-  }, [ready, exchanging, session])
+  }, [googleRedirect, ready, exchanging, session])
 
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: dashColors.background }}>

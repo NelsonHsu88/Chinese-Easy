@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { View, Text, Pressable, Platform } from 'react-native'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { View, Text, Pressable, Platform, KeyboardAvoidingView, useWindowDimensions } from 'react-native'
 import { router } from 'expo-router'
 import {
   Sprout,
@@ -51,7 +51,7 @@ import { GoogleMark } from '../components/onboarding/GoogleMark'
 import { AppleSignInButton } from '../components/auth/AppleSignInButton'
 import { useCaptcha } from '../components/auth/Captcha'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../lib/passwordRules'
-import { useAuth } from '../context/AuthContext'
+import { accountFor, useAuth } from '../context/AuthContext'
 import { ArtLayer } from '../components/onboarding/PageArt'
 import { CornerBranch, PageFoot, HeroArt, useClearance } from '../components/onboarding/RedesignArt'
 import { emailError as emailProblem, fieldForServerError, logInErrors, signUpErrors, type AuthField, type FieldErrors } from '../lib/authForm'
@@ -78,6 +78,7 @@ import { AnswerSheet } from '../components/drills/parts'
 import { listenColors } from '../components/listening/tokens'
 import type { LearningGoal, PlacementAnswer, ScriptMode } from '../types'
 import { ShadowSurface } from '../components/shadowReveal'
+import { FlexGap } from '../components/FlexGap'
 
 /*
  * The six-screen onboarding flow, built to the reference mockups.
@@ -217,7 +218,7 @@ export function Onboarding() {
 
   // --- Account ---------------------------------------------------------------
 
-  const { signInWithGoogle, signInWithApple, signUpWithEmail, signInWithEmail, sendPasswordReset } = useAuth()
+  const { session, signInWithGoogle, signInWithApple, signUpWithEmail, signInWithEmail, sendPasswordReset } = useAuth()
   const [googleBusy, setGoogleBusy] = useState(false)
   const [googleError, setGoogleError] = useState<string | null>(null)
   const [authMode, setAuthMode] = useState<AuthMode>('email')
@@ -280,6 +281,14 @@ export function Onboarding() {
     confirmSentTo !== null ||
     (!emailBusy && (viaProvider ? trimmedName.length > 0 : captcha.ready && formFilled))
 
+  /*
+   * The details page doesn't scroll, so on a short phone (an iPhone SE is 667)
+   * it drops the subtitle under its title: the form plus an error under three
+   * of its fields doesn't otherwise clear the button.
+   */
+  const { height: windowHeight } = useWindowDimensions()
+  const compactProfile = windowHeight < 720 && confirmSentTo === null && !viaProvider
+
   /* Where each sign-in page's form ends, so its painting can start below it. */
   const accountClearance = useClearance()
   const profileClearance = useClearance()
@@ -321,6 +330,29 @@ export function Onboarding() {
     setNameInput(account?.name ?? '')
     goTo('profile')
   }
+
+  /*
+   * Signed in with Google or Apple, yet onboarding just opened on its first
+   * page: the screen was rebuilt under the learner mid-sign-in (on Android the
+   * redirect back from Google can remount it). Script and goal were saved when
+   * their pages were left, so pick up at the details step rather than making
+   * them start over — and only from a fresh first page, never mid-flow.
+   */
+  /* Latched once the learner moves, so walking back to the first page later
+     doesn't throw them forward again. */
+  const leftFirstPage = useRef(false)
+  if (step !== 'welcome') leftFirstPage.current = true
+  useEffect(() => {
+    if (isRetake || leftFirstPage.current || !session) return
+    const provider = session.user.app_metadata?.provider
+    if (provider !== 'google' && provider !== 'apple') return
+    const account = accountFor(session.user)
+    setAuthMode('provider')
+    setEmailInput(account.email)
+    setNameInput(account.name)
+    setHistory(['welcome', 'script', 'goal', 'account'])
+    setStep('profile')
+  }, [session, isRetake])
 
   const continueWithApple = async () => {
     if (googleBusy) return
@@ -1008,6 +1040,7 @@ export function Onboarding() {
   if (step === 'profile') {
     return (
       <OnbShell
+        scroll={false}
         art={
           <ArtLayer>
             <OnbArtEnter>
@@ -1045,12 +1078,22 @@ export function Onboarding() {
           </OnbRise>
         }
       >
-        <View className="flex-1" style={{ paddingTop: s.xl, paddingBottom: s.huge * 2 }}>
+        {/*
+          A fixed page, by request: it does not scroll. The form is sized to fit
+          a 667pt phone with an error under every field; the gaps around the
+          header take the extra height of a taller one. When the keyboard opens,
+          Android pans the window (`softwareKeyboardLayoutMode: pan`) and iOS
+          lifts the form with `KeyboardAvoidingView`, so the lower fields stay
+          in view without a scroll.
+        */}
+        <View className="flex-1">
+          <FlexGap min={s.sm} max={s.xl} />
           <OnbRise index={0}>
             <View className="items-center">
               <OnbTitle>
                 {confirmSentTo !== null ? 'Check your inbox' : authMode === 'login' ? 'Welcome back' : 'A few details'}
               </OnbTitle>
+              {!compactProfile && (
               <OnbBody style={{ marginTop: s.sm }}>
                 {confirmSentTo !== null
                   ? `We sent a link to ${confirmSentTo}.\nOpen it to finish creating your account —\nyou can keep going in the meantime.`
@@ -1060,14 +1103,18 @@ export function Onboarding() {
                       ? 'Log in with your email\nand password.'
                       : 'Tell us your name and choose\na password for your account.'}
               </OnbBody>
+              )}
             </View>
           </OnbRise>
 
+          <FlexGap min={s.lg} max={s.xxl} />
+
           {confirmSentTo === null && (
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'position' : undefined} enabled={Platform.OS === 'ios'}>
             <View
               ref={profileClearance.ref}
               onLayout={profileClearance.onLayout}
-              style={{ gap: s.xl, paddingTop: s.xxl, paddingHorizontal: s.sm }}
+              style={{ gap: s.md, paddingHorizontal: s.sm }}
             >
               {viaProvider && (
                 <OnbRise index={1}>
@@ -1175,6 +1222,7 @@ export function Onboarding() {
                 </Text>
               )}
             </View>
+            </KeyboardAvoidingView>
           )}
         </View>
       </OnbShell>

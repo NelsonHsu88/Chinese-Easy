@@ -30,7 +30,7 @@ const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export function emailError(email: string): string | undefined {
   const trimmed = email.trim()
   if (trimmed.length === 0) return 'Enter your email address'
-  if (!EMAIL_SHAPE.test(trimmed)) return 'Enter a valid email address, like name@example.com'
+  if (!EMAIL_SHAPE.test(trimmed)) return 'Enter a valid email address'
   return undefined
 }
 

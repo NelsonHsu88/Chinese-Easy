@@ -154,7 +154,7 @@ function readableError(message: string): string {
 }
 
 /** The learner's name as the account knows it — set at email sign-up, or by Google. */
-function accountFor(user: User | null | undefined): { email: string; name: string } {
+export function accountFor(user: User | null | undefined): { email: string; name: string } {
   const meta = (user?.user_metadata ?? {}) as Record<string, unknown>
   const name = [meta.display_name, meta.full_name, meta.name, meta.given_name].find(
     (value): value is string => typeof value === 'string' && value.trim().length > 0,
@@ -167,6 +167,57 @@ function accountFor(user: User | null | undefined): { email: string; name: strin
  * same callback Google uses, so the one allowlist entry covers both.
  */
 const authRedirectTo = () => Linking.createURL('auth/callback')
+
+/*
+ * Native Google sign-in in progress, and the codes it has claimed.
+ *
+ * On Android the redirect back from Google reaches the app twice: as the
+ * return value of `openAuthSessionAsync`, and as a deep link the router opens
+ * at /auth/callback. That screen is built for emailed links — it spends the
+ * code and replaces everything with '/', which restarted onboarding from its
+ * first page and raced `signInWithGoogle` for the same single-use code. It asks
+ * here first, and steps aside for a sign-in this flow is already finishing.
+ */
+let googleSignInInFlight = false
+const claimedOAuthCodes = new Set<string>()
+
+/** True when /auth/callback should leave `code` to `signInWithGoogle`. */
+export function isGoogleSignInRedirect(code: string | undefined): boolean {
+  return googleSignInInFlight || (code !== undefined && claimedOAuthCodes.has(code))
+}
+
+/** The native half of Google sign-in: the browser round trip and the code exchange. */
+async function finishGoogleSignIn(authUrl: string, redirectTo: string): Promise<AuthResult> {
+  const supabase = getSupabase()
+  const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectTo)
+  if (result.type === 'cancel' || result.type === 'dismiss') return { error: null, cancelled: true }
+  if (result.type !== 'success') return { error: 'Sign-in didn’t finish. Please try again.' }
+
+  /* `Linking.parse` rather than `new URL` — React Native's URL has no
+     reliable `searchParams`, and a custom scheme is exactly the shape it
+     handles worst. */
+  const params = Linking.parse(result.url).queryParams ?? {}
+  const denied = typeof params.error === 'string' ? params.error : null
+  if (denied) {
+    /* Google says access_denied both for "cancelled" and for a refused
+       consent screen. Neither is an app failure worth alarming anyone over. */
+    return denied === 'access_denied'
+      ? { error: null, cancelled: true }
+      : { error: 'Google couldn’t complete the sign-in. Please try again.' }
+  }
+
+  const code = typeof params.code === 'string' ? params.code : null
+  if (!code) return { error: 'Sign-in didn’t finish. Please try again.' }
+  claimedOAuthCodes.add(code)
+
+  /* PKCE: the code is worthless without the verifier held by this client, so
+     intercepting the redirect gains an attacker nothing. See `flowType` in
+     lib/supabase.ts. */
+  const exchanged = await supabase.auth.exchangeCodeForSession(code)
+  if (exchanged.error) return { error: readableError(exchanged.error.message) }
+
+  return { error: null, account: accountFor(exchanged.data.session?.user) }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
@@ -399,34 +450,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) return { error: readableError(error.message) }
     if (!data?.url) return { error: 'Google sign-in is not enabled for this project yet.' }
 
-    const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo)
-    if (result.type === 'cancel' || result.type === 'dismiss') return { error: null, cancelled: true }
-    if (result.type !== 'success') return { error: 'Sign-in didn’t finish. Please try again.' }
-
-    /* `Linking.parse` rather than `new URL` — React Native's URL has no
-       reliable `searchParams`, and a custom scheme is exactly the shape it
-       handles worst. */
-    const params = Linking.parse(result.url).queryParams ?? {}
-    const denied = typeof params.error === 'string' ? params.error : null
-    if (denied) {
-      /* Google says access_denied both for "cancelled" and for a refused
-         consent screen. Neither is an app failure worth alarming anyone over. */
-      return denied === 'access_denied'
-        ? { error: null, cancelled: true }
-        : { error: 'Google couldn’t complete the sign-in. Please try again.' }
+    googleSignInInFlight = true
+    try {
+      return await finishGoogleSignIn(data.url, redirectTo)
+    } finally {
+      googleSignInInFlight = false
     }
-
-    const code = typeof params.code === 'string' ? params.code : null
-    if (!code) return { error: 'Sign-in didn’t finish. Please try again.' }
-
-    /* PKCE: the code is worthless without the verifier held by this client, so
-       intercepting the redirect gains an attacker nothing. See `flowType` in
-       lib/supabase.ts. */
-    const exchanged = await supabase.auth.exchangeCodeForSession(code)
-    if (exchanged.error) return { error: readableError(exchanged.error.message) }
-
-    return { error: null, account: accountFor(exchanged.data.session?.user) }
   }, [oauthRedirectTo])
+
 
   const signOut = useCallback(async () => {
     if (!isSupabaseConfigured) return
