@@ -53,7 +53,8 @@ import { useCaptcha } from '../components/auth/Captcha'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../lib/passwordRules'
 import { useAuth } from '../context/AuthContext'
 import { ArtLayer } from '../components/onboarding/PageArt'
-import { CornerBranch, PageFoot, HeroArt } from '../components/onboarding/RedesignArt'
+import { CornerBranch, PageFoot, HeroArt, useClearance } from '../components/onboarding/RedesignArt'
+import { emailError as emailProblem, fieldForServerError, logInErrors, signUpErrors, type AuthField, type FieldErrors } from '../lib/authForm'
 import {
   onbColors as c,
   onbSpacing as s,
@@ -242,20 +243,46 @@ export function Onboarding() {
   const [emailInput, setEmailInput] = useState('')
 
   const trimmedName = nameInput.trim()
-  // Deliberately loose. This is a local profile, not a verified address, and a
-  // strict pattern here only ever rejects somebody's real email.
-  const emailLooksValid = /^\S+@\S+\.\S+$/.test(emailInput.trim())
+  const emailLooksValid = emailProblem(emailInput) === undefined
   const passwordLongEnough = passwordInput.length >= MIN_PASSWORD_LENGTH
-  const passwordsMatch = passwordInput === confirmInput
+
+  /*
+   * The form's inline errors, the way sign-up forms generally do it: the button
+   * opens up once every box has something in it, and pressing it checks them
+   * all, drawing each problem in red under its own box. Before that, a box is
+   * only judged once the learner leaves it with something typed — never while
+   * they're still typing, and never for being empty when they haven't got to
+   * it yet. A shown error then follows the value live, so it disappears the
+   * moment it's fixed.
+   */
+  const formErrors: FieldErrors =
+    authMode === 'login'
+      ? logInErrors({ email: emailInput, password: passwordInput })
+      : signUpErrors({ name: nameInput, email: emailInput, password: passwordInput, confirm: confirmInput })
+  const [judged, setJudged] = useState<ReadonlySet<AuthField>>(() => new Set())
+  /** An error the server put on one field ("already an account with that email"); cleared when that field is edited. */
+  const [serverFieldError, setServerFieldError] = useState<{ field: AuthField; message: string } | null>(null)
+  const judge = (field: AuthField, value: string) => {
+    if (value.length > 0 && !judged.has(field)) setJudged(new Set(judged).add(field))
+  }
+  const fieldError = (field: AuthField) =>
+    serverFieldError?.field === field ? serverFieldError.message : judged.has(field) ? formErrors[field] : undefined
+  const edit = (field: AuthField, set: (value: string) => void) => (value: string) => {
+    set(value)
+    if (serverFieldError?.field === field) setServerFieldError(null)
+  }
+
+  const formFilled =
+    authMode === 'login'
+      ? emailInput.trim().length > 0 && passwordInput.length > 0
+      : trimmedName.length > 0 && emailInput.trim().length > 0 && passwordInput.length > 0 && confirmInput.length > 0
   const canSubmitProfile =
     confirmSentTo !== null ||
-    (!emailBusy &&
-      (viaProvider
-        ? trimmedName.length > 0
-        : captcha.ready &&
-          (authMode === 'login'
-            ? emailLooksValid && passwordInput.length > 0
-            : trimmedName.length > 0 && emailLooksValid && passwordLongEnough && passwordsMatch)))
+    (!emailBusy && (viaProvider ? trimmedName.length > 0 : captcha.ready && formFilled))
+
+  /* Where each sign-in page's form ends, so its painting can start below it. */
+  const accountClearance = useClearance()
+  const profileClearance = useClearance()
 
   /**
    * Takes an email route — sign-up or log-in — dropping anything Google
@@ -278,6 +305,8 @@ export function Onboarding() {
       setConfirmInput('')
     }
     setEmailError(null)
+    setJudged(new Set())
+    setServerFieldError(null)
     setResetSentTo(null)
     setAuthMode(mode)
     goTo('profile')
@@ -382,7 +411,15 @@ export function Onboarding() {
       return
     }
     if (emailBusy) return
+    const fields = Object.keys(formErrors) as AuthField[]
+    if (fields.length > 0) {
+      setJudged(new Set(fields))
+      setEmailError(null)
+      carefulHaptic()
+      return
+    }
     setEmailError(null)
+    setServerFieldError(null)
     setEmailBusy(true)
     const result =
       authMode === 'login'
@@ -393,7 +430,10 @@ export function Onboarding() {
     setEmailBusy(false)
 
     if (result.error) {
-      setEmailError(result.error)
+      const field = fieldForServerError(result.error)
+      if (field) setServerFieldError({ field, message: result.error })
+      else setEmailError(result.error)
+      carefulHaptic()
       return
     }
     setPasswordInput('')
@@ -843,7 +883,7 @@ export function Onboarding() {
               <CornerBranch piece="account-branch" side="right" />
             </OnbArtEnter>
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
-              <PageFoot piece="account-foot" />
+              <PageFoot piece="account-foot" clearBelow={accountClearance.bottom} />
             </SlideIn>
           </ArtLayer>
         }
@@ -869,7 +909,11 @@ export function Onboarding() {
             </View>
           </OnbRise>
 
-          <View style={{ gap: s.md, paddingTop: s.xxl, paddingHorizontal: s.sm }}>
+          <View
+            ref={accountClearance.ref}
+            onLayout={accountClearance.onLayout}
+            style={{ gap: s.md, paddingTop: s.xxl, paddingHorizontal: s.sm }}
+          >
             {/*
               Google's hands off to Google's own page and comes back with a
               session; the email route leads to the details step, which asks for
@@ -970,7 +1014,7 @@ export function Onboarding() {
               <CornerBranch piece="profile-branch" side="right" />
             </OnbArtEnter>
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
-              <PageFoot piece="profile-foot" />
+              <PageFoot piece="profile-foot" clearBelow={confirmSentTo === null ? profileClearance.bottom : null} />
             </SlideIn>
           </ArtLayer>
         }
@@ -1020,7 +1064,11 @@ export function Onboarding() {
           </OnbRise>
 
           {confirmSentTo === null && (
-            <View style={{ gap: s.xl, paddingTop: s.xxl, paddingHorizontal: s.sm }}>
+            <View
+              ref={profileClearance.ref}
+              onLayout={profileClearance.onLayout}
+              style={{ gap: s.xl, paddingTop: s.xxl, paddingHorizontal: s.sm }}
+            >
               {viaProvider && (
                 <OnbRise index={1}>
                   <SignedInRow email={emailInput} />
@@ -1032,7 +1080,9 @@ export function Onboarding() {
                   <OnbTextField
                     label="What should we call you?"
                     value={nameInput}
-                    onChangeText={setNameInput}
+                    onChangeText={edit('name', setNameInput)}
+                    onBlur={() => judge('name', nameInput)}
+                    error={fieldError('name')}
                     placeholder="Your name"
                     autoCapitalize="words"
                     autoComplete="username"
@@ -1047,7 +1097,9 @@ export function Onboarding() {
                   <OnbTextField
                     label="Email"
                     value={emailInput}
-                    onChangeText={setEmailInput}
+                    onChangeText={edit('email', setEmailInput)}
+                    onBlur={() => judge('email', emailInput)}
+                    error={fieldError('email')}
                     placeholder="you@example.com"
                     autoCapitalize="none"
                     keyboardType="email-address"
@@ -1062,7 +1114,9 @@ export function Onboarding() {
                   <OnbTextField
                     label="Password"
                     value={passwordInput}
-                    onChangeText={setPasswordInput}
+                    onChangeText={edit('password', setPasswordInput)}
+                    onBlur={() => judge('password', passwordInput)}
+                    error={fieldError('password')}
                     placeholder={authMode === 'login' ? 'Your password' : `At least ${MIN_PASSWORD_LENGTH} characters`}
                     autoCapitalize="none"
                     autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
@@ -1083,13 +1137,14 @@ export function Onboarding() {
                   <OnbTextField
                     label="Confirm password"
                     value={confirmInput}
-                    onChangeText={setConfirmInput}
+                    onChangeText={edit('confirm', setConfirmInput)}
+                    onBlur={() => judge('confirm', confirmInput)}
+                    error={fieldError('confirm')}
                     placeholder="Type it again"
                     autoCapitalize="none"
                     autoComplete="new-password"
                     maxLength={MAX_PASSWORD_LENGTH}
                     secure
-                    hint={confirmInput.length > 0 && !passwordsMatch ? 'The passwords don’t match yet' : undefined}
                     icon={<Lock size={22} color={c.textSecondary} strokeWidth={1.9} />}
                   />
                 </OnbRise>

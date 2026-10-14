@@ -13,7 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ChevronLeft, Check, X, HelpCircle, Eye, EyeOff } from 'lucide-react-native'
+import { ChevronLeft, Check, X, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react-native'
 import {
   onbColors as c,
   onbSpacing as s,
@@ -691,6 +691,8 @@ export function OnbTextField({
   autoComplete,
   maxLength,
   hint,
+  error,
+  onBlur,
   icon,
   secure = false,
 }: {
@@ -706,6 +708,12 @@ export function OnbTextField({
   maxLength?: number
   /** A quiet note under the box — why the field is being asked for. */
   hint?: string
+  /**
+   * What is wrong with the value, drawn in red under the box (in place of the
+   * hint) with the box's border turned red. The form decides when to show it.
+   */
+  error?: string
+  onBlur?: () => void
   /** Drawn at the left of the box behind a hairline, as the redesign has it. */
   icon?: ReactNode
   /** A password: masked, with an eye at the right to show what was typed. */
@@ -729,7 +737,7 @@ export function OnbTextField({
           height: 54,
           borderRadius: onbRadius.cardLarge,
           borderWidth: 1.5,
-          borderColor: focused ? c.green : c.border,
+          borderColor: error ? onbVerdict.incorrect.text : focused ? c.green : c.border,
           backgroundColor: c.card,
         }]}
       >
@@ -743,7 +751,10 @@ export function OnbTextField({
         value={value}
         onChangeText={onChangeText}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={() => {
+          setFocused(false)
+          onBlur?.()
+        }}
         placeholder={placeholder}
         placeholderTextColor={c.textMuted}
         autoCapitalize={autoCapitalize}
@@ -753,6 +764,7 @@ export function OnbTextField({
         secureTextEntry={secure && !revealed}
         maxLength={maxLength}
         accessibilityLabel={label}
+        accessibilityHint={error}
         className="font-nunito-semibold"
         style={{
           flex: 1,
@@ -782,7 +794,19 @@ export function OnbTextField({
           </Pressable>
         ) : null}
       </ShadowSurface>
-      {hint ? (
+      {error ? (
+        <View
+          className="flex-row items-center"
+          style={{ gap: 5, marginTop: 6, marginLeft: 2 }}
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+        >
+          <AlertCircle size={15} color={onbVerdict.incorrect.text} strokeWidth={2.2} />
+          <Text className="flex-1 font-nunito-semibold" style={{ ...t.footnote, color: onbVerdict.incorrect.text }}>
+            {error}
+          </Text>
+        </View>
+      ) : hint ? (
         <Text
           className="font-nunito-semibold"
           style={{ ...t.footnote, color: c.textMuted, marginTop: 5, marginLeft: 2 }}

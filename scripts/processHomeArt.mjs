@@ -84,6 +84,19 @@ const PIECES = [
         /* The streak pill and its shadow. */
         outside({ left: 612, top: 0, right: 818, bottom: 94, ramp: 6 }, x, y),
       ),
+    /*
+     * Shifu's outline. His white hair, brows, beard and collar are as pale as
+     * the page, so keying alone left them see-through and the backdrop showed
+     * through him. Inside this outline the painting is kept fully opaque.
+     */
+    solid: [
+      [580, 210], [583, 198], [595, 193], [610, 192], [623, 196], [629, 205], [631, 220], [635, 229],
+      [643, 233], [655, 242], [663, 255], [667, 270], [668, 285], [665, 302], [671, 306], [677, 315],
+      [677, 332], [671, 342], [660, 346], [650, 352], [637, 362], [647, 367], [657, 378], [670, 392],
+      [680, 406], [687, 425], [690, 450], [691, 506], [482, 506], [484, 460], [487, 432], [496, 408], [507, 392], [518, 380], [530, 370], [541, 363],
+      [535, 350], [523, 346], [512, 336], [509, 320], [513, 306], [525, 302], [529, 285], [535, 265],
+      [543, 250], [555, 238], [570, 232], [578, 226],
+    ],
   },
   {
     name: 'review',
@@ -199,6 +212,18 @@ function inpaint(data, width, rect, iterations = 600) {
   }
 }
 
+/**
+ * A polygon (mockup coordinates) as a one-channel mask over `box`: 255 inside,
+ * feathered *inwards* over a few pixels, so its edge falls on the figure's own
+ * soft outline and never pulls surrounding page into the art.
+ */
+async function solidMask(points, box) {
+  const pts = points.map(([x, y]) => `${x - box.left},${y - box.top}`).join(' ')
+  const svg = `<svg width="${box.width}" height="${box.height}"><rect width="100%" height="100%" fill="black"/><polygon points="${pts}" fill="white"/></svg>`
+  const { data } = await sharp(Buffer.from(svg)).blur(2).extractChannel(0).raw().toBuffer({ resolveWithObject: true })
+  return data.map((v) => Math.max(0, Math.min(255, (v - 128) * 2)))
+}
+
 async function main() {
   const meta = await sharp(SRC).metadata()
   if (meta.width !== EXPECTED.width || meta.height !== EXPECTED.height) {
@@ -216,6 +241,7 @@ async function main() {
     const src = Float64Array.from(full)
     for (const rect of piece.inpaint ?? []) inpaint(src, EXPECTED.width, rect)
 
+    const solid = piece.solid ? await solidMask(piece.solid, piece.box) : null
     const out = Buffer.alloc(width * height * 4)
     const f = piece.feather
     for (let y = 0; y < height; y++) {
@@ -229,7 +255,10 @@ async function main() {
           (f.bottom ? Math.min(1, (height - 1 - y) / f.bottom) : 1) *
           piece.mask(left + x, top + y)
         const px = [src[i], src[i + 1], src[i + 2]]
-        const keyed = Math.min(1, Math.max(...px.map((v, k) => Math.abs(v - bg[k]))) / KEY_RANGE)
+        const keyed = Math.max(
+          Math.min(1, Math.max(...px.map((v, k) => Math.abs(v - bg[k]))) / KEY_RANGE),
+          solid ? solid[y * width + x] / 255 : 0,
+        )
         for (let k = 0; k < 3; k++) {
           const v = keyed > 0 ? bg[k] + (px[k] - bg[k]) / keyed : bg[k]
           out[o + k] = Math.max(0, Math.min(255, Math.round(v)))

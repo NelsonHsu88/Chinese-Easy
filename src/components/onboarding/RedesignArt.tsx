@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Image, View, useWindowDimensions } from 'react-native'
+import { useCallback, useRef, useState } from 'react'
+import { Image, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { onbSpacing as s } from './tokens'
 import { ONB_CONTENT_MAX } from './parts'
@@ -78,11 +78,25 @@ export function CornerBranch({ piece, side }: { piece: ArtPiece; side: 'left' | 
  * The landscape along the foot of a page, full column width, behind the
  * footer. Each foot carries soft holes where its reference's buttons were, so
  * the app's own button sits over clear paper rather than over a painting of one.
+ *
+ * `clearBelow` is the window y the painting must start under — the bottom of a
+ * page's form, from `useClearance`. On a phone too short for both, the
+ * painting is lowered (its foot running off the screen) rather than drawn
+ * behind the fields, where its colour made labels and errors hard to read.
  */
-export function PageFoot({ piece, buttonCenter }: { piece: ArtPiece; buttonCenter?: number }) {
+export function PageFoot({
+  piece,
+  buttonCenter,
+  clearBelow,
+}: {
+  piece: ArtPiece
+  buttonCenter?: number
+  clearBelow?: number | null
+}) {
   const column = useColumn()
   const insets = useSafeAreaInsets()
   const art: { source: number; w: number; h: number; buttonY?: number } = ART[piece]
+  const height = (column * art.h) / art.w
   /*
    * Where a page's footer sits lower than its mockup's, the foot is dropped so
    * its button hole lands under the app's button rather than above it, with the
@@ -94,11 +108,57 @@ export function PageFoot({ piece, buttonCenter }: { piece: ArtPiece; buttonCente
     const holeFromBottom = ((art.h - art.buttonY) / art.w) * column
     bottom = Math.min(0, insets.bottom + buttonCenter - holeFromBottom)
   }
+
+  /*
+   * Where the painting's top would be, read from layout rather than
+   * `measureInWindow`: this sits inside a `SlideIn` that is still travelling
+   * when it mounts, and a measurement would include that offset. `ArtLayer`
+   * begins at the top inset, so layout y plus the inset is window y.
+   */
+  const [naturalTop, setNaturalTop] = useState<number | null>(null)
+  const onProbeLayout = (event: LayoutChangeEvent) => {
+    const next = Math.round(insets.top + event.nativeEvent.layout.y)
+    setNaturalTop((prev) => (prev === next ? prev : next))
+  }
+  const drop =
+    clearBelow != null && naturalTop !== null ? Math.max(0, clearBelow + FOOT_CLEARANCE - naturalTop) : 0
+
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', bottom, left: 0 }}>
-      <Image source={art.source} style={{ width: column, height: (column * art.h) / art.w }} resizeMode="contain" />
-    </View>
+    <>
+      <View
+        pointerEvents="none"
+        onLayout={onProbeLayout}
+        style={{ position: 'absolute', bottom, left: 0, width: column, height }}
+      />
+      <View pointerEvents="none" style={{ position: 'absolute', bottom: bottom - drop, left: 0 }}>
+        <Image source={art.source} style={{ width: column, height }} resizeMode="contain" />
+      </View>
+    </>
   )
+}
+
+/** Paper left between a form's last line and the painting's soft top edge. */
+const FOOT_CLEARANCE = 8
+
+/**
+ * The window y of a view's bottom edge, for `PageFoot`'s `clearBelow`.
+ *
+ * Put the returned `ref` and `onLayout` on a view that is not itself animated
+ * (a measurement includes transforms). It re-measures whenever that view
+ * changes size — an error line appearing under a field moves the painting down
+ * with it. `null` until measured, and if `onLayout` never fires (it doesn't
+ * always on web) the painting simply stays where the design put it.
+ */
+export function useClearance() {
+  const ref = useRef<View>(null)
+  const [bottom, setBottom] = useState<number | null>(null)
+  const onLayout = useCallback(() => {
+    ref.current?.measureInWindow((_x, y, _width, height) => {
+      const next = Math.round(y + height)
+      setBottom((prev) => (prev === next ? prev : next))
+    })
+  }, [])
+  return { ref, onLayout, bottom }
 }
 
 /** The least a hero gives up to: still recognisably Shifu in a garden. */
