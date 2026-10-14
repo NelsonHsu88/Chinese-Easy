@@ -300,7 +300,11 @@ export function DrillToast({ message }: { message: string }) {
             backgroundColor: tone.fill,
             borderWidth: 1,
             borderColor: tone.border,
-            ...drillShadow,
+            /* Not on Android: the toast fades in and out on the native driver,
+               and there a fading parent doesn't fade its children's elevation
+               shadow — it showed before the toast and lingered after it. The
+               border carries the edge on its own. */
+            ...(Platform.OS === 'android' ? null : drillShadow),
           }}
         >
           <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: tone.accent, alignItems: 'center', justifyContent: 'center' }}>
@@ -524,7 +528,8 @@ export function AnswerSheet({ kind, title: titleOverride, detail, onContinue, co
           ...(celebrate ? { marginTop: -1 } : { paddingTop: 14, borderTopWidth: 2, borderTopColor: tone.cloudLine }),
         }}
       >
-        <View style={{ width: column, paddingHorizontal: DRILL_PAD, paddingTop: 4 }}>
+        {/* Under the clouds the judgement needs more room than under a flat edge, or it crowds the humps. */}
+        <View style={{ width: column, paddingHorizontal: DRILL_PAD, paddingTop: celebrate ? 14 : 4 }}>
           <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <Animated.View
               style={{

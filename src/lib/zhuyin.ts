@@ -126,3 +126,53 @@ export function pinyinToZhuyin(pinyin: string): string {
     .map((token) => pinyinSyllableToZhuyin(token))
     .join(ZHUYIN_SYLLABLE_GAP)
 }
+
+/** True when `base` (toneless, lower case) is a syllable the converter knows. */
+function isSyllable(base: string): boolean {
+  return syllableToZhuyin(base) !== null
+}
+
+/**
+ * Splits run-together pinyin ("xīngqíliù", "gūniang") into its syllables.
+ *
+ * Longest match first, backing off when the rest of the word can't be parsed —
+ * "gūn" is a syllable, but "iang" isn't, so "gūniang" comes out as gū + niang.
+ * An apostrophe ("Xī'ān") is always a boundary. A word that can't be split at
+ * all comes back whole, which `pinyinSyllableToZhuyin` then leaves as it is.
+ */
+export function splitPinyinWord(word: string): string[] {
+  const parts = word.split("'").filter(Boolean)
+  const out: string[] = []
+  for (const part of parts) {
+    const chars = Array.from(part)
+    const bases = chars.map((ch) => splitTone(ch.toLowerCase()).base)
+    const memo = new Map<number, string[] | null>()
+    const parse = (at: number): string[] | null => {
+      if (at === chars.length) return []
+      if (memo.has(at)) return memo.get(at)!
+      let found: string[] | null = null
+      for (let end = Math.min(chars.length, at + 6); end > at && !found; end--) {
+        if (!isSyllable(bases.slice(at, end).join(''))) continue
+        const rest = parse(end)
+        if (rest) found = [chars.slice(at, end).join(''), ...rest]
+      }
+      memo.set(at, found)
+      return found
+    }
+    out.push(...(parse(0) ?? [part]))
+  }
+  return out
+}
+
+/**
+ * Converts free pinyin text — words separated by spaces, syllables within a
+ * word run together, as a title is written — to zhuyin, one syllable at a time.
+ */
+export function pinyinTextToZhuyin(text: string): string {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap(splitPinyinWord)
+    .map(pinyinSyllableToZhuyin)
+    .join(ZHUYIN_SYLLABLE_GAP)
+}

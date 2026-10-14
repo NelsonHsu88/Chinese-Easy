@@ -15,6 +15,7 @@
  */
 
 import { revColors, revShadow } from '../review/tokens'
+import { PAGE_SUBTITLE, PAGE_TITLE } from '../pageHeader'
 
 export const chalColors = {
   ...revColors,
@@ -25,7 +26,7 @@ export const chalColors = {
    * (`processChallengesArt.mjs`), and an un-blended watercolour only
    * reconstructs cleanly over the colour it was un-blended from.
    */
-  background: '#FCFAF4',
+  background: '#FFFFFF',
   card: '#FCFAF6',
   /** The completion reward card — a shade warmer, so it reads as a prize. */
   reward: '#FAF7F0',
@@ -72,8 +73,8 @@ export const chalSpacing = {
  * the pill and tab labels, which are UI rather than reading.
  */
 export const chalType = {
-  title: { fontSize: 42, lineHeight: 48, letterSpacing: -0.6 },
-  subtitle: { fontSize: 16, lineHeight: 21 },
+  title: PAGE_TITLE,
+  subtitle: PAGE_SUBTITLE,
   bubble: { fontSize: 13, lineHeight: 18 },
   streakTitle: { fontSize: 18, lineHeight: 23 },
   streakSub: { fontSize: 13.5, lineHeight: 18 },

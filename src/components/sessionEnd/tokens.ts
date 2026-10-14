@@ -16,8 +16,8 @@ import { revColors, revShadow } from '../review/tokens'
 
 export const endColors = {
   ...revColors,
-  emptyPage: '#FBF6EE',
-  donePage: '#FCF9F1',
+  emptyPage: '#FFFFFF',
+  donePage: '#FFFFFF',
   /** The tip and stats cards: a shade lighter than either page, on a hairline. */
   panel: '#FFFDF9',
   /** Accuracy: the number, and the icon on its mint disc. */

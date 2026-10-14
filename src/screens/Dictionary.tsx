@@ -43,6 +43,7 @@ import { tapHaptic, tickHaptic, successHaptic, sequence } from '../lib/haptics'
 import type { VocabWord } from '../types'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
 import { TourScrollContext, TourTarget } from '../components/tour/targets'
+import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHeader'
 
 /**
  * The design viewport, matching `DASH_CONTENT_MAX` / `REV_CONTENT_MAX` /
@@ -393,9 +394,11 @@ export function Dictionary() {
               it; both were left out on purpose, so the page opens on what it
               is for.
             */}
-            <View className="pb-5 pt-4">
-              <Text className="font-lora-bold text-[40px] leading-[48px] text-dict-heading">Dictionary</Text>
-              <Text className="mt-1 font-dict-sans text-[16px] leading-[22px] text-dict-soft">
+            <View className="pb-5" style={{ paddingTop: PAGE_TITLE_TOP }}>
+              <Text className="font-lora-bold text-dict-heading" accessibilityRole="header" style={PAGE_TITLE}>
+                Dictionary
+              </Text>
+              <Text className="font-lora text-dict-soft" style={{ ...PAGE_SUBTITLE, marginTop: 4 }}>
                 Find meaning. Discover more.
               </Text>
             </View>

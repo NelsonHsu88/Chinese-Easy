@@ -15,13 +15,14 @@
 
 export const onbColors = {
   /**
-   * The paper every page is drawn on — sampled from the Beta 2.1 references,
-   * a shade warmer than `page`. The redesign's watercolour is keyed into real
-   * alpha (`processOnboardingRedesignArt.mjs`), so it sits on this as paint.
+   * The paper every page is drawn on. White by request — the Beta 2.1
+   * references are cream (#FDF9F0), but the redesign's watercolour is keyed
+   * into real alpha (`processOnboardingRedesignArt.mjs`), so it sits on any
+   * paper as paint and needed no re-cut.
    */
-  paper: '#FDF9F0',
+  paper: '#FFFFFF',
   /** The placement test card's own fill, unchanged by the redesign. */
-  page: '#FCFAF5',
+  page: '#FFFFFF',
 
   navy: '#14203A',
   textSecondary: '#536175',

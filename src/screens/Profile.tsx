@@ -24,6 +24,7 @@ import {
   useProfileCosmetics,
 } from '../components/profile/parts'
 import { EditProfileSheet } from '../components/profile/EditProfileSheet'
+import { HskJourney } from '../components/profile/HskJourney'
 import { REWARD_ART } from '../components/profile/art'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profEntrance as anim, PROF_CONTENT_MAX } from '../components/profile/tokens'
 import { playTapSound } from '../lib/sound'
@@ -149,6 +150,8 @@ export function Profile() {
 
           <Reveal from="bottom" {...beat}>
             <View style={{ gap: s.md, marginTop: s.md }}>
+              <HskJourney width={content - s.md * 2 - 2} />
+
               <SectionCard
                 title="Current Rewards"
                 action={{

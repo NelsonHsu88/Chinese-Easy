@@ -308,7 +308,6 @@ export const STORIES: Story[] = [
     description: 'A red hood, a forest path, and a wolf.',
     wordCount: 128,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk1-tale-hongmao.jpg'),
     hskLevel: 1,
     difficulty: 'easy',
     pages: [
@@ -336,7 +335,6 @@ export const STORIES: Story[] = [
     description: 'Straw, sticks, and one very solid brick house.',
     wordCount: 146,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk1-tale-sanzhuzhu.jpg'),
     hskLevel: 1,
     difficulty: 'easy',
     pages: [
@@ -364,7 +362,6 @@ export const STORIES: Story[] = [
     description: 'Slow and steady still wins the race.',
     wordCount: 89,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk1-tale-guitu.jpg'),
     hskLevel: 1,
     difficulty: 'easy',
     pages: [
@@ -392,7 +389,6 @@ export const STORIES: Story[] = [
     description: 'A small boy reaches for the smallest pear.',
     wordCount: 96,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk1-tale-kongrong.jpg'),
     hskLevel: 1,
     difficulty: 'easy',
     pages: [
@@ -420,7 +416,6 @@ export const STORIES: Story[] = [
     description: 'Too hot, too cold, and just right.',
     wordCount: 143,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk2-tale-jinfa.jpg'),
     hskLevel: 2,
     difficulty: 'easy',
     pages: [
@@ -448,7 +443,6 @@ export const STORIES: Story[] = [
     description: 'Lie twice and nobody comes the third time.',
     wordCount: 100,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk2-tale-langlaile.jpg'),
     hskLevel: 2,
     difficulty: 'easy',
     pages: [
@@ -476,7 +470,6 @@ export const STORIES: Story[] = [
     description: 'One lucky rabbit, a lifetime of waiting.',
     wordCount: 94,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk2-tale-shouzhu.jpg'),
     hskLevel: 2,
     difficulty: 'easy',
     pages: [
@@ -504,7 +497,6 @@ export const STORIES: Story[] = [
     description: 'A clever child solves what the adults cannot.',
     wordCount: 107,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk2-tale-caochong.jpg'),
     hskLevel: 2,
     difficulty: 'hard',
     pages: [
@@ -537,7 +529,6 @@ export const STORIES: Story[] = [
     description: 'Five beans, one giant, and a very long climb.',
     wordCount: 468,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk4-tale-jack-modou.jpg'),
     hskLevel: 4,
     difficulty: 'hard',
     pages: [
@@ -572,7 +563,6 @@ export const STORIES: Story[] = [
     description: 'A house made of sweets hides something bitter.',
     wordCount: 505,
     collection: 'folk-tales',
-    art: require('../assets/images/covers/hsk4-tale-tangguowu.jpg'),
     hskLevel: 4,
     difficulty: 'hard',
     pages: [
@@ -607,7 +597,6 @@ export const STORIES: Story[] = [
     description: 'Hurrying growth is the surest way to ruin it.',
     wordCount: 395,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk4-idiom-bamiaozhuzhang.jpg'),
     hskLevel: 4,
     difficulty: 'easy',
     pages: [
@@ -635,7 +624,6 @@ export const STORIES: Story[] = [
     description: 'If he cannot hear it, surely no one can.',
     wordCount: 386,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk4-idiom-yanerdaoling.jpg'),
     hskLevel: 4,
     difficulty: 'easy',
     pages: [
@@ -663,7 +651,6 @@ export const STORIES: Story[] = [
     description: 'He had won the contest until he added more.',
     wordCount: 403,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk4-idiom-huashetianzu.jpg'),
     hskLevel: 4,
     difficulty: 'easy',
     pages: [
@@ -691,7 +678,6 @@ export const STORIES: Story[] = [
     description: 'The river moves even when the mark does not.',
     wordCount: 441,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk4-idiom-kezhouqiujian.jpg'),
     hskLevel: 4,
     difficulty: 'easy',
     pages: [
@@ -719,7 +705,6 @@ export const STORIES: Story[] = [
     description: 'Why the new year wears red and bangs drums.',
     wordCount: 520,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk4-legend-nianshou.jpg'),
     hskLevel: 4,
     difficulty: 'hard',
     pages: [
@@ -754,7 +739,6 @@ export const STORIES: Story[] = [
     description: 'Two generals who guard an emperor\'s sleep.',
     wordCount: 430,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk4-legend-menshen.jpg'),
     hskLevel: 4,
     difficulty: 'hard',
     pages: [
@@ -782,7 +766,6 @@ export const STORIES: Story[] = [
     description: 'Eight coins in red paper keep a demon away.',
     wordCount: 516,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk4-legend-yasuiqian.jpg'),
     hskLevel: 4,
     difficulty: 'hard',
     pages: [
@@ -817,7 +800,6 @@ export const STORIES: Story[] = [
     description: 'A homesick maid and a city full of lanterns.',
     wordCount: 559,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk4-legend-yuanxiao.jpg'),
     hskLevel: 4,
     difficulty: 'hard',
     pages: [
@@ -889,7 +871,6 @@ export const STORIES: Story[] = [
     description: 'The beasts were never afraid of the fox.',
     wordCount: 526,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk5-idiom-hujiahuwei.jpg'),
     hskLevel: 5,
     difficulty: 'easy',
     pages: [
@@ -924,7 +905,6 @@ export const STORIES: Story[] = [
     description: 'While two of them fight, a third eats well.',
     wordCount: 628,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk5-idiom-yubangxiangzheng.jpg'),
     hskLevel: 5,
     difficulty: 'hard',
     pages: [
@@ -959,7 +939,6 @@ export const STORIES: Story[] = [
     description: 'He adored dragons until one came to visit.',
     wordCount: 616,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk5-idiom-yegonghaolong.jpg'),
     hskLevel: 5,
     difficulty: 'easy',
     pages: [
@@ -987,7 +966,6 @@ export const STORIES: Story[] = [
     description: 'Rice thrown into a river to protect a poet.',
     wordCount: 531,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk5-legend-zongzi.jpg'),
     hskLevel: 5,
     difficulty: 'hard',
     pages: [
@@ -1015,7 +993,6 @@ export const STORIES: Story[] = [
     description: 'A secret message baked into a festival cake.',
     wordCount: 535,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk5-legend-yuebing.jpg'),
     hskLevel: 5,
     difficulty: 'hard',
     pages: [
@@ -1043,7 +1020,6 @@ export const STORIES: Story[] = [
     description: 'Honey on his lips before he reports to heaven.',
     wordCount: 569,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk5-legend-zaowangye.jpg'),
     hskLevel: 5,
     difficulty: 'hard',
     pages: [
@@ -1078,7 +1054,6 @@ export const STORIES: Story[] = [
     description: 'Why families sit awake together until midnight.',
     wordCount: 459,
     collection: 'festival-legends',
-    art: require('../assets/images/covers/hsk5-legend-shousui.jpg'),
     hskLevel: 5,
     difficulty: 'easy',
     pages: [
@@ -1143,7 +1118,6 @@ export const STORIES: Story[] = [
     description: 'A small bird carries stones against the ocean.',
     wordCount: 594,
     collection: 'classical-myths',
-    art: require('../assets/images/covers/hsk6-myth-jingweitianhai.jpg'),
     hskLevel: 6,
     difficulty: 'hard',
     pages: [
@@ -1178,7 +1152,6 @@ export const STORIES: Story[] = [
     description: 'Ten suns scorch the earth, and nine must fall.',
     wordCount: 582,
     collection: 'classical-myths',
-    art: require('../assets/images/covers/hsk6-myth-houyisheri.jpg'),
     hskLevel: 6,
     difficulty: 'hard',
     pages: [
@@ -1213,7 +1186,6 @@ export const STORIES: Story[] = [
     description: 'The beautiful legend of Chang\'e and the moon.',
     wordCount: 624,
     collection: 'classical-myths',
-    art: require('../assets/images/covers/hsk6-myth-changebenyue.jpg'),
     hskLevel: 6,
     difficulty: 'hard',
     pages: [
@@ -1248,7 +1220,6 @@ export const STORIES: Story[] = [
     description: 'Parted by a river of stars, joined once a year.',
     wordCount: 746,
     collection: 'classical-myths',
-    art: require('../assets/images/covers/hsk6-myth-niulangzhinv.jpg'),
     hskLevel: 6,
     difficulty: 'hard',
     pages: [
@@ -1283,7 +1254,6 @@ export const STORIES: Story[] = [
     description: 'One basket of earth at a time, for generations.',
     wordCount: 791,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk6-idiom-yugongyishan.jpg'),
     hskLevel: 6,
     difficulty: 'hard',
     pages: [
@@ -1318,7 +1288,6 @@ export const STORIES: Story[] = [
     description: 'Who is to say what counts as good fortune?',
     wordCount: 740,
     collection: 'chengyu',
-    art: require('../assets/images/covers/hsk6-idiom-saiwengshima.jpg'),
     hskLevel: 6,
     difficulty: 'hard',
     pages: [

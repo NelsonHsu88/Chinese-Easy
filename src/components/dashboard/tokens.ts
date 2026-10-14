@@ -15,8 +15,8 @@
  */
 
 export const dashColors = {
-  /** Warm ivory. Never pure white — the whole screen reads as paper. */
-  background: '#FCFAF5',
+  /** The page. White by request; it was a warm ivory (#FCFAF5). */
+  background: '#FFFFFF',
 
   navy: '#14203A',
   textSecondary: '#5D6878',
@@ -321,3 +321,116 @@ export const dashEntrance = {
 
 /** The design viewport. Wider screens centre the column rather than stretch it. */
 export const DASH_CONTENT_MAX = 430
+
+// --- Home (the SS1012 redesign) -------------------------------------------------
+
+/*
+ * The redesigned Home screen ("SS1012 Home Page Redesign UI 2") sets everything
+ * in Lora on the same white page, so it keeps its own palette here rather than
+ * bending the Nunito-era values above. Accents are sampled from the reference.
+ */
+export const homeColors = {
+  ink: dashColors.navy,
+  /** Blue-grey serif body: "Keep your streak alive!", the pinyin, the bubble. */
+  subtle: '#5E6C8A',
+  muted: '#8A94A8',
+
+  coral: '#E96B59',
+  coralShoulder: '#C9533F',
+  /** The REVIEW tag. */
+  tagFill: '#FDDFD8',
+  tagInk: '#B5291D',
+
+  green: '#5BAD69',
+  greenShoulder: '#41904F',
+  /** "Added ✓", a step deeper than the face it replaces. */
+  greenDeep: '#3E8E4C',
+  greenDeepShoulder: '#2D7139',
+  /** Green type on white: See all, View stats, the week's message. */
+  greenInk: '#3D8B4B',
+  greenSoft: '#EAF4EA',
+  greenLine: '#B9DCC0',
+  /** A day ring that has not been filled. */
+  greenRing: '#AFD3B7',
+  /** The strip's connecting line. */
+  greenTrack: '#D7EBDA',
+
+  /** "View all" on the challenges card. */
+  crimson: '#BE2F25',
+  crimsonLine: '#F1C3BC',
+
+  /** The "Earn reward" pill on the gift. */
+  goldPill: '#FEE2AE',
+  goldPillLine: '#F2C77E',
+  goldPillInk: '#A2381C',
+
+  /** Step rings on the challenge path, and the brush stroke joining them. */
+  stepRing: '#C6CDDA',
+  stepTrack: '#CDD0D6',
+  checkRing: '#9AA5BB',
+
+  /** "Not now" — the quiet outlined button beside Add this word. */
+  quietLine: '#DCDDD9',
+  quietShoulder: '#E4E3DF',
+
+  bubbleBorder: '#E6E8EE',
+  white: '#FFFFFF',
+} as const
+
+/**
+ * The card fills, sampled from the reference. The watercolour in
+ * `assets/images/home/` was keyed against exactly these by
+ * `scripts/processHomeArt.mjs` — change one and re-run that script, or the
+ * painting sits on its card with a halo.
+ */
+export const homeSurfaces = {
+  review: { fill: '#FDEEE9', border: '#F8D3CC' },
+  word: { fill: '#FEFEFE', border: '#E2E1DE' },
+  challenges: { fill: '#FEF9EE', border: '#F0D8B6' },
+  week: { fill: '#F6FAF4', border: '#E0EAE1' },
+} as const
+
+/**
+ * Type, all Lora except the name (Kalam) and the hanzi. Sized from the
+ * reference at a 390pt column, then nudged up where it fell under 12pt — the
+ * mockup's smallest labels would be too small to read on a phone.
+ */
+export const homeType = {
+  /** Lora Bold. */
+  greeting: { fontSize: 33, lineHeight: 37, letterSpacing: -0.4 },
+  /** Kalam Bold. */
+  name: { fontSize: 31, lineHeight: 42 },
+  /** Lora. */
+  bubble: { fontSize: 14.5, lineHeight: 20 },
+  /** Lora, uppercase. */
+  tag: { fontSize: 11, letterSpacing: 0.8 },
+  /** Lora Bold — "2 words due". */
+  due: { fontSize: 25, lineHeight: 30, letterSpacing: -0.2 },
+  /** Lora Bold — a full-width card's title. */
+  title: { fontSize: 18, lineHeight: 23, letterSpacing: -0.1 },
+  /** Lora — the line under a title. */
+  body: { fontSize: 13.5, lineHeight: 18 },
+  /** Lora Bold — button labels. */
+  button: { fontSize: 15.5 },
+  /** Lora — pill links. */
+  link: { fontSize: 13 },
+  pinyin: { fontSize: 16, lineHeight: 21 },
+  gloss: { fontSize: 15, lineHeight: 20 },
+  /** Lora — challenge step labels, and the weekday letters. */
+  label: { fontSize: 12, lineHeight: 16 },
+} as const
+
+export const homeLayout = {
+  /** Side margin. The reference's cards sit 17pt in at 390. */
+  screen: 16,
+  /** Between two cards, across and down. */
+  gap: 12,
+  /** Inside every card. */
+  cardPad: 14,
+  buttonHeight: 44,
+  /** Inside the greeting and bubble, past the card edge, as in the reference. */
+  heroInset: 8,
+} as const
+
+/** The reference's own width, which every art offset below is measured in. */
+export const HOME_REF_WIDTH = 863

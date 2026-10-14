@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { View, Text, Platform, ActivityIndicator, useColorScheme } from 'react-native'
+import { View, Text, TextInput, Platform, ActivityIndicator, useColorScheme } from 'react-native'
 import { router } from 'expo-router'
-import { Volume2, Vibrate, Moon, Wrench, ChevronRight, History, Compass, Trash2 } from 'lucide-react-native'
+import { Volume2, Vibrate, Moon, Wrench, ChevronRight, History, Compass, Trash2, Mail, KeyRound } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
 import { useAuth } from '../../context/AuthContext'
 import {
@@ -16,6 +16,8 @@ import {
   ActionButton,
 } from '../../components/settings/parts'
 import { useLeave } from '../../components/settings/transition'
+import { useCaptcha } from '../../components/auth/Captcha'
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../lib/passwordRules'
 import { setColors as c, setSpacing as s, setRow, setRadius } from '../../components/settings/tokens'
 
 /*
@@ -309,6 +311,9 @@ function AccountSection() {
           </View>
         ) : null}
 
+        <CredentialRows />
+        <View style={{ height: 1, backgroundColor: c.separator, marginHorizontal: setRow.padding }} />
+
         {stage === 'idle' ? (
           <PressRow
             onPress={() => setStage('confirm')}
@@ -396,5 +401,201 @@ function AccountSection() {
         )}
       </Card>
     </ControlGroup>
+  )
+}
+
+/*
+ * Change email and Change password, as rows that open in place — the same
+ * shape as Delete account below them, and for the same reason: no `Alert`
+ * (it does nothing on web), and nothing happens on a single stray tap.
+ *
+ * Change password appears only for accounts that have one. A Google- or
+ * Apple-only account signs in through its provider; resetting a password it
+ * never had would be "Forgot password?" in disguise.
+ */
+function CredentialRows() {
+  const { email, hasPassword, changeEmail, changePassword } = useAuth()
+  const [open, setOpen] = useState<'none' | 'email' | 'password'>('none')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState<string | null>(null)
+  const [newEmail, setNewEmail] = useState('')
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const captcha = useCaptcha()
+
+  const toggle = (which: 'email' | 'password') => {
+    setOpen((was) => (was === which ? 'none' : which))
+    setError(null)
+    setDone(null)
+    setNewEmail('')
+    setCurrent('')
+    setNext('')
+    setConfirm('')
+  }
+
+  const emailValid = /^\S+@\S+\.\S+$/.test(newEmail.trim()) && newEmail.trim().toLowerCase() !== (email ?? '').toLowerCase()
+  const passwordValid = current.length > 0 && next.length >= MIN_PASSWORD_LENGTH && next === confirm && captcha.ready
+
+  async function submitEmail() {
+    if (!emailValid || busy) return
+    setBusy(true)
+    setError(null)
+    const result = await changeEmail(newEmail)
+    setBusy(false)
+    if (result.error) return setError(result.error)
+    setDone(`Check ${newEmail.trim()} (and your current inbox) for a confirmation link. Your email changes once it’s opened.`)
+    setNewEmail('')
+  }
+
+  async function submitPassword() {
+    if (!passwordValid || busy) return
+    setBusy(true)
+    setError(null)
+    const result = await changePassword(current, next, captcha.token)
+    captcha.reset()
+    setBusy(false)
+    if (result.error) return setError(result.error)
+    setDone('Your password has been changed.')
+    setCurrent('')
+    setNext('')
+    setConfirm('')
+  }
+
+  const rowStyle = {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    minHeight: setRow.minHeight,
+    paddingHorizontal: setRow.padding,
+    paddingVertical: s.md,
+  }
+
+  const row = (which: 'email' | 'password', label: string, Icon: typeof Mail) => (
+    <PressRow onPress={() => toggle(which)} accessibilityLabel={label} style={rowStyle}>
+      <IconCircle icon={Icon} tint={c.slateSoft} color={c.slate} />
+      <Text
+        className="font-nunito-bold"
+        style={{ flex: 1, marginLeft: setRow.iconGap, fontSize: 16, lineHeight: 21, color: c.navy }}
+      >
+        {label}
+      </Text>
+      <ChevronRight
+        size={20}
+        color={c.textMuted}
+        strokeWidth={2.2}
+        style={{ transform: [{ rotate: open === which ? '90deg' : '0deg' }] }}
+      />
+    </PressRow>
+  )
+
+  const feedback = (
+    <>
+      {error ? (
+        <Text className="font-nunito-semibold" style={{ fontSize: 13.5, lineHeight: 19, color: c.coralDark }}>
+          {error}
+        </Text>
+      ) : null}
+      {done ? (
+        <Text className="font-nunito-semibold" style={{ fontSize: 13.5, lineHeight: 19, color: c.greenDark }}>
+          {done}
+        </Text>
+      ) : null}
+    </>
+  )
+
+  return (
+    <View>
+      {row('email', 'Change email', Mail)}
+      {open === 'email' ? (
+        <View style={{ paddingHorizontal: setRow.padding, paddingBottom: s.lg, gap: s.md }}>
+          <SettingsInput
+            label="New email address"
+            value={newEmail}
+            onChangeText={setNewEmail}
+            keyboardType="email-address"
+            autoComplete="email"
+          />
+          {feedback}
+          {busy ? (
+            <ActivityIndicator color={c.green} />
+          ) : (
+            <ActionButton label="Send confirmation" tone={emailValid ? 'primary' : 'quiet'} onPress={() => void submitEmail()} />
+          )}
+        </View>
+      ) : null}
+
+      {hasPassword ? (
+        <>
+          <View style={{ height: 1, backgroundColor: c.separator, marginHorizontal: setRow.padding }} />
+          {row('password', 'Change password', KeyRound)}
+          {open === 'password' ? (
+            <View style={{ paddingHorizontal: setRow.padding, paddingBottom: s.lg, gap: s.md }}>
+              <SettingsInput label="Current password" value={current} onChangeText={setCurrent} secure autoComplete="current-password" />
+              <SettingsInput
+                label={`New password (at least ${MIN_PASSWORD_LENGTH} characters)`}
+                value={next}
+                onChangeText={setNext}
+                secure
+                autoComplete="new-password"
+              />
+              <SettingsInput label="Confirm new password" value={confirm} onChangeText={setConfirm} secure autoComplete="new-password" />
+              {confirm.length > 0 && next !== confirm ? <Hint>The new passwords don’t match yet.</Hint> : null}
+              {captcha.widget}
+              {feedback}
+              {busy ? (
+                <ActivityIndicator color={c.green} />
+              ) : (
+                <ActionButton label="Change password" tone={passwordValid ? 'primary' : 'quiet'} onPress={() => void submitPassword()} />
+              )}
+            </View>
+          ) : null}
+        </>
+      ) : null}
+    </View>
+  )
+}
+
+function SettingsInput({
+  label,
+  value,
+  onChangeText,
+  secure = false,
+  keyboardType = 'default',
+  autoComplete,
+}: {
+  label: string
+  value: string
+  onChangeText: (text: string) => void
+  secure?: boolean
+  keyboardType?: 'default' | 'email-address'
+  autoComplete?: 'email' | 'current-password' | 'new-password'
+}) {
+  return (
+    <TextInput
+      value={value}
+      onChangeText={onChangeText}
+      accessibilityLabel={label}
+      placeholder={label}
+      placeholderTextColor={c.textMuted}
+      secureTextEntry={secure}
+      keyboardType={keyboardType}
+      autoComplete={autoComplete}
+      autoCapitalize="none"
+      autoCorrect={false}
+      maxLength={secure ? MAX_PASSWORD_LENGTH : 254}
+      className="font-nunito-semibold"
+      style={{
+        height: 48,
+        borderRadius: setRadius.inner,
+        borderWidth: 1.5,
+        borderColor: c.border,
+        backgroundColor: c.background,
+        paddingHorizontal: s.lg,
+        fontSize: 15.5,
+        color: c.navy,
+        ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
+      }}
+    />
   )
 }

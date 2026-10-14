@@ -15,7 +15,7 @@ export const bookColors = {
   /** Behind the book — the desk it lies on. A shade deeper than the paper so the page reads as an object. */
   backdrop: '#EFE6D3',
   /** The library page — sampled from SS103's paper, which its header painting is keyed against. */
-  library: '#FEFBF4',
+  library: '#FFFFFF',
   /** A page, and the back of a turning one. */
   paper: '#FBF6EA',
   paperBack: '#F1E9D7',

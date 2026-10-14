@@ -48,13 +48,9 @@ FACES = [
     ("noto-serif-sc", "400Regular", "NotoSerifSC_400Regular"),
     ("noto-serif-sc", "500Medium", "NotoSerifSC_500Medium"),
     ("noto-serif-sc", "600SemiBold", "NotoSerifSC_600SemiBold"),
-    ("noto-serif-sc", "700Bold", "NotoSerifSC_700Bold"),
     ("noto-serif-tc", "400Regular", "NotoSerifTC_400Regular"),
     ("noto-serif-tc", "500Medium", "NotoSerifTC_500Medium"),
     ("noto-serif-tc", "600SemiBold", "NotoSerifTC_600SemiBold"),
-    ("noto-serif-tc", "700Bold", "NotoSerifTC_700Bold"),
-    ("noto-sans-tc", "400Regular", "NotoSansTC_400Regular"),
-    ("noto-sans-tc", "500Medium", "NotoSansTC_500Medium"),
     ("noto-sans-tc", "700Bold", "NotoSansTC_700Bold"),
 ]
 

@@ -232,7 +232,7 @@ export function HskLevelBar({
         </ScrollView>
         <LinearGradient
           pointerEvents="none"
-          colors={['rgba(253,251,245,0)', '#FDFBF5']}
+          colors={['rgba(255,255,255,0)', '#FFFFFF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: HSK_FADE_WIDTH }}

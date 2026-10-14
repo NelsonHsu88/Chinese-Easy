@@ -6,7 +6,7 @@ import { BookOpen, ChevronLeft, ChevronRight, Lock } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { STORIES } from '../data/stories'
 import type { Story, StoryCollection } from '../types'
-import { hanziFont } from '../lib/hanzi'
+import { displayTitleReading, hanziFont } from '../lib/hanzi'
 import { forScript } from '../lib/scriptConversion'
 import { playTapSound } from '../lib/sound'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
@@ -17,6 +17,8 @@ import { formatCount, levelBand, progressPercent } from '../components/reading/s
 import { bookColors as c, BOOK_CONTENT_MAX, COVER_RATIO } from '../components/book/tokens'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
 import { Asset } from 'expo-asset'
+import { ShadowRevealProvider, ShadowSurface, useShadowReveal } from '../components/shadowReveal'
+import { PAGE_TITLE } from '../components/pageHeader'
 
 /*
  * The Reading Library, built to the Beta 2.1 reference
@@ -103,6 +105,9 @@ export function Books() {
 
   const run = useEntranceRun()
   const enter = useReveal({ from: 'bottom', ...ENTER, duration: ENTER.for, distance: ENTER.rise, run })
+  /* The cards' shadows settle in behind them (`ShadowSurface`) rather than
+     showing at full strength before the fading page does, as on Android. */
+  const shadowArrival = useShadowReveal({ at: ENTER.at, duration: ENTER.for, run })
 
   const column = Math.min(winW, BOOK_CONTENT_MAX)
   const cardW = column - EDGE * 2 - PEEK
@@ -127,7 +132,8 @@ export function Books() {
       {/* The page's own fade-up is the arrival; the stack's push slide would run underneath it at another speed. */}
       <Stack.Screen options={{ animation: 'none' }} />
 
-      <Animated.View style={[{ flex: 1, width: '100%', maxWidth: BOOK_CONTENT_MAX }, enter]}>
+      <Animated.View style={[{ flex: 1, width: '100%', maxWidth: BOOK_CONTENT_MAX }, enter]} needsOffscreenAlphaCompositing>
+      <ShadowRevealProvider value={shadowArrival}>
         {/* Range, pagoda and sakura in the top-right corner, as the reference paints them.
             `pointerEvents` on the wrapper: an Image does not take the prop. */}
         <View pointerEvents="none" style={{ position: 'absolute', top: 0, right: 0 }}>
@@ -155,7 +161,9 @@ export function Books() {
 
         <View style={{ height: TITLE_H, paddingHorizontal: EDGE, justifyContent: 'center' }}>
           {/* Sized to the column so "Library" clears the pagoda on a narrow phone. */}
-          <Text style={{ fontFamily: 'LoraBold', fontSize: Math.min(31, column * 0.075), lineHeight: 38, color: c.ink }}>Reading Library</Text>
+          <Text accessibilityRole="header" style={{ fontFamily: 'LoraBold', ...PAGE_TITLE, fontSize: Math.min(PAGE_TITLE.fontSize, column * 0.085), color: c.ink }}>
+            Reading Library
+          </Text>
         </View>
 
         {/* Shelf chips. Pinned to their own height: a horizontal ScrollView beside
@@ -208,10 +216,11 @@ export function Books() {
               <View key={s.band} style={{ marginBottom: ROW_GAP }}>
                 <View style={{ height: HEADING_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: EDGE }}>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                    <Text className={hanziFont(script, 'semibold')} style={{ fontSize: 20, lineHeight: 28, color: c.ink }}>
+                    {/* English leads: the learners can't read 初級 yet. The Chinese follows as a quiet caption. */}
+                    <Text style={{ fontFamily: 'LoraBold', fontSize: 19, lineHeight: 26, color: c.ink }}>{s.label.en}</Text>
+                    <Text className={hanziFont(script, 'regular')} style={{ fontSize: 14, color: c.inkFaint }}>
                       {forScript(`${s.label.zh}閱讀`, script)}
                     </Text>
-                    <Text style={{ fontFamily: 'LoraItalic', fontSize: 14, color: c.inkFaint }}>{s.label.en}</Text>
                   </View>
                   {s.stories.length > 0 && (
                     <Text style={{ fontFamily: 'Lora', fontSize: 13.5, color: c.inkSoft }}>
@@ -265,6 +274,7 @@ export function Books() {
             <AppBannerAd placement="books" />
           </View>
         </ScrollView>
+      </ShadowRevealProvider>
       </Animated.View>
     </SafeAreaView>
   )
@@ -273,7 +283,7 @@ export function Books() {
 /** The streak, in the reference's white pill with its painted flame. */
 function StreakPill({ streak }: { streak: number }) {
   return (
-    <View
+    <ShadowSurface shadow={cardShadow}
       accessible
       accessibilityLabel={`${streak} day streak`}
       style={{
@@ -286,13 +296,12 @@ function StreakPill({ streak }: { streak: number }) {
         backgroundColor: c.card,
         borderWidth: 1,
         borderColor: c.chipBorder,
-        ...cardShadow,
       }}
     >
       <Image source={FIRE_ICON} style={{ width: 17, height: 17 }} resizeMode="contain" />
       <Text style={{ fontFamily: 'LoraBold', fontSize: 15, color: c.ink }}>{streak}</Text>
       <Text style={{ fontFamily: 'Lora', fontSize: 14, color: c.inkSoft }}>Streak</Text>
-    </View>
+    </ShadowSurface>
   )
 }
 
@@ -301,7 +310,7 @@ function StreakPill({ streak }: { streak: number }) {
  * English, a line about it, and its length and progress at the foot.
  */
 function StoryCard({ story, width, height, percent }: { story: Story; width: number; height: number; percent: number }) {
-  const script = useApp().settings.script
+  const { script, phoneticScript } = useApp().settings
   const available = story.pages.length > 0
   const [pressed, setPressed] = useState(false)
   const coverH = height - CARD_PAD * 2
@@ -323,7 +332,7 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
     >
       {/* The look lives on a View inside the Pressable — a style function on a
           Pressable is dropped on native (CLAUDE.md, Styling). */}
-      <View
+      <ShadowSurface shadow={cardShadow}
         style={{
           width,
           height,
@@ -336,7 +345,6 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
           borderColor: c.cardBorder,
           opacity: available ? (pressed ? 0.85 : 1) : 0.55,
           transform: [{ scale: pressed ? 0.985 : 1 }],
-          ...cardShadow,
         }}
       >
         <StoryArt story={story} width={coverH * COVER_RATIO} height={coverH} radius={9} />
@@ -353,7 +361,7 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
             )}
           </View>
           <Text numberOfLines={1} style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 17, color: c.inkFaint }}>
-            {story.titlePinyin}
+            {displayTitleReading(story.titlePinyin, phoneticScript)}
           </Text>
           <Text numberOfLines={1} style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 19, color: c.ink }}>
             {story.titleEnglish}
@@ -376,7 +384,7 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
             <Text style={{ fontFamily: 'Lora', fontSize: 12, color: c.inkSoft, minWidth: 30, textAlign: 'right' }}>{percent}%</Text>
           </View>
         </View>
-      </View>
+      </ShadowSurface>
     </Pressable>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { View, Text, Pressable } from 'react-native'
+import { View, Text, Pressable, Platform } from 'react-native'
 import { router } from 'expo-router'
 import {
   Sprout,
@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Settings as SettingsIcon,
   User,
+  Lock,
   Sunrise,
   Sun,
   Moon,
@@ -42,12 +43,14 @@ import {
   OnbRise,
   OnbArtEnter,
   OnbPageTransition,
-  ResultToast,
   DontKnowButton,
   toneColors,
   type OnbTone,
 } from '../components/onboarding/parts'
 import { GoogleMark } from '../components/onboarding/GoogleMark'
+import { AppleSignInButton } from '../components/auth/AppleSignInButton'
+import { useCaptcha } from '../components/auth/Captcha'
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../lib/passwordRules'
 import { useAuth } from '../context/AuthContext'
 import { ArtLayer } from '../components/onboarding/PageArt'
 import { CornerBranch, PageFoot, HeroArt } from '../components/onboarding/RedesignArt'
@@ -64,12 +67,16 @@ import {
 import { newPlacementSeed, placementDistractorPool, samplePlacementItems } from '../data/placementTest'
 import { buildPlacementQuestions } from '../lib/placementQuiz'
 import { computeEstimatedHsk } from '../lib/placement'
-import { displayWord, displayPinyin, defaultPhoneticFor } from '../lib/hanzi'
+import { displayWord, displayPinyin, defaultPhoneticFor, hanziFont } from '../lib/hanzi'
 import { speak } from '../lib/speech'
 import { todayISO } from '../lib/date'
-import { playPositiveChime, playRetryTone, playFanfare, playTapSound } from '../lib/sound'
-import { tapHaptic, tickHaptic, successHaptic, carefulHaptic } from '../lib/haptics'
+import { playCorrectSound, playPositiveChime, playRetryTone, playFanfare, playTapSound } from '../lib/sound'
+import { shortGloss } from '../lib/definitions'
+import { tapHaptic, tickHaptic, successHaptic, carefulHaptic, correctHaptic } from '../lib/haptics'
+import { AnswerSheet } from '../components/drills/parts'
+import { listenColors } from '../components/listening/tokens'
 import type { LearningGoal, PlacementAnswer, ScriptMode } from '../types'
+import { ShadowSurface } from '../components/shadowReveal'
 
 /*
  * The six-screen onboarding flow, built to the reference mockups.
@@ -112,11 +119,13 @@ const DOT_TOTAL = STEP_ORDER.length
 /**
  * Which way the learner got to the profile step.
  *
- * Google has already supplied an address, so that path asks for a name and
- * nothing else; the email path has to ask for both. Same screen, same artwork —
- * only the field list differs.
+ * Google or Apple ('provider') has already signed in and supplied an address,
+ * so that path asks for a name and nothing else; email sign-up asks for a name,
+ * an address and a password; log-in asks for the address and password alone,
+ * since the account already knows the name. Same screen, same artwork — only
+ * the field list differs.
  */
-type AuthMode = 'google' | 'email'
+type AuthMode = 'provider' | 'email' | 'login'
 
 const GOALS: { id: LearningGoal; title: string; body: string; icon: typeof Sprout; tone: OnbTone }[] = [
   {
@@ -207,10 +216,23 @@ export function Onboarding() {
 
   // --- Account ---------------------------------------------------------------
 
-  const { signInWithGoogle } = useAuth()
+  const { signInWithGoogle, signInWithApple, signUpWithEmail, signInWithEmail, sendPasswordReset } = useAuth()
   const [googleBusy, setGoogleBusy] = useState(false)
   const [googleError, setGoogleError] = useState<string | null>(null)
   const [authMode, setAuthMode] = useState<AuthMode>('email')
+  const viaProvider = authMode === 'provider'
+  /* Two widgets, one per page: the page transition mounts both pages at once,
+     and one Turnstile token can't serve two forms. Inert until a site key is set. */
+  const captcha = useCaptcha()
+  const appleCaptcha = useCaptcha()
+  /** Set after "Forgot password?" — the address a reset link was sent to. */
+  const [resetSentTo, setResetSentTo] = useState<string | null>(null)
+  const [passwordInput, setPasswordInput] = useState('')
+  const [confirmInput, setConfirmInput] = useState('')
+  const [emailBusy, setEmailBusy] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  /** Set once sign-up succeeded but Supabase is waiting on the emailed link. */
+  const [confirmSentTo, setConfirmSentTo] = useState<string | null>(null)
   /*
    * Seeded blank rather than from `settings.username`, whose default is the
    * literal string "Learner". Pre-filling the box with a placeholder name
@@ -223,24 +245,90 @@ export function Onboarding() {
   // Deliberately loose. This is a local profile, not a verified address, and a
   // strict pattern here only ever rejects somebody's real email.
   const emailLooksValid = /^\S+@\S+\.\S+$/.test(emailInput.trim())
-  const canSubmitProfile = trimmedName.length > 0 && (authMode === 'google' || emailLooksValid)
+  const passwordLongEnough = passwordInput.length >= MIN_PASSWORD_LENGTH
+  const passwordsMatch = passwordInput === confirmInput
+  const canSubmitProfile =
+    confirmSentTo !== null ||
+    (!emailBusy &&
+      (viaProvider
+        ? trimmedName.length > 0
+        : captcha.ready &&
+          (authMode === 'login'
+            ? emailLooksValid && passwordInput.length > 0
+            : trimmedName.length > 0 && emailLooksValid && passwordLongEnough && passwordsMatch)))
 
   /**
-   * Takes the email route, dropping anything Google supplied on the way.
+   * Takes an email route — sign-up or log-in — dropping anything Google
+   * supplied on the way.
    *
    * Someone who picked a Google account, backed out, and chose email instead
    * has just declined that address — offering it back to them pre-filled in a
    * box labelled "Email" reads as the app not having listened. Values typed on
    * the email screen itself survive going back and forward, because the reset
-   * only fires when the mode actually changes.
+   * only fires when the mode actually changes. Passwords never carry across a
+   * mode change.
    */
-  const startEmailSignUp = () => {
-    if (authMode === 'google') {
+  const startEmail = (mode: 'email' | 'login') => {
+    if (viaProvider) {
       setNameInput('')
       setEmailInput('')
     }
-    setAuthMode('email')
+    if (authMode !== mode) {
+      setPasswordInput('')
+      setConfirmInput('')
+    }
+    setEmailError(null)
+    setResetSentTo(null)
+    setAuthMode(mode)
     goTo('profile')
+  }
+
+  /** Signed in by Google or Apple: same next step either way. */
+  const providerSignedIn = (account: { email: string; name: string } | undefined) => {
+    setAuthMode('provider')
+    setEmailInput(account?.email ?? '')
+    // The provider's display name is an opening offer, not a decision, so the
+    // next screen still shows it in an editable box.
+    setNameInput(account?.name ?? '')
+    goTo('profile')
+  }
+
+  const continueWithApple = async () => {
+    if (googleBusy) return
+    tapHaptic()
+    setGoogleError(null)
+    setGoogleBusy(true)
+    const result = await signInWithApple(appleCaptcha.token)
+    appleCaptcha.reset()
+    setGoogleBusy(false)
+    if (result.cancelled) return
+    if (result.error) {
+      setGoogleError(result.error)
+      return
+    }
+    providerSignedIn(result.account)
+  }
+
+  const forgotPassword = async () => {
+    if (emailBusy) return
+    if (!emailLooksValid) {
+      setEmailError('Enter your email address above, then tap “Forgot password?” again.')
+      return
+    }
+    if (!captcha.ready) {
+      setEmailError('Please complete the security check first.')
+      return
+    }
+    setEmailError(null)
+    setEmailBusy(true)
+    const result = await sendPasswordReset(emailInput, captcha.token)
+    captcha.reset()
+    setEmailBusy(false)
+    if (result.error) {
+      setEmailError(result.error)
+      return
+    }
+    setResetSentTo(emailInput.trim())
   }
 
   /**
@@ -266,12 +354,7 @@ export function Onboarding() {
       return
     }
 
-    setAuthMode('google')
-    setEmailInput(result.account?.email ?? '')
-    // Google gives a display name; it is an opening offer, not a decision, so
-    // the next screen still shows it in an editable box.
-    setNameInput(result.account?.name ?? '')
-    goTo('profile')
+    providerSignedIn(result.account)
   }
 
   /*
@@ -286,10 +369,43 @@ export function Onboarding() {
     () => REMINDER_SLOTS.find((slot) => slot.time === settings.reminderTime)?.id ?? 'morning',
   )
 
-  const submitProfile = () => {
-    updateSettings({ username: trimmedName, email: emailInput.trim() })
+  const finishProfile = (username: string) => {
+    updateSettings({ username, email: emailInput.trim() })
     playPositiveChime()
     goTo('notifications')
+  }
+
+  const submitProfile = async () => {
+    // Google or Apple has already signed in, and a sent confirmation has nothing left to do.
+    if (viaProvider || confirmSentTo !== null) {
+      finishProfile(trimmedName || settings.username)
+      return
+    }
+    if (emailBusy) return
+    setEmailError(null)
+    setEmailBusy(true)
+    const result =
+      authMode === 'login'
+        ? await signInWithEmail(emailInput, passwordInput, captcha.token)
+        : await signUpWithEmail(emailInput, passwordInput, trimmedName, captcha.token)
+    // Turnstile tokens are single-use, pass or fail.
+    captcha.reset()
+    setEmailBusy(false)
+
+    if (result.error) {
+      setEmailError(result.error)
+      return
+    }
+    setPasswordInput('')
+    setConfirmInput('')
+    if (result.needsEmailConfirmation) {
+      // The app works signed out, so onboarding carries on; the session arrives
+      // when the link is opened. Saying so beats a spinner that never ends.
+      updateSettings({ username: trimmedName, email: emailInput.trim() })
+      setConfirmSentTo(emailInput.trim())
+      return
+    }
+    finishProfile(authMode === 'login' ? result.account?.name || settings.username : trimmedName)
   }
 
   /*
@@ -395,8 +511,8 @@ export function Onboarding() {
     const right = picked === question.answerIndex
     setVerdict(right ? 'correct' : 'incorrect')
     if (right) {
-      playPositiveChime()
-      successHaptic()
+      playCorrectSound()
+      correctHaptic()
     } else {
       playRetryTone()
       carefulHaptic()
@@ -407,8 +523,7 @@ export function Onboarding() {
     if (verdict) return
     setPicked(null)
     setVerdict('unsure')
-    playTapSound()
-    carefulHaptic()
+    tickHaptic()
   }
 
   const nextQuestion = () => {
@@ -496,10 +611,10 @@ export function Onboarding() {
       >
         <SlideIn from="bottom" delay={0}>
           <View className="items-center" style={{ paddingTop: s.xxxl }}>
-            <AppMark />
-            <View style={{ marginTop: s.lg }}>
-              <OnbTitle hero>Chinese Easy</OnbTitle>
-            </View>
+            {/* The room the app mark used to take, kept by request: the title
+                sat right where it was, and the page is balanced around it. */}
+            <View style={{ height: WELCOME_MARK_ROOM + s.lg }} />
+            <OnbTitle hero>Chinese Easy</OnbTitle>
             <OnbBody style={{ marginTop: s.sm }}>{'Learn Mandarin the natural,\nstress-free way.'}</OnbBody>
           </View>
         </SlideIn>
@@ -747,10 +862,7 @@ export function Onboarding() {
         <View className="flex-1 justify-center" style={{ paddingBottom: s.huge * 3 }}>
           <OnbRise index={0}>
             <View className="items-center">
-              <AppMark />
-              <View style={{ marginTop: s.xl }}>
-                <OnbTitle>Create your account</OnbTitle>
-              </View>
+              <OnbTitle>Create your account</OnbTitle>
               <OnbBody style={{ marginTop: s.sm }}>
                 {'Join thousands of learners and start\nyour Mandarin journey.'}
               </OnbBody>
@@ -759,20 +871,25 @@ export function Onboarding() {
 
           <View style={{ gap: s.md, paddingTop: s.xxl, paddingHorizontal: s.sm }}>
             {/*
-              Neither option collects a password. Google's hands off to Google's
-              own page and comes back with a session; the email route leads to
-              the details step, which asks for a name and an address.
+              Google's hands off to Google's own page and comes back with a
+              session; the email route leads to the details step, which asks for
+              a name, an address and a password and creates a Supabase account.
 
               **No account is ever suggested here.** This used to open a mock
               picker listing a hardcoded address, which meant every learner was
               shown the developer's own email as the account to sign in with.
               Whose account this is, is Google's answer to give, not ours.
 
-              The reference also draws "Continue with Apple". There is no Apple
-              sign-in behind this app, and a button that does nothing is worse
-              than one that isn't there, so it is left out until there is.
+              Apple sits first on iOS (and nowhere else): App Review requires
+              it beside Google, and it's the one-tap option on an iPhone.
             */}
             <OnbRise index={1}>
+              {Platform.OS === 'ios' && (
+                <View style={{ marginBottom: s.md }}>
+                  <AppleSignInButton onPress={() => void continueWithApple()} disabled={googleBusy || !appleCaptcha.ready} />
+                  {appleCaptcha.widget}
+                </View>
+              )}
               <AuthButton
                 label={googleBusy ? 'Opening Google…' : 'Continue with Google'}
                 icon={<GoogleMark />}
@@ -810,7 +927,7 @@ export function Onboarding() {
                 icon={<Mail size={22} color={c.textSecondary} strokeWidth={1.9} />}
                 onPress={() => {
                   tapHaptic()
-                  startEmailSignUp()
+                  startEmail('email')
                 }}
               />
             </OnbRise>
@@ -821,11 +938,11 @@ export function Onboarding() {
                   Already have an account?
                 </Text>
                 {/*
-                  Also the details step rather than a skip. Letting this one
-                  route past the name box is how a returning learner ends up
-                  greeted as "Learner" forever.
+                  Real log-in: address and password. The name comes back from
+                  the account (stored at sign-up), so a returning learner isn't
+                  greeted as "Learner".
                 */}
-                <Pressable onPress={startEmailSignUp} accessibilityRole="button" hitSlop={10}>
+                <Pressable onPress={() => startEmail('login')} accessibilityRole="button" hitSlop={10}>
                   <Text className="font-lora-bold" style={{ fontSize: 15.5, color: c.greenDark }}>
                     Log in
                   </Text>
@@ -866,9 +983,17 @@ export function Onboarding() {
           <OnbRise index={4}>
             <View style={{ gap: s.lg }}>
               <OnbButton
-                label="Continue"
+                label={
+                  emailBusy
+                    ? authMode === 'login' ? 'Logging in…' : 'Creating account…'
+                    : confirmSentTo !== null
+                      ? 'Continue'
+                      : authMode === 'login'
+                        ? 'Log in'
+                        : authMode === 'email' ? 'Create account' : 'Continue'
+                }
                 icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
-                onPress={submitProfile}
+                onPress={() => void submitProfile()}
                 disabled={!canSubmitProfile}
               />
               <OnbDots index={DOT_INDEX.profile!} total={DOT_TOTAL} />
@@ -879,53 +1004,123 @@ export function Onboarding() {
         <View className="flex-1" style={{ paddingTop: s.xl, paddingBottom: s.huge * 2 }}>
           <OnbRise index={0}>
             <View className="items-center">
-              <AppMark />
-              <View style={{ marginTop: s.xl }}>
-                <OnbTitle>A few details</OnbTitle>
-              </View>
+              <OnbTitle>
+                {confirmSentTo !== null ? 'Check your inbox' : authMode === 'login' ? 'Welcome back' : 'A few details'}
+              </OnbTitle>
               <OnbBody style={{ marginTop: s.sm }}>
-                {authMode === 'google'
-                  ? 'Almost there — what should we\ncall you?'
-                  : 'Tell us your name and where\nto reach you.'}
+                {confirmSentTo !== null
+                  ? `We sent a link to ${confirmSentTo}.\nOpen it to finish creating your account —\nyou can keep going in the meantime.`
+                  : viaProvider
+                    ? 'Almost there — what should we\ncall you?'
+                    : authMode === 'login'
+                      ? 'Log in with your email\nand password.'
+                      : 'Tell us your name and choose\na password for your account.'}
               </OnbBody>
             </View>
           </OnbRise>
 
-          <View style={{ gap: s.xl, paddingTop: s.xxl, paddingHorizontal: s.sm }}>
-            {authMode === 'google' && (
-              <OnbRise index={1}>
-                <SignedInRow email={emailInput} />
-              </OnbRise>
-            )}
+          {confirmSentTo === null && (
+            <View style={{ gap: s.xl, paddingTop: s.xxl, paddingHorizontal: s.sm }}>
+              {viaProvider && (
+                <OnbRise index={1}>
+                  <SignedInRow email={emailInput} />
+                </OnbRise>
+              )}
 
-            <OnbRise index={authMode === 'google' ? 2 : 1}>
-              <OnbTextField
-                label="What should we call you?"
-                value={nameInput}
-                onChangeText={setNameInput}
-                placeholder="Your name"
-                autoCapitalize="words"
-                autoComplete="username"
-                maxLength={24}
-                icon={<User size={22} color={c.textSecondary} strokeWidth={1.9} />}
-              />
-            </OnbRise>
+              {authMode !== 'login' && (
+                <OnbRise index={viaProvider ? 2 : 1}>
+                  <OnbTextField
+                    label="What should we call you?"
+                    value={nameInput}
+                    onChangeText={setNameInput}
+                    placeholder="Your name"
+                    autoCapitalize="words"
+                    autoComplete="username"
+                    maxLength={24}
+                    icon={<User size={22} color={c.textSecondary} strokeWidth={1.9} />}
+                  />
+                </OnbRise>
+              )}
 
-            {authMode === 'email' && (
-              <OnbRise index={2}>
-                <OnbTextField
-                  label="Email"
-                  value={emailInput}
-                  onChangeText={setEmailInput}
-                  placeholder="you@example.com"
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  autoComplete="email"
-                  icon={<Mail size={22} color={c.textSecondary} strokeWidth={1.9} />}
-                />
-              </OnbRise>
-            )}
-          </View>
+              {!viaProvider && (
+                <OnbRise index={2}>
+                  <OnbTextField
+                    label="Email"
+                    value={emailInput}
+                    onChangeText={setEmailInput}
+                    placeholder="you@example.com"
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                    autoComplete="email"
+                    icon={<Mail size={22} color={c.textSecondary} strokeWidth={1.9} />}
+                  />
+                </OnbRise>
+              )}
+
+              {!viaProvider && (
+                <OnbRise index={3}>
+                  <OnbTextField
+                    label="Password"
+                    value={passwordInput}
+                    onChangeText={setPasswordInput}
+                    placeholder={authMode === 'login' ? 'Your password' : `At least ${MIN_PASSWORD_LENGTH} characters`}
+                    autoCapitalize="none"
+                    autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                    maxLength={MAX_PASSWORD_LENGTH}
+                    secure
+                    hint={
+                      authMode === 'email' && passwordInput.length > 0 && !passwordLongEnough
+                        ? `${MIN_PASSWORD_LENGTH - passwordInput.length} more character${MIN_PASSWORD_LENGTH - passwordInput.length === 1 ? '' : 's'} to go`
+                        : undefined
+                    }
+                    icon={<Lock size={22} color={c.textSecondary} strokeWidth={1.9} />}
+                  />
+                </OnbRise>
+              )}
+
+              {authMode === 'email' && (
+                <OnbRise index={3}>
+                  <OnbTextField
+                    label="Confirm password"
+                    value={confirmInput}
+                    onChangeText={setConfirmInput}
+                    placeholder="Type it again"
+                    autoCapitalize="none"
+                    autoComplete="new-password"
+                    maxLength={MAX_PASSWORD_LENGTH}
+                    secure
+                    hint={confirmInput.length > 0 && !passwordsMatch ? 'The passwords don’t match yet' : undefined}
+                    icon={<Lock size={22} color={c.textSecondary} strokeWidth={1.9} />}
+                  />
+                </OnbRise>
+              )}
+
+              {authMode === 'login' && (
+                <OnbRise index={4}>
+                  {resetSentTo !== null ? (
+                    <Text className="text-center font-nunito-semibold" style={{ ...t.body, color: c.textSecondary }}>
+                      {`If ${resetSentTo} has an account, a reset link is on its way. Open it on this device.`}
+                    </Text>
+                  ) : (
+                    <View className="items-center">
+                      <OnbTextButton label="Forgot password?" onPress={() => void forgotPassword()} />
+                    </View>
+                  )}
+                </OnbRise>
+              )}
+
+              {!viaProvider && captcha.widget}
+
+              {emailError !== null && (
+                <Text
+                  className="text-center font-nunito-semibold"
+                  style={{ ...t.body, color: onbVerdict.incorrect.text }}
+                >
+                  {emailError}
+                </Text>
+              )}
+            </View>
+          )}
         </View>
       </OnbShell>
     )
@@ -1091,23 +1286,6 @@ export function Onboarding() {
           */
           <OnbRise index={2}>
           <View style={{ gap: s.md }}>
-            {/*
-              Keyed by question and verdict so the toast re-enters on every
-              answer. Without the key it mounts once and then silently swaps its
-              text on later questions, which loses the movement that draws the
-              eye to it in the first place.
-            */}
-            {settled && (
-              <ResultToast
-                key={`${questionIndex}-${verdict}`}
-                verdict={verdict}
-                detail={
-                  verdict === 'correct'
-                    ? undefined
-                    : `${displayWord(question.word, settings.script)} — ${question.options[question.answerIndex]}`
-                }
-              />
-            )}
             <OnbButton
               label={settled ? (isLastQuestion ? 'See my level' : 'Next question') : 'Confirm'}
               onPress={settled ? nextQuestion : confirm}
@@ -1369,6 +1547,29 @@ export function Onboarding() {
       </OnbPageTransition>
 
       {/*
+        A confirmed placement answer rises as the review drills' answer sheet —
+        same clouds, confetti and sounds, so the test feels like the app it
+        places you into. Outside the transition so it lies over the whole
+        screen, footer included, and keyed per answer so each one rises afresh.
+      */}
+      {step === 'test' && verdict && question ? (
+        <AnswerSheet
+          key={`${questionIndex}-${verdict}`}
+          kind={verdict}
+          onContinue={nextQuestion}
+          continueLabel={questionIndex + 1 >= questions.length ? 'See my level' : 'Continue'}
+          detail={
+            <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 20, color: listenColors.slate }}>
+              <Text className={hanziFont(settings.script, 'medium')} style={{ fontSize: 18, color: listenColors.ink }}>
+                {displayWord(question.word, settings.script)}
+              </Text>
+              {'  '}— {shortGloss(question.word)}
+            </Text>
+          }
+        />
+      ) : null}
+
+      {/*
         Mounted outside the transition, not inside the account page. A Modal
         rendered within the page tree would be unmounted the moment the page
         slid away — which is the very transition choosing an account triggers,
@@ -1380,44 +1581,8 @@ export function Onboarding() {
 
 // --- Page pieces ---------------------------------------------------------------
 
-/** The app icon: rounded green tile, 中, with a sakura bloom on its corner. */
-function AppMark() {
-  return (
-    <View>
-      <View
-        className="items-center justify-center"
-        style={{ width: 70, height: 70, borderRadius: 20, backgroundColor: c.green, ...onbShadow }}
-      >
-        <Text className="font-hanzi-sans-bold text-white" style={{ fontSize: 36, lineHeight: 46 }}>
-          中
-        </Text>
-      </View>
-      <Bloom style={{ position: 'absolute', right: -8, bottom: -6 }} />
-    </View>
-  )
-}
-
-/** A five-petal sakura bloom, drawn rather than imported — it is 22pt wide. */
-function Bloom({ style }: { style?: object }) {
-  return (
-    <View style={[{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }, style]}>
-      {[0, 72, 144, 216, 288].map((angle) => (
-        <View
-          key={angle}
-          style={{
-            position: 'absolute',
-            width: 10,
-            height: 10,
-            borderRadius: 5,
-            backgroundColor: '#F6B8B0',
-            transform: [{ rotate: `${angle}deg` }, { translateY: -5.5 }],
-          }}
-        />
-      ))}
-      <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#EE9A92' }} />
-    </View>
-  )
-}
+/** The height of the app mark the welcome page once opened on; its room is kept. */
+const WELCOME_MARK_ROOM = 70
 
 function RowRule({ tint = c.hairline }: { tint?: string }) {
   return <View style={{ height: 1, backgroundColor: tint }} />
@@ -1588,15 +1753,13 @@ function Toggle({ value, label, onChange }: { value: boolean; label: string; onC
           paddingHorizontal: 3,
         }}
       >
-        <View
-          className="rounded-full"
-          style={{
+        <ShadowSurface shadow={onbShadow}
+          style={[{ borderRadius: 9999 }, {
             width: 24,
             height: 24,
             backgroundColor: '#ffffff',
             alignSelf: value ? 'flex-end' : 'flex-start',
-            ...onbShadow,
-          }}
+          }]}
         />
       </View>
     </Pressable>
@@ -1635,16 +1798,14 @@ function TimeChip({
       className="active:opacity-90"
       style={{ flex: 1 }}
     >
-      <View
-        className="items-center"
-        style={{
+      <ShadowSurface shadow={onbShadow}
+        style={[{ alignItems: 'center' }, {
           borderRadius: onbRadius.cardLarge,
           borderWidth: 1.5,
           borderColor: selected ? c.green : c.border,
           backgroundColor: selected ? c.greenSoft : c.card,
           paddingVertical: s.md,
-          ...onbShadow,
-        }}
+        }]}
       >
         <Icon size={24} color={color} strokeWidth={2.1} />
         <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.navy, marginTop: 6 }}>
@@ -1661,7 +1822,7 @@ function TimeChip({
             <Check size={12} color="#ffffff" strokeWidth={3.2} />
           </View>
         )}
-      </View>
+      </ShadowSurface>
     </Pressable>
   )
 }

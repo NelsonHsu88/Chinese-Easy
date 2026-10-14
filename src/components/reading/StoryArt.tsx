@@ -19,9 +19,11 @@ const GENERAL_COVER = require('../../assets/images/library/general-cover.jpg')
  * library deliberately looks alike on the shelf — what tells them apart is the
  * title, reading and English beside it.
  *
- * The per-story `art` fields in stories.ts (and buildStoryCovers.mjs, which
- * writes them) are left in place, unused, so going back to individual covers
- * is a change to this one component.
+ * The per-story covers are still committed under images/covers/, but stories.ts
+ * no longer `require`s them: an unread `require` still bundles its file, and
+ * those 31 JPEGs were 3.4MB in every install. Going back to individual covers
+ * means restoring the `art:` lines (git history, or re-running
+ * buildStoryCovers.mjs) and reading `art` here.
  */
 export function StoryArt({ width, height, radius, onLoad }: Props) {
   return (

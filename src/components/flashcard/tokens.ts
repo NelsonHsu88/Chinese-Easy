@@ -17,7 +17,7 @@ export const fcColors = {
   ...revColors,
 
   /** The page, sampled from the reference. */
-  background: '#FBFAF5',
+  background: '#FFFFFF',
   /**
    * Both cards. All three paintings were keyed against exactly this
    * (`processFlashcardArt.mjs`), so it has to stay this or the art grows a halo.

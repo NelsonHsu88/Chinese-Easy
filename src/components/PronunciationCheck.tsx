@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, Pressable, Animated, Platform } from 'react-native'
 import { Mic, MicOff, Check, ChevronRight } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { displayWord, displayPinyin } from '../lib/hanzi'
+import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
 import { shortGloss } from '../lib/definitions'
 import { SpeakButton } from './SpeakButton'
 import { bestTranscript, gradePronunciation, PASS_THRESHOLD } from '../lib/pronunciation'
@@ -224,7 +224,7 @@ export function PronunciationCheck({
             {[...character].map((glyph, i) => (
               <Text
                 key={`${glyph}-${i}`}
-                className={`font-hanzi-bold text-[44px] leading-[56px] ${
+                className={`${hanziFont(settings.script, 'semibold')} text-[44px] leading-[56px] ${
                   heardSyllables[i] ? 'text-brand-500 dark:text-brand-400' : 'text-slate-900 dark:text-white'
                 }`}
               >

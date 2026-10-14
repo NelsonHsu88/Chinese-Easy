@@ -3,7 +3,7 @@ import { View, Text, Pressable } from 'react-native'
 import { router } from 'expo-router'
 import { Sparkles, X } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { newWordsPool } from '../lib/selectors'
+import { newWordsPool, NEW_WORDS_SESSION_SEED } from '../lib/selectors'
 import { displayWord, displayPinyin } from '../lib/hanzi'
 import { shortGloss } from '../lib/definitions'
 import { playTapSound } from '../lib/sound'
@@ -26,7 +26,7 @@ export function NewWordPrompt() {
   const { wordBank, deck, settings, wordsLearnedToday, addToReviewDeck } = useApp()
   const [dismissed, setDismissed] = useState(false)
 
-  const next = useMemo(() => newWordsPool(wordBank, deck, settings)[0], [wordBank, deck, settings])
+  const next = useMemo(() => newWordsPool(wordBank, deck, settings, NEW_WORDS_SESSION_SEED)[0], [wordBank, deck, settings])
 
   const reachedDailyGoal = wordsLearnedToday >= settings.dailyNewWordLimit
   if (dismissed || !next || reachedDailyGoal) return null

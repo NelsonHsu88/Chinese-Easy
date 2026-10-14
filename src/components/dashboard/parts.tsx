@@ -20,8 +20,9 @@ import {
   dashShoulders,
   dashRadius,
   dashMotion,
+  homeColors,
 } from './tokens'
-import { useRevealedShadow } from '../shadowReveal'
+import { ShadowSurface, useRevealedShadow } from '../shadowReveal'
 import { tapHaptic } from '../../lib/haptics'
 
 /*
@@ -233,6 +234,7 @@ export function DashboardCard({
   accessibilityRole,
   children,
   style,
+  stretch = false,
 }: {
   fill: string
   border: string
@@ -242,11 +244,24 @@ export function DashboardCard({
   accessibilityRole?: 'button' | 'none'
   children: ReactNode
   style?: StyleProp<ViewStyle>
+  /**
+   * Fill the parent's cross axis — two cards splitting a row stretch to the
+   * taller one. It takes the wrapper, the Pressable and the card all three: a
+   * flex on any one alone stops at the next layer down.
+   */
+  stretch?: boolean
 }) {
   const shadow = useRevealedShadow(dashShadow)
+  const grow = stretch ? { flex: 1 } : undefined
 
   return (
-    <PressableScale onPress={onPress} accessibilityLabel={accessibilityLabel} accessibilityRole={accessibilityRole}>
+    <PressableScale
+      onPress={onPress}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={accessibilityRole}
+      wrapperStyle={grow}
+      style={grow}
+    >
       {/* `Animated.View` rather than `View`, so it can carry
           `useRevealedShadow`'s interpolated `shadowOpacity`/`elevation` —
           there's no `className` here for that to break. */}
@@ -261,6 +276,7 @@ export function DashboardCard({
             overflow: 'hidden',
             ...shadow,
           },
+          grow,
           style,
         ]}
       >
@@ -442,6 +458,13 @@ export function CardIconBadge({ tint, children, size = 32 }: { tint: string; chi
  */
 export const DASH_LIFT = 4
 
+/** How far a lifted face's elevation stands above its shoulder's on Android (see `LiftedFace`). */
+const FACE_ABOVE_SHOULDER = 0.5
+
+function faceElevation(shoulder: number | Animated.AnimatedInterpolation<number>) {
+  return typeof shoulder === 'number' ? shoulder + FACE_ABOVE_SHOULDER : Animated.add(shoulder, FACE_ABOVE_SHOULDER)
+}
+
 /**
  * A button drawn as a physical object rather than a shadowed pill.
  *
@@ -494,6 +517,11 @@ export function LiftedFace({
 
   const sink = press.interpolate({ inputRange: [0, 1], outputRange: [0, DASH_LIFT] })
   const corner = radius ?? height / 2
+  /* Inside an entrance the shadow settles in behind the button rather than
+     arriving first — on Android a fading parent doesn't fade its children's
+     elevation shadows, so the shoulder's shadow and outline showed before the
+     button did. Outside one this is simply the resting shadow. */
+  const lifted = useRevealedShadow(dashShadowLifted)
 
   return (
     <View style={[{ height: height + DASH_LIFT }, style]}>
@@ -502,7 +530,7 @@ export function LiftedFace({
         the two layers cast one shadow between them instead of the face drawing a
         second edge across the side it is standing on.
       */}
-      <View
+      <Animated.View
         style={{
           position: 'absolute',
           top: DASH_LIFT,
@@ -511,32 +539,55 @@ export function LiftedFace({
           height,
           borderRadius: corner,
           backgroundColor: shoulder,
-          ...(shadow ? dashShadowLifted : null),
+          ...(shadow ? lifted : null),
         }}
       />
 
-      {/* Plain styles on the animated view; the Tailwind classes sit inside. */}
+      {/*
+        Android draws siblings in elevation order, not tree order, so a shoulder
+        carrying `elevation` and a face carrying none puts the shoulder on top —
+        the button turns into a dark slab with its label hidden underneath. That
+        is exactly what Check Answer did the moment an option was picked and its
+        shadow switched on. Matching the elevation puts both on one layer, where
+        tree order decides again.
+
+        The matching elevation lives on this wrapper rather than on the face: it
+        ramps on a JS-driven value, and the face's press `transform` may run on
+        the native driver — one view must not carry both.
+
+        Two guards on it, because a face buried under its shoulder reads as a
+        button whose label has vanished — "Let's get started" did exactly that,
+        the moment its shadow finished settling. It stands a fixed half step
+        above the shoulder rather than level with it, so the order never rests
+        on two separately-updated values landing on the same frame; and it is
+        `collapsable={false}`, because a view with nothing to draw is one
+        Android may flatten away, taking the elevation meant to lift the face
+        with it.
+      */}
       <Animated.View
-        style={{
-          height,
-          borderRadius: corner,
-          backgroundColor: fill,
-          ...(border ? { borderWidth: 1.5, borderColor: border } : null),
-          /* Android draws siblings in elevation order, not tree order, so a
-             shoulder carrying `elevation` and a face carrying none puts the
-             shoulder on top — the button turns into a dark slab with its label
-             hidden underneath. That is exactly what Check Answer did the moment
-             an option was picked and its shadow switched on. Matching the
-             elevation puts both on one layer, where tree order decides again. */
-          ...(shadow && Platform.OS === 'android' ? { elevation: dashShadowLifted.elevation } : null),
-          transform: [{ translateY: sink }],
-        }}
+        collapsable={false}
+        style={
+          shadow && Platform.OS === 'android'
+            ? { elevation: faceElevation(lifted.elevation as number | Animated.AnimatedInterpolation<number>) }
+            : undefined
+        }
       >
-        {/* Plain styles, not classes: this face is used in the dictionary's
-            hero row, where NativeWind-derived layout was dropped on Android. */}
-        <View style={{ height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s.sm }}>
-          {children}
-        </View>
+        {/* Plain styles on the animated view; the Tailwind classes sit inside. */}
+        <Animated.View
+          style={{
+            height,
+            borderRadius: corner,
+            backgroundColor: fill,
+            ...(border ? { borderWidth: 1.5, borderColor: border } : null),
+            transform: [{ translateY: sink }],
+          }}
+        >
+          {/* Plain styles, not classes: this face is used in the dictionary's
+              hero row, where NativeWind-derived layout was dropped on Android. */}
+          <View style={{ height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s.sm }}>
+            {children}
+          </View>
+        </Animated.View>
       </Animated.View>
     </View>
   )
@@ -636,9 +687,8 @@ export function DashButtonQuiet({
 export function StreakPill({ streak, icon, onPress }: { streak: number; icon: number; onPress?: () => void }) {
   return (
     <PressableScale onPress={onPress} accessibilityLabel={`${streak} day streak`} scaleTo={0.96}>
-      <View
-        className="flex-row items-center"
-        style={{
+      <ShadowSurface shadow={dashShadowLifted}
+        style={[{ flexDirection: 'row', alignItems: 'center' }, {
           height: 43,
           paddingHorizontal: 15,
           borderRadius: 22,
@@ -646,17 +696,16 @@ export function StreakPill({ streak, icon, onPress }: { streak: number; icon: nu
           borderWidth: 1,
           borderColor: c.border,
           gap: 7,
-          ...dashShadowLifted,
-        }}
+        }]}
       >
         <Image source={icon} style={{ width: 21, height: 21 }} resizeMode="contain" />
-        <Text className="font-nunito-extrabold" style={{ fontSize: 17, color: c.navy }}>
+        <Text className="font-lora-bold" style={{ fontSize: 17, color: c.navy }}>
           {streak}
         </Text>
-        <Text className="font-nunito-semibold" style={{ fontSize: 14.5, color: c.textSecondary }}>
+        <Text className="font-lora" style={{ fontSize: 15, color: homeColors.subtle }}>
           Streak
         </Text>
-      </View>
+      </ShadowSurface>
     </PressableScale>
   )
 }

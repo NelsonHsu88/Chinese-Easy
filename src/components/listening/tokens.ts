@@ -20,7 +20,7 @@ export const listenColors = {
    * the paintings were keyed against them (`processListeningArt.mjs`), so they
    * have to stay exactly these or the art grows a halo.
    */
-  background: '#FDF8EF',
+  background: '#FFFFFF',
   card: '#FDF9F3',
   border: '#ECE8E0',
 

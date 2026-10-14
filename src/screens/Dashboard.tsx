@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, ScrollView, Pressable, useWindowDimensions } from 'react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { View, ScrollView, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router } from 'expo-router'
-import { Menu } from 'lucide-react-native'
+import { router, useFocusEffect } from 'expo-router'
 import { useApp } from '../context/AppContext'
-import { StreakPill } from '../components/dashboard/parts'
-import { DashboardHero } from '../components/dashboard/DashboardHero'
-import { ReviewCard } from '../components/dashboard/ReviewCard'
-import { NewWordCard } from '../components/dashboard/NewWordCard'
-import { ChallengesSummaryCard } from '../components/dashboard/ChallengesSummaryCard'
-import { WeeklyActivityCard } from '../components/dashboard/WeeklyActivityCard'
-import { FIRE_ICON } from '../components/dashboard/art'
+import { HomeHero } from '../components/dashboard/HomeHero'
+import {
+  ReviewCard,
+  WordCard,
+  ChallengesCard,
+  WeekCard,
+  type ChallengeStep,
+  type RewardState,
+} from '../components/dashboard/HomeCards'
 import { Reveal, useEntranceRun } from '../components/dashboard/entrance'
 import { useScrollToTopOnFocus } from '../components/useScrollToTopOnFocus'
 import {
@@ -18,31 +19,39 @@ import {
   dashSpacing as s,
   dashEntrance as e,
   dashRadius,
+  homeLayout as l,
   DASH_CONTENT_MAX,
 } from '../components/dashboard/tokens'
-import { dueCountFor, newWordsPool } from '../lib/selectors'
+import { dueCountFor, newWordsPool, NEW_WORDS_SESSION_SEED } from '../lib/selectors'
 import { currentWeekActivity } from '../lib/progress'
 import { todayISO } from '../lib/date'
 import { devNow } from '../lib/devClock'
-import { claimableCount, offeredChallenges } from '../lib/challenges'
-import { carefulHaptic, tapHaptic } from '../lib/haptics'
+import {
+  COMPLETION_REWARDS,
+  challengeInstanceId,
+  challengeTarget,
+  isChallengeComplete,
+  isCompletionRewardEarned,
+  offeredChallenges,
+  type ChallengeContext,
+  type ChallengeDef,
+} from '../lib/challenges'
+import { carefulHaptic } from '../lib/haptics'
 import { playTapSound } from '../lib/sound'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
 import { TourScrollContext, TourTarget } from '../components/tour/targets'
+import type { VocabWord } from '../types'
 
 /*
- * The Dashboard, built to the reference mockup.
+ * Home, built to "SS1012 Home Page Redesign UI 2".
  *
- * Its design system is `components/dashboard/tokens.ts`; its pieces are the
- * five components in that folder. What lives here is the screen's composition
- * and the wiring from app state to each card — deliberately, because every one
- * of those cards is a pure presentation of numbers this screen has already
- * worked out.
+ * Its design system is the `home*` section of `components/dashboard/tokens.ts`;
+ * its pieces are `HomeHero` and `HomeCards`. What lives here is the screen's
+ * composition and the wiring from app state to each card — every card is a
+ * pure presentation of numbers this screen has already worked out.
  *
  * The whole screen scrolls inside a fixed 430pt column. On a wider window the
- * column centres rather than stretching: these cards are phone-sized objects,
- * and a 700pt-wide "Start Review" card with a campfire marooned in one corner
- * is not the same design at a larger size.
+ * column centres rather than stretching: these cards are phone-sized objects.
  */
 
 function greeting(): string {
@@ -60,17 +69,29 @@ const GENERAL_SHIFU_LINES = [
   'Small steps every day add up to big progress.',
 ]
 
-/**
- * What Shifu says when there is nothing due.
- *
- * The due-word case is handled in the bubble itself, which sets the count in
- * bold — so this covers only the lines with no number in them.
- */
+/** What Shifu says when there is nothing due. The due-word line is built in the bubble. */
 function shifuQuote(name: string, streak: number): string {
   const displayName = name || 'friend'
   if (streak >= 3) return `You’re on a ${streak}-day streak! I’m proud of you, ${displayName}.`
   const dayIndex = devNow().getDate() % GENERAL_SHIFU_LINES.length
   return GENERAL_SHIFU_LINES[dayIndex]
+}
+
+/** The two lines under each step on the challenge path. */
+function stepLabel(def: ChallengeDef, target: number): Pick<ChallengeStep, 'verb' | 'detail'> {
+  const words = `${target} ${target === 1 ? 'word' : 'words'}`
+  switch (def.id) {
+    case 'daily-new-words':
+      return { verb: 'Learn', detail: words }
+    case 'daily-writing':
+      return { verb: 'Write', detail: `${target} characters` }
+    case 'daily-listening':
+      return { verb: 'Listen', detail: `${target} questions` }
+    case 'daily-review':
+      return { verb: 'Review', detail: words }
+    default:
+      return { verb: def.title.split(' ')[0], detail: String(target) }
+  }
 }
 
 export function Dashboard() {
@@ -85,18 +106,20 @@ export function Dashboard() {
     completedLessonIds,
     claimedChallengeIds,
     addToReviewDeck,
+    newWordHistory,
+    skipNewWord,
     reportTourAction,
   } = useApp()
 
   const { width } = useWindowDimensions()
   const columnWidth = Math.min(width, DASH_CONTENT_MAX)
-  const contentWidth = columnWidth - s.screen * 2
+  const contentWidth = columnWidth - l.screen * 2
 
   const dueCount = dueCountFor(deck)
   const todayReviews = dailyProgress.find((d) => d.date === todayISO())?.reviewsCompleted ?? 0
 
-  const claimableChallenges = useMemo(() => {
-    const ctx = {
+  const { challengeSteps, reward } = useMemo(() => {
+    const ctx: ChallengeContext = {
       dailyProgress,
       streak,
       completedLessonCount: completedLessonIds.length,
@@ -104,7 +127,14 @@ export function Dashboard() {
       dailyNewWordLimit: settings.dailyNewWordLimit,
       dailyReviewLimit: settings.dailyReviewLimit,
     }
-    return claimableCount(ctx, claimedChallengeIds)
+    const steps: ChallengeStep[] = offeredChallenges('daily').map((def) => ({
+      id: def.id,
+      ...stepLabel(def, challengeTarget(def, ctx)),
+      done: isChallengeComplete(def, ctx),
+    }))
+    const claimed = claimedChallengeIds.includes(challengeInstanceId(COMPLETION_REWARDS.daily))
+    const state: RewardState = claimed ? 'claimed' : isCompletionRewardEarned('daily', ctx) ? 'ready' : 'locked'
+    return { challengeSteps: steps, reward: state }
   }, [dailyProgress, streak, completedLessonIds.length, xp, claimedChallengeIds, settings.dailyNewWordLimit, settings.dailyReviewLimit])
 
   const week = useMemo(() => currentWeekActivity(dailyProgress), [dailyProgress])
@@ -112,17 +142,19 @@ export function Dashboard() {
   // --- The word on offer ------------------------------------------------------
 
   /*
-   * Dismissal lasts for the session only, so the card comes back next launch
-   * without needing any persisted state of its own — the same bargain the old
-   * `NewWordPrompt` made. `added` is separate from dismissal: adding a word
-   * confirms in place rather than collapsing the card out from under the finger.
+   * Adding a word leaves it on the card as "Added ✓" rather than swapping the
+   * next word in under the finger. The card moves on at the next visit.
    */
-  const [wordDismissed, setWordDismissed] = useState(false)
-  const [addedWordId, setAddedWordId] = useState<string | null>(null)
+  const [heldWord, setHeldWord] = useState<VocabWord | null>(null)
+  useFocusEffect(useCallback(() => () => setHeldWord(null), []))
 
-  const nextWord = useMemo(() => newWordsPool(wordBank, deck, settings)[0], [wordBank, deck, settings])
+  /* Words skipped here or on New Words stay skipped, so "Not now" really moves on. */
+  const nextWord = useMemo(() => {
+    const skipped = new Set(newWordHistory.filter((h) => h.outcome === 'skipped').map((h) => h.wordId))
+    return newWordsPool(wordBank, deck, settings, NEW_WORDS_SESSION_SEED).find((w) => !skipped.has(w.id))
+  }, [wordBank, deck, settings, newWordHistory])
   const reachedDailyGoal = wordsLearnedToday >= settings.dailyNewWordLimit
-  const showWordCard = !wordDismissed && !reachedDailyGoal && !!nextWord
+  const offeredWord = heldWord ?? (reachedDailyGoal ? undefined : nextWord)
 
   const [greetingLead, ...greetingRest] = greeting().split(' ')
   const greetingTail = greetingRest.join(' ')
@@ -142,20 +174,15 @@ export function Dashboard() {
     carefulHaptic()
   }, [streakAtRisk])
 
-  /*
-   * The entrance replays every time this screen is focused, not only on mount —
-   * arriving from another tab or back from Review should assemble the scene
-   * again. `run` is the one number the whole score keys off.
-   */
+  /* The entrance replays every time this screen is focused, not only on mount. */
   const run = useEntranceRun()
 
-  /* Coming back to the Dashboard means coming back to the greeting, not to
-     wherever the last visit happened to leave the scroll. */
+  /* Coming back to Home means coming back to the greeting, not to the last scroll. */
   const scroll = useScrollToTopOnFocus()
 
   /*
    * The guided tour spotlights cards on this screen, and on a short phone the
-   * word card starts below the fold — so the tour can ask for a scroll. The
+   * word card can start below the fold — so the tour can ask for a scroll. The
    * offset is tracked rather than read back, which a ScrollView cannot do.
    */
   const scrollY = useRef(0)
@@ -164,12 +191,6 @@ export function Dashboard() {
     [scroll],
   )
 
-  /*
-   * The cards arrive in the order they are read, so their delays come from
-   * their position rather than being written out per card — the word card is
-   * conditional, and a hardcoded delay each would leave a hole in the rhythm on
-   * the days it is not shown.
-   */
   let cardIndex = 0
   const nextCardDelay = () => e.cards.at + e.cards.stagger * cardIndex++
 
@@ -180,112 +201,87 @@ export function Dashboard() {
           ref={scroll}
           className="flex-1"
           showsVerticalScrollIndicator={false}
-          onScroll={(e) => {
-            scrollY.current = e.nativeEvent.contentOffset.y
+          onScroll={(ev) => {
+            scrollY.current = ev.nativeEvent.contentOffset.y
           }}
           scrollEventThrottle={32}
           contentContainerStyle={{
             alignItems: 'center',
-            // Clears the tab bar with room to spare, so the last card is never
-            // half-hidden behind it at the end of the scroll.
+            // Clears the tab bar with room to spare.
             paddingBottom: s.xxl,
           }}
         >
-          <View style={{ width: columnWidth, paddingHorizontal: s.screen }}>
-            <View className="flex-row items-center justify-between" style={{ height: 52 }}>
-              <Pressable
-                onPress={() => {
-                  tapHaptic()
-                  router.push('/settings')
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Open settings"
-                hitSlop={12}
-                className="items-center justify-center rounded-full active:opacity-60"
-                style={{ width: 44, height: 44, marginLeft: -10 }}
-              >
-                <Menu size={25} color={c.navy} strokeWidth={2.5} />
-              </Pressable>
-
-              {/* The streak's own screen is Challenges — that's where the
-                  streak milestones are claimed. */}
-              <StreakPill streak={streak} icon={FIRE_ICON} onPress={() => router.push('/challenges')} />
-            </View>
-
-            <DashboardHero
+          <View style={{ width: columnWidth }}>
+            <HomeHero
               greetingLead={greetingLead}
               greetingTail={greetingTail}
               name={settings.username || 'Learner'}
               dueCount={dueCount}
               fallbackMessage={fallbackMessage}
-              width={contentWidth}
+              columnWidth={columnWidth}
+              streak={streak}
+              // The streak's own screen is Challenges, where its milestones are claimed.
+              onStreakPress={() => router.push('/challenges')}
               run={run}
             />
 
-            {/*
-              Each card is wrapped rather than the group, so they rise one after
-              another. The wrapper is the flex child the `gap` measures between,
-              which is why the spacing survives — a transform moves what is
-              painted, not what is laid out.
-            */}
             <TourScrollContext.Provider value={tourScrollBy}>
-              <View style={{ gap: s.cardGap, marginTop: 14 }}>
+              <View style={{ gap: l.gap, marginTop: l.gap, paddingHorizontal: l.screen }}>
                 <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
                   <TourTarget id="dashboard-review" radius={dashRadius.card}>
-                    <ReviewCard dueCount={dueCount} onPress={() => router.navigate('/review-tab')} />
+                    <ReviewCard dueCount={dueCount} width={contentWidth} onPress={() => router.navigate('/review-tab')} />
                   </TourTarget>
                 </Reveal>
 
-                {showWordCard && (
-                  <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
-                    <TourTarget id="dashboard-new-word" radius={dashRadius.card}>
-                      <NewWordCard
-                        word={nextWord}
-                        script={settings.script}
-                        phoneticScript={settings.phoneticScript}
-                        added={addedWordId === nextWord.id}
-                        onSeeAll={() => {
-                          playTapSound()
-                          router.push('/new-words')
-                        }}
-                        onDismiss={() => setWordDismissed(true)}
-                        onAdd={() => {
-                          playTapSound()
-                          addToReviewDeck(nextWord.id)
-                          setAddedWordId(nextWord.id)
-                          reportTourAction('word:add')
-                        }}
-                      />
-                    </TourTarget>
-                  </Reveal>
-                )}
+                <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
+                  <TourTarget id="dashboard-new-word" radius={dashRadius.card}>
+                    <WordCard
+                      word={offeredWord}
+                      script={settings.script}
+                      phoneticScript={settings.phoneticScript}
+                      added={!!heldWord}
+                      wordsToday={wordsLearnedToday}
+                      width={contentWidth}
+                      onSeeAll={() => {
+                        playTapSound()
+                        router.push('/new-words')
+                      }}
+                      onAdd={() => {
+                        if (!offeredWord || heldWord) return
+                        playTapSound()
+                        addToReviewDeck(offeredWord.id)
+                        setHeldWord(offeredWord)
+                        reportTourAction('word:add')
+                      }}
+                      onSkip={() => {
+                        if (!offeredWord) return
+                        /* Once added, the left button just moves on; otherwise it's a real skip,
+                           remembered the same way the New Words screen remembers one. */
+                        if (!heldWord) skipNewWord(offeredWord.id)
+                        setHeldWord(null)
+                      }}
+                    />
+                  </TourTarget>
+                </Reveal>
 
                 <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
-                  <ChallengesSummaryCard
-                    claimable={claimableChallenges}
-                    total={offeredChallenges().length}
+                  <ChallengesCard
+                    steps={challengeSteps}
+                    reward={reward}
+                    width={contentWidth}
                     onPress={() => router.push('/challenges')}
                   />
                 </Reveal>
 
                 <Reveal from="bottom" at={nextCardDelay()} duration={e.cards.for} run={run} distance={e.slideY}>
-                  {/* The week in summary; Progress is the same story over twelve
-                      weeks, so it is where this card leads. It arrives from the
-                      right on `DetailShell`'s own transition. */}
-                  <WeeklyActivityCard week={week} onPress={() => router.push('/settings/progress')} />
+                  {/* Progress is the same story over twelve weeks, so it is where this card leads. */}
+                  <WeekCard week={week} width={contentWidth} onPress={() => router.push('/settings/progress')} />
                 </Reveal>
 
                 {/*
-                  The one advert on this screen, and it is last on purpose.
-                  Everything the learner came here to do — what is due, the next
-                  word, the week — is above it, so the advert is something they
-                  scroll *past* rather than through. It renders nothing at all for
-                  an ad-free learner, and collapses silently if it fails to load;
-                  being the final element means either outcome moves nothing.
-
-                  Deliberately outside `Reveal`: the entrance score is the
-                  Dashboard introducing itself, and an advert has no business
-                  being choreographed into it.
+                  The one advert on this screen, last on purpose and outside the
+                  entrance: everything the learner came for is above it. It renders
+                  nothing for an ad-free learner and collapses if it fails to load.
                 */}
                 <AppBannerAd placement="dashboard" />
               </View>

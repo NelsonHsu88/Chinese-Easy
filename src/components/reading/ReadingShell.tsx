@@ -14,7 +14,7 @@ export const DESIGN_WIDTH = 430
  */
 export function ReadingShell({ children }: { children: ReactNode }) {
   return (
-    <SafeAreaView edges={['top']} className="flex-1 items-center" style={{ backgroundColor: '#fdfbf5' }}>
+    <SafeAreaView edges={['top']} className="flex-1 items-center" style={{ backgroundColor: '#ffffff' }}>
       <View className="w-full flex-1" style={{ maxWidth: DESIGN_WIDTH }}>
         {children}
       </View>

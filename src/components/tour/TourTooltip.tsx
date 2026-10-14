@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import { View, Text, Image, Pressable, type StyleProp, type ViewStyle } from 'react-native'
+import { View, Text, Image, Pressable, Platform, type StyleProp, type ViewStyle } from 'react-native'
 import { ArrowRight } from 'lucide-react-native'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { tourColors as c, tourShadow, tourCard as k, tourType as t } from './tokens'
@@ -53,7 +53,11 @@ export const TourTooltip = forwardRef<Text, TooltipProps>(function TourTooltip(
           backgroundColor: c.paper,
           borderWidth: 1,
           borderColor: c.edge,
-          ...tourShadow,
+          /* Not on Android: the tooltip fades in and out on the native driver,
+             and there a fading parent doesn't fade its children's elevation
+             shadow — it showed before the card and lingered after it. Over the
+             tour's navy scrim the shadow is barely visible anyway. */
+          ...(Platform.OS === 'android' ? null : tourShadow),
         },
         style,
       ]}

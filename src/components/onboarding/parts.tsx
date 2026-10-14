@@ -13,7 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ChevronLeft, Check, X, HelpCircle } from 'lucide-react-native'
+import { ChevronLeft, Check, X, HelpCircle, Eye, EyeOff } from 'lucide-react-native'
 import {
   onbColors as c,
   onbSpacing as s,
@@ -29,6 +29,7 @@ import { tickHaptic } from '../../lib/haptics'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { hanziFont } from '../../lib/hanzi'
 import type { ScriptMode } from '../../types'
+import { ShadowRevealProvider, ShadowSurface, useRevealedShadow, useShadowReveal } from '../shadowReveal'
 
 /*
  * The onboarding building blocks.
@@ -103,6 +104,10 @@ export function SlideIn({
   children: ReactNode
 }) {
   const progress = useRef(new Animated.Value(0)).current
+  /* Raised cards inside settle their shadows in behind them on this value
+     (`ShadowSurface`, `useRevealedShadow`) — on Android a fading parent does
+     not fade its children's elevation shadows, so they showed first. */
+  const shadowArrival = useShadowReveal({ at: delay, duration, run: 0 })
 
   useEffect(() => {
     const animation = Animated.timing(progress, {
@@ -151,7 +156,7 @@ export function SlideIn({
         style,
       ]}
     >
-      {children}
+      <ShadowRevealProvider value={shadowArrival}>{children}</ShadowRevealProvider>
     </Animated.View>
   )
 }
@@ -295,13 +300,13 @@ export function OnbPageTransition({
   const changing = leavingKey !== null
 
   /*
-   * The cream is laid down here and does not move. Sliding the page carries its
+   * The paper is laid down here and does not move. Sliding the page carries its
    * own background off with it, which opens a bare stripe down the side the
    * page is leaving towards — the flow reads as content stepping off the paper,
    * not as the paper being pulled away.
    */
   return (
-    <View className="flex-1 overflow-hidden" style={{ backgroundColor: c.page }}>
+    <View className="flex-1 overflow-hidden" style={{ backgroundColor: c.paper }}>
       {([0, 1] as const).map((slot) => {
         const isFront = front.slot === slot
         const key = isFront ? front.key : leavingKey
@@ -687,6 +692,7 @@ export function OnbTextField({
   maxLength,
   hint,
   icon,
+  secure = false,
 }: {
   label: string
   value: string
@@ -694,14 +700,19 @@ export function OnbTextField({
   placeholder?: string
   autoCapitalize?: 'none' | 'sentences' | 'words'
   keyboardType?: 'default' | 'email-address'
-  autoComplete?: 'username' | 'email'
+  /** `new-password` lets password managers offer a strong one at sign-up;
+      `current-password` lets them fill a saved one at log-in. */
+  autoComplete?: 'username' | 'email' | 'new-password' | 'current-password'
   maxLength?: number
   /** A quiet note under the box — why the field is being asked for. */
   hint?: string
   /** Drawn at the left of the box behind a hairline, as the redesign has it. */
   icon?: ReactNode
+  /** A password: masked, with an eye at the right to show what was typed. */
+  secure?: boolean
 }) {
   const [focused, setFocused] = useState(false)
+  const [revealed, setRevealed] = useState(false)
 
   return (
     <View>
@@ -713,16 +724,14 @@ export function OnbTextField({
       </Text>
       {/* The border lives on this wrapper, not the input, so the icon sits
           inside the same box and the whole thing greens on focus together. */}
-      <View
-        className="flex-row items-center"
-        style={{
+      <ShadowSurface shadow={onbShadow}
+        style={[{ flexDirection: 'row', alignItems: 'center' }, {
           height: 54,
           borderRadius: onbRadius.cardLarge,
           borderWidth: 1.5,
           borderColor: focused ? c.green : c.border,
           backgroundColor: c.card,
-          ...onbShadow,
-        }}
+        }]}
       >
         {icon ? (
           <View className="flex-row items-center" style={{ paddingLeft: s.lg }}>
@@ -741,6 +750,7 @@ export function OnbTextField({
         autoCorrect={false}
         keyboardType={keyboardType}
         autoComplete={autoComplete}
+        secureTextEntry={secure && !revealed}
         maxLength={maxLength}
         accessibilityLabel={label}
         className="font-nunito-semibold"
@@ -756,7 +766,22 @@ export function OnbTextField({
           ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
         }}
       />
-      </View>
+        {secure ? (
+          <Pressable
+            onPress={() => setRevealed((shown) => !shown)}
+            accessibilityRole="button"
+            accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+            hitSlop={10}
+            style={{ paddingHorizontal: s.lg, height: '100%', justifyContent: 'center' }}
+          >
+            {revealed ? (
+              <EyeOff size={20} color={c.textSecondary} strokeWidth={1.9} />
+            ) : (
+              <Eye size={20} color={c.textSecondary} strokeWidth={1.9} />
+            )}
+          </Pressable>
+        ) : null}
+      </ShadowSurface>
       {hint ? (
         <Text
           className="font-nunito-semibold"
@@ -782,20 +807,19 @@ export function OnbCard({
   radius?: number
 }) {
   return (
-    <View
+    <ShadowSurface shadow={onbShadow}
       style={[
         {
           backgroundColor: c.card,
           borderColor: c.border,
           borderWidth: 1,
           borderRadius: radius,
-          ...onbShadow,
         },
         style,
       ]}
     >
       {children}
-    </View>
+    </ShadowSurface>
   )
 }
 
@@ -837,6 +861,9 @@ export function OnbChoiceCard({
   onPress: () => void
   height?: number
 }) {
+  /* Settles in behind the card on the page's entrance (`SlideIn`), rather than
+     showing at full strength first on Android. */
+  const cardShadow = useRevealedShadow(onbShadow)
   const fill = useRef(new Animated.Value(selected ? 1 : 0)).current
 
   useEffect(() => {
@@ -859,7 +886,7 @@ export function OnbChoiceCard({
         borderColor: borderColor as unknown as string,
         backgroundColor: c.card,
         overflow: 'hidden',
-        ...onbShadow,
+        ...cardShadow,
       }}
     >
       <Animated.View
@@ -926,6 +953,9 @@ export function OnbScriptCard({
   selected: boolean
   onPress: () => void
 }) {
+  /* Settles in behind the card on the page's entrance (`SlideIn`), rather than
+     showing at full strength first on Android. */
+  const cardShadow = useRevealedShadow(onbShadow)
   const fill = useRef(new Animated.Value(selected ? 1 : 0)).current
 
   useEffect(() => {
@@ -947,7 +977,7 @@ export function OnbScriptCard({
         borderColor: borderColor as unknown as string,
         backgroundColor: c.card,
         overflow: 'hidden',
-        ...onbShadow,
+        ...cardShadow,
       }}
     >
       <Animated.View style={{ position: 'absolute', inset: 0, backgroundColor: c.greenSoft, opacity: fill }} />

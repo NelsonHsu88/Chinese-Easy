@@ -17,6 +17,7 @@
 
 import { revColors, revShadow } from '../review/tokens'
 import type { Proficiency } from '../../lib/proficiency'
+import { PAGE_SUBTITLE, PAGE_TITLE } from '../pageHeader'
 
 export const mwColors = {
   ...revColors,
@@ -25,9 +26,9 @@ export const mwColors = {
    * The page. Sampled from the reference, and the colour both paintings were
    * keyed against (`processMyWordsArt.mjs`) — change it and they grow a halo.
    */
-  background: '#FCFBF6',
+  background: '#FFFFFF',
   /** The same, fully transparent — the top of the fade behind Start Review. */
-  backgroundClear: 'rgba(252,251,246,0)',
+  backgroundClear: 'rgba(255,255,255,0)',
   /** Text and icons on the jade chip. */
   onJade: '#FFFFFF',
 
@@ -105,9 +106,9 @@ export const mwType = {
    * The line height leaves room for Lora's descenders: at 52 the tail of the
    * "y" in "My" ran into the subtitle beneath it.
    */
-  title: { fontSize: 46, lineHeight: 60, letterSpacing: -0.6 },
+  title: PAGE_TITLE,
   /** Nunito Regular. */
-  subtitle: { fontSize: 16, lineHeight: 21 },
+  subtitle: PAGE_SUBTITLE,
   search: { fontSize: 16, lineHeight: 20 },
   chip: { fontSize: 14.5, lineHeight: 19 },
   /** Lora Bold, a stat's number. */

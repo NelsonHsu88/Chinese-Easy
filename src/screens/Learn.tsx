@@ -11,6 +11,8 @@ import { FEATURES } from '../lib/features'
 import { WritingGuideModal } from '../components/WritingGuideModal'
 import { TourTarget } from '../components/tour/targets'
 import type { TourTargetId } from '../lib/tour'
+import { ShadowRevealProvider, ShadowSurface, useShadowReveal } from '../components/shadowReveal'
+import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHeader'
 
 /**
  * The Learn tab: a header with Shifu and his line, over three cards (New Words,
@@ -117,16 +119,14 @@ function LearnCard({
       wrapperStyle={{ height: height ?? CARD_MIN }}
       style={{ flex: 1 }}
     >
-      <View
-        className="flex-1 flex-row items-center"
-        style={{
+      <ShadowSurface shadow={dashShadow}
+        style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }, {
           borderRadius: CARD_RADIUS,
           backgroundColor: c.card,
           borderWidth: 1,
           borderColor: c.border,
           overflow: 'hidden',
-          ...dashShadow,
-        }}
+        }]}
       >
         {/*
           A sized box with the Image filling it — react-native-web does not
@@ -166,7 +166,7 @@ function LearnCard({
         >
           <ChevronRight size={Math.round(20 * scale)} color={c.greenDark} strokeWidth={2.4} />
         </View>
-      </View>
+      </ShadowSurface>
     </PressableScale>
   )
 }
@@ -178,7 +178,7 @@ function LearnCard({
 function SpeechBubble({ message }: { message: string }) {
   return (
     <View>
-      <View
+      <ShadowSurface shadow={dashShadow}
         style={{
           backgroundColor: c.card,
           borderRadius: 22,
@@ -186,13 +186,12 @@ function SpeechBubble({ message }: { message: string }) {
           borderColor: c.border,
           paddingHorizontal: 16,
           paddingVertical: 12,
-          ...dashShadow,
         }}
       >
         <Text className="font-lora" style={{ fontSize: 14, lineHeight: 19.5, color: c.navy }}>
           {message}
         </Text>
-      </View>
+      </ShadowSurface>
       {/* Drawn after the body so it covers the body's border where the two meet. */}
       <View
         pointerEvents="none"
@@ -262,6 +261,10 @@ export function Learn() {
   const run = useEntranceRun()
   const page = useReveal({ from: 'bottom', at: 0, duration: 420, run, distance: 22 })
   const hero = useReveal({ from: 'right', at: 0, duration: 520, run, distance: 28 })
+  /* The cards and the bubble are raised surfaces inside that fade: their
+     shadows settle in behind them on this value (`ShadowSurface`) instead of
+     showing at full strength before the cards do, as Android drew them. */
+  const shadowArrival = useShadowReveal({ at: 0, duration: 420, run })
 
   const cards: LearnCardDef[] = [
     {
@@ -329,6 +332,7 @@ export function Learn() {
         /* The ScrollView's own frame is the visible viewport, whatever its content does. */
         onLayout={(e) => settle(setViewportHeight)(e.nativeEvent.layout.height)}
       >
+        <ShadowRevealProvider value={shadowArrival}>
         <View style={{ width: columnWidth, flexGrow: 1, paddingHorizontal: GUTTER }}>
           <View onLayout={(e) => settle(setHeaderHeight)(e.nativeEvent.layout.height)}>
             <Animated.View
@@ -338,12 +342,12 @@ export function Learn() {
               <Image source={ART.hero} resizeMode="contain" style={{ width: heroWidth, height: heroHeight }} />
             </Animated.View>
 
-            <Animated.View style={[{ paddingTop: compact ? 12 : 22, paddingBottom: compact ? 16 : 18 }, page]}>
+            <Animated.View style={[{ paddingTop: compact ? 12 : PAGE_TITLE_TOP, paddingBottom: compact ? 16 : 18 }, page]} needsOffscreenAlphaCompositing>
               {/* Lora Bold in navy, matching the Review, Challenges, My Words and Dictionary headings. */}
-              <Text className="font-lora-bold" accessibilityRole="header" style={{ fontSize: 44, lineHeight: 50, letterSpacing: -0.6, color: c.navy }}>
+              <Text className="font-lora-bold" accessibilityRole="header" style={{ ...PAGE_TITLE, color: c.navy }}>
                 Learn
               </Text>
-              <Text className="font-lora" style={{ marginTop: 2, fontSize: 16.5, lineHeight: 22, color: c.textSecondary }}>
+              <Text className="font-lora" style={{ ...PAGE_SUBTITLE, marginTop: 4, color: c.textSecondary }}>
                 Choose what you want{'\n'}to study today.
               </Text>
 
@@ -355,7 +359,7 @@ export function Learn() {
             </Animated.View>
           </View>
 
-          <Animated.View style={[{ gap: CARD_GAP, paddingBottom: COLUMN_BOTTOM }, page]}>
+          <Animated.View style={[{ gap: CARD_GAP, paddingBottom: COLUMN_BOTTOM }, page]} needsOffscreenAlphaCompositing>
             {cards.map(({ key, tourId, ...card }) => (
               <TourTarget key={key} id={tourId} radius={CARD_RADIUS}>
                 <LearnCard {...card} height={cardHeight} scale={typeScale} />
@@ -363,6 +367,7 @@ export function Learn() {
             ))}
           </Animated.View>
         </View>
+        </ShadowRevealProvider>
       </ScrollView>
 
       {showGuide && <WritingGuideModal onClose={() => setShowGuide(false)} />}

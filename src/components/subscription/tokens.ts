@@ -22,7 +22,7 @@
 
 export const subColors = {
   /** Warm cream paper. Never pure white as a page. */
-  page: '#FDF8F0',
+  page: '#FFFFFF',
   /** Card fill: warm near-white, a shade off the page rather than white. */
   card: '#FFFDFC',
   /** The one border on the screen. Warm, so it reads as paper rather than rule. */

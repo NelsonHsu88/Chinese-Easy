@@ -26,6 +26,7 @@ import { dueCardsFor, dueCountFor, mistakeCardsFor, weakCardsFor } from '../lib/
 import { playTapSound } from '../lib/sound'
 import { tapHaptic, thunkHaptic } from '../lib/haptics'
 import type { ReviewMode } from './ReviewSession'
+import { PAGE_TITLE_TOP } from '../components/pageHeader'
 
 /*
  * The Review hub, built to the Beta 2.1 reference (`SS928 Redesigned Review
@@ -122,12 +123,12 @@ export function Review() {
       >
         <TourScrollContext.Provider value={tourScrollBy}>
         <View style={{ width: column, flexGrow: 1, paddingHorizontal: s.screen }}>
-          <View className="flex-row items-center justify-between" style={{ height: 52 }}>
-            {/* Tab content, so no back arrow — the tab bar is the way out. */}
-            <View />
-
+          {/* Tab content, so no back arrow. The pill floats so the title sits at
+              the same height as every other tab's. */}
+          <View style={{ position: 'absolute', top: 10, right: s.screen, zIndex: 2 }}>
             <StreakPill streak={streak} />
           </View>
+          <View style={{ height: PAGE_TITLE_TOP }} />
 
           <ReviewHero message={message} column={column} run={run} />
 

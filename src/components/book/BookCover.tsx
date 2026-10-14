@@ -3,10 +3,10 @@ import { View, Text, Pressable, Image, Animated, Easing, PanResponder, Platform,
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BarChart3, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react-native'
-import { hanziFont } from '../../lib/hanzi'
+import { displayTitleReading, hanziFont } from '../../lib/hanzi'
 import { forScript } from '../../lib/scriptConversion'
 import { tapHaptic, thunkHaptic } from '../../lib/haptics'
-import type { ScriptMode, Story } from '../../types'
+import type { PhoneticScript, ScriptMode, Story } from '../../types'
 import { StoryArt } from '../reading/StoryArt'
 import { PressableScale, LiftedFace, DASH_LIFT } from '../dashboard/parts'
 import { formatCount, levelBand } from '../reading/storyPresentation'
@@ -43,6 +43,7 @@ const ROOM_IMAGE = require('../../assets/images/library/book-room.jpg')
 export function BookCover({
   story,
   script,
+  phoneticScript,
   resuming,
   onBack,
   onStart,
@@ -50,6 +51,7 @@ export function BookCover({
 }: {
   story: Story
   script: ScriptMode
+  phoneticScript: PhoneticScript
   /** The learner has read some of this before; the button offers to continue. */
   resuming: boolean
   onBack: () => void
@@ -234,7 +236,7 @@ export function BookCover({
           >
             {forScript(story.title, script)}
           </Text>
-          <Text style={{ fontFamily: 'Lora', fontSize: 17 * k, lineHeight: 24 * k, color: c.cream, marginTop: 4, ...shadow }}>{story.titlePinyin}</Text>
+          <Text style={{ fontFamily: 'Lora', fontSize: 17 * k, lineHeight: 24 * k, color: c.cream, marginTop: 4, ...shadow }}>{displayTitleReading(story.titlePinyin, phoneticScript)}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 8 * k }}>
             <View style={{ width: 44 * k, height: 1, backgroundColor: c.brass }} />
             <View style={{ width: 6, height: 6, borderWidth: 1, borderColor: c.brass, transform: [{ rotate: '45deg' }] }} />

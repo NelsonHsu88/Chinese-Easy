@@ -69,8 +69,31 @@ interface AuthContextValue {
   /** The address the account is registered under, once there is one. */
   email: string | null
 
-  signUpWithEmail: (email: string, password: string) => Promise<AuthResult>
-  signInWithEmail: (email: string, password: string) => Promise<AuthResult>
+  /** True when the account signs in by email and password (not Google or Apple only). */
+  hasPassword: boolean
+
+  /*
+   * `captchaToken` is required by Supabase on these calls once CAPTCHA
+   * protection is on, and ignored while it is off. See components/auth/Captcha.
+   */
+
+  /** `name` is stored on the account (`user_metadata.display_name`) so a later
+      log-in on another device can greet the learner without asking again. */
+  signUpWithEmail: (email: string, password: string, name?: string, captchaToken?: string) => Promise<AuthResult>
+  signInWithEmail: (email: string, password: string, captchaToken?: string) => Promise<AuthResult>
+  /**
+   * Sign in with Apple — iOS only, native sheet, no browser. Apple requires it
+   * of any App Store app that offers Google sign-in (guideline 4.8).
+   */
+  signInWithApple: (captchaToken?: string) => Promise<AuthResult>
+  /** Emails a reset link. Always reports success, so it can't reveal who has an account. */
+  sendPasswordReset: (email: string, captchaToken?: string) => Promise<AuthResult>
+  /** Sets a new password for the signed-in account (after a recovery link, or from Settings). */
+  setNewPassword: (password: string) => Promise<AuthResult>
+  /** Checks the current password first, so a borrowed unlocked phone can't change it. */
+  changePassword: (current: string, next: string, captchaToken?: string) => Promise<AuthResult>
+  /** Sends confirmation links; the address changes only once they're opened. */
+  changeEmail: (email: string) => Promise<AuthResult>
   /**
    * Real Google OAuth, through Google's own servers.
    *
@@ -119,9 +142,31 @@ function readableError(message: string): string {
   if (m.includes('network') || m.includes('fetch')) return 'Couldn’t reach the server. Check your connection and try again.'
   if (m.includes('rate limit') || m.includes('too many')) return 'Too many attempts. Please wait a minute and try again.'
   if (m.includes('email not confirmed')) return 'Please confirm your email address first — check your inbox.'
+  if (m.includes('password should contain')) return 'Please use a mix of upper- and lower-case letters, numbers and symbols.'
+  if (m.includes('captcha')) return 'Please complete the security check and try again.'
+  if (m.includes('should be different')) return 'Your new password must be different from the old one.'
+  if (m.includes('weak') || m.includes('pwned') || m.includes('easy to guess'))
+    return 'That password has appeared in a data breach. Please choose another.'
+  if (m.includes('already been registered')) return 'That email address is already used by another account.'
+  if (m.includes('reauthentication')) return 'For your security, please log out and back in, then try again.'
   if (__DEV__) console.warn('[auth] unmapped error:', message)
   return 'Something went wrong signing in. Please try again.'
 }
+
+/** The learner's name as the account knows it — set at email sign-up, or by Google. */
+function accountFor(user: User | null | undefined): { email: string; name: string } {
+  const meta = (user?.user_metadata ?? {}) as Record<string, unknown>
+  const name = [meta.display_name, meta.full_name, meta.name, meta.given_name].find(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0,
+  )
+  return { email: user?.email ?? '', name: name?.trim() ?? '' }
+}
+
+/**
+ * Where an emailed link (confirmation, and later password reset) lands. The
+ * same callback Google uses, so the one allowlist entry covers both.
+ */
+const authRedirectTo = () => Linking.createURL('auth/callback')
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
@@ -159,13 +204,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const signUpWithEmail = useCallback(async (email: string, password: string): Promise<AuthResult> => {
+  const signUpWithEmail = useCallback(async (email: string, password: string, name?: string, captchaToken?: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
     const { data, error } = await getSupabase().auth.signUp({
       email: email.trim(),
       password,
+      options: {
+        captchaToken,
+        emailRedirectTo: authRedirectTo(),
+        data: name?.trim() ? { display_name: name.trim() } : undefined,
+      },
     })
     if (error) return { error: readableError(error.message) }
+    /*
+     * With confirmation on, signing up with an address that already has an
+     * account is not an error — Supabase answers with a placeholder user with no
+     * identities, so the response can't be used to probe who is registered. The
+     * placeholder is the only signal we get; without this check the learner
+     * would wait for a confirmation email that is never sent.
+     */
+    if (data.user && data.user.identities?.length === 0) {
+      return { error: 'There’s already an account with that email. Try logging in.' }
+    }
     /*
      * Account *creation* is the only local proof that an account is new, and a
      * new account is the only one guest progress may be adopted into. Recording
@@ -181,17 +241,120 @@ export function AuthProvider({ children }: { children: ReactNode }) {
      * waiting for a screen that never comes and one checking their inbox.
      */
     if (data.user && !data.session) return { error: null, needsEmailConfirmation: true }
+    return { error: null, account: accountFor(data.user) }
+  }, [])
+
+  const signInWithEmail = useCallback(async (email: string, password: string, captchaToken?: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
+    const { data, error } = await getSupabase().auth.signInWithPassword({
+      email: email.trim(),
+      password,
+      options: { captchaToken },
+    })
+    if (error) return { error: readableError(error.message) }
+    return { error: null, account: accountFor(data.user) }
+  }, [])
+
+  const signInWithApple = useCallback(async (captchaToken?: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
+    if (Platform.OS !== 'ios') return { error: 'Sign in with Apple is only available on iPhone and iPad.' }
+    // Required lazily: the native module doesn't exist on Android or web.
+    const Apple = require('expo-apple-authentication') as typeof import('expo-apple-authentication')
+    const Crypto = require('expo-crypto') as typeof import('expo-crypto')
+
+    /*
+     * The nonce ties Apple's token to this one request: Apple signs its SHA-256
+     * into the token, Supabase hashes the raw value we send and compares. A
+     * token lifted from somewhere else carries someone else's nonce.
+     */
+    const rawNonce = Crypto.randomUUID()
+    const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce)
+
+    let credential: Awaited<ReturnType<typeof Apple.signInAsync>>
+    try {
+      credential = await Apple.signInAsync({
+        requestedScopes: [Apple.AppleAuthenticationScope.FULL_NAME, Apple.AppleAuthenticationScope.EMAIL],
+        nonce: hashedNonce,
+      })
+    } catch (e) {
+      if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return { error: null, cancelled: true }
+      return { error: 'Apple couldn’t complete the sign-in. Please try again.' }
+    }
+    if (!credential.identityToken) return { error: 'Apple couldn’t complete the sign-in. Please try again.' }
+
+    const supabase = getSupabase()
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: credential.identityToken,
+      nonce: rawNonce,
+      options: { captchaToken },
+    })
+    if (error) return { error: readableError(error.message) }
+
+    /*
+     * Apple sends the name only on the very first sign-in, and never puts it in
+     * the token — so it is saved onto the account now or lost for good.
+     */
+    const given = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean).join(' ').trim()
+    if (given && !accountFor(data.user).name) {
+      await supabase.auth.updateUser({ data: { display_name: given } })
+    }
+    const account = accountFor(data.user)
+    return { error: null, account: { email: account.email, name: account.name || given } }
+  }, [])
+
+  const sendPasswordReset = useCallback(async (email: string, captchaToken?: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
+    const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: Linking.createURL('auth/reset-password'),
+      captchaToken,
+    })
+    /*
+     * Supabase answers the same whether or not the address has an account, and
+     * so does this — except for errors the learner can act on (rate limits,
+     * a failed check, no connection).
+     */
+    if (error) {
+      const message = readableError(error.message)
+      if (message.startsWith('Something went wrong')) return { error: null }
+      return { error: message }
+    }
     return { error: null }
   }, [])
 
-  const signInWithEmail = useCallback(async (email: string, password: string): Promise<AuthResult> => {
+  const setNewPassword = useCallback(async (password: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
-    const { error } = await getSupabase().auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    })
+    const { error } = await getSupabase().auth.updateUser({ password })
     return { error: error ? readableError(error.message) : null }
   }, [])
+
+  const changePassword = useCallback(
+    async (current: string, next: string, captchaToken?: string): Promise<AuthResult> => {
+      const address = session?.user.email
+      if (!isSupabaseConfigured || !address) return { error: 'You’re not signed in.' }
+      const supabase = getSupabase()
+      /* Re-checking the current password is what makes an unlocked phone left
+         on a table not enough to take the account over. */
+      const check = await supabase.auth.signInWithPassword({ email: address, password: current, options: { captchaToken } })
+      if (check.error) {
+        return check.error.message.toLowerCase().includes('invalid login credentials')
+          ? { error: 'Your current password isn’t right.' }
+          : { error: readableError(check.error.message) }
+      }
+      const { error } = await supabase.auth.updateUser({ password: next })
+      return { error: error ? readableError(error.message) : null }
+    },
+    [session],
+  )
+
+  const changeEmail = useCallback(async (email: string): Promise<AuthResult> => {
+    if (!isSupabaseConfigured || !session) return { error: 'You’re not signed in.' }
+    const { error } = await getSupabase().auth.updateUser(
+      { email: email.trim() },
+      { emailRedirectTo: authRedirectTo() },
+    )
+    return { error: error ? readableError(error.message) : null }
+  }, [session])
 
   /**
    * The redirect Google sends the person back to when they are done.
@@ -203,7 +366,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Auth refuses to send anyone to a URL that is not on it, which is what stops
    * a malicious app claiming the callback.
    */
-  const oauthRedirectTo = useCallback(() => Linking.createURL('auth/callback'), [])
+  const oauthRedirectTo = useCallback(authRedirectTo, [])
 
   const signInWithGoogle = useCallback(async (): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
@@ -262,16 +425,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const exchanged = await supabase.auth.exchangeCodeForSession(code)
     if (exchanged.error) return { error: readableError(exchanged.error.message) }
 
-    const user = exchanged.data.session?.user
-    const meta = (user?.user_metadata ?? {}) as Record<string, unknown>
-    const name = [meta.full_name, meta.name, meta.given_name].find(
-      (value): value is string => typeof value === 'string' && value.trim().length > 0,
-    )
-
-    return {
-      error: null,
-      account: { email: user?.email ?? '', name: name?.trim() ?? '' },
-    }
+    return { error: null, account: accountFor(exchanged.data.session?.user) }
   }, [oauthRedirectTo])
 
   const signOut = useCallback(async () => {
@@ -307,13 +461,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user: session?.user ?? null,
       userId: session?.user.id ?? null,
       email: session?.user.email ?? null,
+      hasPassword: ((session?.user.app_metadata?.providers as string[] | undefined) ?? []).includes('email'),
       signUpWithEmail,
       signInWithEmail,
       signInWithGoogle,
+      signInWithApple,
+      sendPasswordReset,
+      setNewPassword,
+      changePassword,
+      changeEmail,
       signOut,
       deleteAccount,
     }),
-    [ready, session, signUpWithEmail, signInWithEmail, signInWithGoogle, signOut, deleteAccount],
+    [
+      ready, session, signUpWithEmail, signInWithEmail, signInWithGoogle, signInWithApple,
+      sendPasswordReset, setNewPassword, changePassword, changeEmail, signOut, deleteAccount,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

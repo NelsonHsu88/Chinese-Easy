@@ -21,6 +21,7 @@ import {
   REV_CONTENT_MAX,
   REV_FOOT_RATIO,
 } from './tokens'
+import { ShadowReveal, ShadowSurface } from '../shadowReveal'
 
 /*
  * The Review hub's building blocks, built to the Beta 2.1 reference.
@@ -36,11 +37,10 @@ import {
 /** The streak, as a floating pill. Real streak data — never a fixed number. */
 export function StreakPill({ streak }: { streak: number }) {
   return (
-    <View
-      className="flex-row items-center"
+    <ShadowSurface shadow={revShadow}
       accessible
       accessibilityLabel={`${streak} day streak`}
-      style={{
+      style={[{ flexDirection: 'row', alignItems: 'center' }, {
         height: 38,
         paddingHorizontal: s.lg,
         borderRadius: revRadius.pill,
@@ -48,8 +48,7 @@ export function StreakPill({ streak }: { streak: number }) {
         borderWidth: 1,
         borderColor: c.border,
         gap: s.sm,
-        ...revShadow,
-      }}
+      }]}
     >
       <Image source={revArt.fire} style={{ width: 20 * FIRE_RATIO, height: 20 }} resizeMode="contain" />
       <Text className="font-nunito-extrabold" style={{ ...t.streak, color: c.navy }}>
@@ -58,7 +57,7 @@ export function StreakPill({ streak }: { streak: number }) {
       <Text className="font-nunito-semibold" style={{ ...t.streak, color: c.slate, marginLeft: -2 }}>
         Streak
       </Text>
-    </View>
+    </ShadowSurface>
   )
 }
 
@@ -122,7 +121,11 @@ export function ReviewHero({
         <Image source={revArt.hero} style={{ width: artWidth, height: artHeight }} resizeMode="contain" />
       </Animated.View>
 
-      <Animated.View style={text}>
+      {/* The bubble inside is a raised card: its shadow settles in behind it
+          (`ShadowReveal`) rather than arriving first, and the subtree fades as
+          one layer on Android. */}
+      <Animated.View style={text} needsOffscreenAlphaCompositing>
+        <ShadowReveal at={revEntrance.at} duration={revEntrance.for} run={run}>
         <Text
           className="font-lora-bold"
           accessibilityRole="header"
@@ -145,6 +148,7 @@ export function ReviewHero({
         >
           <SpeechBubble message={message} />
         </View>
+        </ShadowReveal>
       </Animated.View>
     </View>
   )
@@ -158,7 +162,7 @@ export function ReviewHero({
 function SpeechBubble({ message }: { message: string }) {
   return (
     <View>
-      <View
+      <ShadowSurface shadow={revShadow}
         style={{
           backgroundColor: c.card,
           borderRadius: revRadius.medium,
@@ -166,13 +170,12 @@ function SpeechBubble({ message }: { message: string }) {
           borderColor: c.border,
           paddingHorizontal: s.xl,
           paddingVertical: s.md + 2,
-          ...revShadow,
         }}
       >
         <Text className="font-lora" style={{ ...t.bubble, color: c.navy }}>
           {message}
         </Text>
-      </View>
+      </ShadowSurface>
 
       {/*
         The tail: a rotated square carrying the bubble's fill, with the border
@@ -210,16 +213,14 @@ function SpeechBubble({ message }: { message: string }) {
  */
 export function StatsPanel({ children }: { children: ReactNode[] }) {
   return (
-    <View
-      className="flex-row"
-      style={{
+    <ShadowSurface shadow={revShadow}
+      style={[{ flexDirection: 'row' }, {
         backgroundColor: c.card,
         borderRadius: revRadius.large,
         borderWidth: 1,
         borderColor: c.border,
         paddingVertical: s.md + 2,
-        ...revShadow,
-      }}
+      }]}
     >
       {children.map((column, i) => (
         <View key={i} className="flex-1 flex-row">
@@ -227,7 +228,7 @@ export function StatsPanel({ children }: { children: ReactNode[] }) {
           <View className="flex-1">{column}</View>
         </View>
       ))}
-    </View>
+    </ShadowSurface>
   )
 }
 
@@ -347,10 +348,12 @@ export function ReviewModeCard({
    * title is sized to it rather than fixed: "Flashcards" at the designed 23pt
    * needs about 130pt, which a 360pt phone does not have once the painting has
    * its third. A Lora Bold letter averages a little under 0.6em, so ten letters
-   * in a sixth of the column is a safe bound.
+   * in a sixth of the column was the bound — but "Mixed Drills" is twelve, and
+   * wrapped onto two lines. Sized for the longest title, so every card's title
+   * shares one size and stays on one line.
    */
   const textColumn = width - artWidth - revCard.textInset - 104
-  const titleSize = Math.max(19, Math.min(t.cardTitle.fontSize, textColumn / 6))
+  const titleSize = Math.max(17, Math.min(t.cardTitle.fontSize, textColumn / 7.2))
 
   return (
     <PressableScale
@@ -358,13 +361,12 @@ export function ReviewModeCard({
       scaleTo={0.985}
       accessibilityLabel={`${title}. ${count === 0 ? 'Nothing' : count} due. ${description}`}
     >
-      <View
+      <ShadowSurface shadow={revShadow}
         style={{
           borderRadius: revRadius.large,
           backgroundColor: c.card,
           borderWidth: 1,
           borderColor: c.border,
-          ...revShadow,
         }}
       >
         <View
@@ -387,6 +389,7 @@ export function ReviewModeCard({
           >
             <Text
               className="font-lora-bold"
+              numberOfLines={1}
               style={{ ...t.cardTitle, fontSize: titleSize, lineHeight: titleSize * 1.22, color: c.navy }}
             >
               {title}
@@ -404,7 +407,7 @@ export function ReviewModeCard({
             <ChevronRight size={20} color={c.navy} strokeWidth={1.8} />
           </View>
         </View>
-      </View>
+      </ShadowSurface>
     </PressableScale>
   )
 }

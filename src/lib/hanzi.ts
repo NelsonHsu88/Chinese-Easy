@@ -1,5 +1,5 @@
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
-import { pinyinToZhuyin } from './zhuyin'
+import { pinyinTextToZhuyin, pinyinToZhuyin } from './zhuyin'
 
 /**
  * The phonetic system a script comes with by default: zhuyin beside
@@ -79,4 +79,12 @@ export function displayPinyin(word: VocabWord, phoneticScript: PhoneticScript): 
  */
 export function foldPinyin(value: string): string {
   return value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+}
+
+/**
+ * A title's reading in the learner's phonetic script. Titles are written as
+ * pinyin words (syllables run together), so zhuyin is split per syllable.
+ */
+export function displayTitleReading(titlePinyin: string, phoneticScript: PhoneticScript): string {
+  return phoneticScript === 'zhuyin' ? pinyinTextToZhuyin(titlePinyin) : titlePinyin
 }

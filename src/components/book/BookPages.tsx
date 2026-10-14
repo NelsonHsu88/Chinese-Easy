@@ -3,7 +3,7 @@ import { View, Text, Pressable, Image, ScrollView, StyleSheet, Animated } from '
 import { LinearGradient } from 'expo-linear-gradient'
 import { BookOpen, ChevronsRight } from 'lucide-react-native'
 import { segmentText, type TextSegment } from '../../lib/textSegmentation'
-import { displayPinyin, hanziFont } from '../../lib/hanzi'
+import { displayPinyin, displayTitleReading, hanziFont } from '../../lib/hanzi'
 import { forScript } from '../../lib/scriptConversion'
 import { readingForText } from '../../lib/characterReading'
 import { segmentAt, segmentSpans } from '../../lib/narration'
@@ -85,11 +85,13 @@ export function TitlePage({
   width,
   height,
   script,
+  phoneticScript,
 }: {
   story: Story
   width: number
   height: number
   script: ScriptMode
+  phoneticScript: PhoneticScript
 }) {
   const artWidth = Math.min(width * 0.58, (height - 300) * COVER_RATIO)
   return (
@@ -104,7 +106,7 @@ export function TitlePage({
         >
           {forScript(story.title, script)}
         </Text>
-        <Text style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>{story.titlePinyin}</Text>
+        <Text style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>{displayTitleReading(story.titlePinyin, phoneticScript)}</Text>
         <Text style={{ fontFamily: 'LoraItalic', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>
           {story.titleEnglish}
         </Text>

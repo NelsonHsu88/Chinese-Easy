@@ -18,7 +18,7 @@ import {
 import type { ReactNode } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 import { useApp, type NewWordSeen } from '../context/AppContext'
-import { newWordsPool } from '../lib/selectors'
+import { newWordsPool, NEW_WORDS_SESSION_SEED } from '../lib/selectors'
 import { displayWord, displayExample, displayPinyin, hanziFont } from '../lib/hanzi'
 import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { FlexGap } from '../components/FlexGap'
@@ -365,7 +365,7 @@ export function NewWords() {
     [newWordHistory],
   )
 
-  const pool = useMemo(() => newWordsPool(wordBank, deck, settings), [wordBank, deck, settings])
+  const pool = useMemo(() => newWordsPool(wordBank, deck, settings, NEW_WORDS_SESSION_SEED), [wordBank, deck, settings])
   const available = useMemo(() => pool.filter((w) => !skipped.has(w.id)), [pool, skipped])
   const current = available[0]
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
-import { Animated, Easing } from 'react-native'
+import { Animated, Easing, type StyleProp, type ViewProps, type ViewStyle } from 'react-native'
 
 /*
  * A card's shadow, ramping in rather than snapping on mid-reveal.
@@ -118,6 +118,39 @@ export function revealedShadow<T extends { shadowOpacity: number; elevation: num
 export function useRevealedShadow<T extends { shadowOpacity: number; elevation: number }>(shadow: T): Revealed<T> | T {
   const progress = useContext(ShadowRevealContext)
   return progress ? revealedShadow(shadow, progress) : shadow
+}
+
+/**
+ * A card surface whose shadow arrives with its entrance — the drop-in for a
+ * `View` that spreads a fixed shadow token into its style.
+ *
+ * **Any raised surface inside an entrance that fades must be one of these (or
+ * read `useRevealedShadow` itself).** On Android a parent's fading `opacity`
+ * is not applied to its children's `elevation` shadows, so a card spreading a
+ * fixed shadow inside a fade showed its full-strength shadow and outline
+ * first, with the card fading in on top a moment later. Here `elevation`
+ * starts at zero and settles in behind the card instead. Outside any entrance
+ * (no `ShadowRevealProvider` above) it is simply the resting shadow.
+ *
+ * An `Animated.View`, so NativeWind's `className` does not apply — give it
+ * plain `style`, and keep Tailwind-styled content one level in.
+ */
+export function ShadowSurface({
+  shadow,
+  style,
+  children,
+  ...rest
+}: Omit<ViewProps, 'style'> & {
+  shadow: { shadowOpacity: number; elevation: number } & ViewStyle
+  style?: StyleProp<ViewStyle>
+  children?: ReactNode
+}) {
+  const revealed = useRevealedShadow(shadow)
+  return (
+    <Animated.View {...rest} style={[style, revealed]}>
+      {children}
+    </Animated.View>
+  )
 }
 
 /**

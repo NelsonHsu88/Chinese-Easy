@@ -15,7 +15,7 @@
  */
 
 export const guideColors = {
-  background: '#FCFAF5',
+  background: '#FFFFFF',
 
   navy: '#14203A',
   textSecondary: '#536175',

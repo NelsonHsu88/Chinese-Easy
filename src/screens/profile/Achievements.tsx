@@ -16,6 +16,7 @@ import { ProfileSubpage, Medal, MedalSlot, ProgressBar, Tag, useProfileCosmetics
 import { ACHIEVEMENT_ART } from '../../components/profile/art'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from '../../components/profile/tokens'
 import { tickHaptic } from '../../lib/haptics'
+import { ShadowSurface } from '../../components/shadowReveal'
 
 /*
  * Every achievement, earned or not, grouped by what it measures — and the
@@ -84,7 +85,7 @@ export function Achievements() {
     >
       {() => (
         <View style={{ gap: s.xl }}>
-          <View style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.lg, ...profShadow }}>
+          <ShadowSurface shadow={profShadow} style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.lg,  }}>
             <View className="flex-row items-end justify-between">
               <Text className="font-lora-bold" style={{ fontSize: 30, lineHeight: 34, color: c.navy }}>
                 {earnedCount}
@@ -123,7 +124,7 @@ export function Achievements() {
                 )
               })}
             </View>
-          </View>
+          </ShadowSurface>
 
           {CATEGORY_ORDER.map((category) => (
             <View key={category}>
@@ -139,10 +140,9 @@ export function Achievements() {
                   const isPinned = pinned.includes(def.id)
                   const progress = achievementProgress(def, achievementStats)
                   return (
-                    <View
+                    <ShadowSurface shadow={profShadow}
                       key={def.id}
-                      className="flex-row items-center"
-                      style={{
+                      style={[{ flexDirection: 'row', alignItems: 'center' }, {
                         // Every medal is in full colour, so the light green wash is
                         // what marks an achievement as earned.
                         backgroundColor: earned ? c.achievedTile : c.card,
@@ -151,8 +151,7 @@ export function Achievements() {
                         borderColor: isPinned ? c.jade : earned ? c.achievedBorder : c.border,
                         padding: s.md,
                         gap: s.md,
-                        ...profShadow,
-                      }}
+                      }]}
                     >
                       <Medal category={def.category} tier={achievementTier(def)} earned={earned} size={58} ink={isPinned && ink.seal ? ink : undefined} />
                       <View style={{ flex: 1 }}>
@@ -187,7 +186,7 @@ export function Achievements() {
                           </View>
                         )}
                       </View>
-                    </View>
+                    </ShadowSurface>
                   )
                 })}
               </View>
@@ -215,9 +214,8 @@ function CategoryBanner({ category, earned, total, bar }: { category: Achievemen
   const artWidth = Math.min(BANNER_ART_HEIGHT * art.ratio, 136)
   const complete = earned === total
   return (
-    <View
-      className="flex-row items-center"
-      style={{
+    <ShadowSurface shadow={profShadow}
+      style={[{ flexDirection: 'row', alignItems: 'center' }, {
         marginBottom: s.sm,
         backgroundColor: c.card,
         borderRadius: profRadius.large,
@@ -227,8 +225,7 @@ function CategoryBanner({ category, earned, total, bar }: { category: Achievemen
         paddingRight: s.sm,
         paddingVertical: s.sm,
         overflow: 'hidden',
-        ...profShadow,
-      }}
+      }]}
       accessible
       accessibilityRole="header"
       accessibilityLabel={`${CATEGORY_TITLES[category]}. ${earned} of ${total} earned.`}
@@ -245,7 +242,7 @@ function CategoryBanner({ category, earned, total, bar }: { category: Achievemen
         </View>
       </View>
       <Image source={art.source} resizeMode="contain" style={{ width: artWidth, height: BANNER_ART_HEIGHT }} />
-    </View>
+    </ShadowSurface>
   )
 }
 

@@ -11,6 +11,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.chineseeasy.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Chinese Easy uses speech recognition to check whether you pronounced a word correctly.",
         "NSMicrophoneUsageDescription": "Chinese Easy uses the microphone so you can say a word out loud and check your pronunciation."
@@ -21,7 +22,7 @@
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
-        "backgroundColor": "#1fb96d",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -50,6 +51,7 @@
       "expo-audio",
       "@react-native-community/datetimepicker",
       "expo-asset",
+      "expo-apple-authentication",
       [
         "expo-speech-recognition",
         {

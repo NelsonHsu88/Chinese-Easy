@@ -22,7 +22,7 @@ import { chalColors, chalShadow } from '../challenges/tokens'
 export const profColors = {
   ...chalColors,
   /** The page the hero and garden were keyed against (`processProfileArt.mjs`). */
-  background: '#FCFBF6',
+  background: '#FFFFFF',
   card: '#FDFBF7',
   /** Reward tiles and the garden panel: a shade warmer than the card they sit in. */
   tile: '#FAF8F3',

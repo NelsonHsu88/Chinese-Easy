@@ -16,6 +16,7 @@
  */
 
 import { dashColors, dashRadius, dashShadow, dashSpacing } from '../dashboard/tokens'
+import { PAGE_SUBTITLE, PAGE_TITLE } from '../pageHeader'
 
 export const setColors = {
   ...dashColors,
@@ -77,9 +78,9 @@ export const setSpacing = {
  */
 export const setType = {
   /** Lora Bold. "Settings" — the same heading face as Learn, Review and the Dictionary. */
-  title: { fontSize: 38, lineHeight: 44, letterSpacing: -0.6 },
+  title: PAGE_TITLE,
   /** Lora, the line under it. */
-  subtitle: { fontSize: 15, lineHeight: 21 },
+  subtitle: PAGE_SUBTITLE,
   /** Lora Bold — "Study", "Account & App". */
   section: { fontSize: 20, lineHeight: 25, letterSpacing: -0.2 },
   /** Lora Bold, a hub row's own name. */

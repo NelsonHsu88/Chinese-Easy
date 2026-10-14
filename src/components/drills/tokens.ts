@@ -42,8 +42,8 @@ export const drillColors = {
  */
 export const drillSheet = {
   correct: {
-    fill: '#DDF2D5',
-    cloudLine: '#A8D9A0',
+    fill: '#E6F6E0',
+    cloudLine: '#B6E0AF',
     text: onbVerdict.correct.text,
     accent: onbVerdict.correct.accent,
     button: '#4FAE62',

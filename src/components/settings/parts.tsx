@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
 import { ArrowLeft, ChevronRight, Check } from 'lucide-react-native'
 import { useScreenTransition, LeaveProvider } from './transition'
-import { ShadowRevealProvider, useRevealedShadow } from '../shadowReveal'
+import { ShadowRevealProvider, ShadowSurface, useRevealedShadow } from '../shadowReveal'
 import {
   setColors as c,
   setSpacing as s,
@@ -655,15 +655,13 @@ export function Toggle({
         backgroundColor: value ? c.green : c.neutralTrack,
       }}
     >
-      <View
-        className="rounded-full"
-        style={{
+      <ShadowSurface shadow={setShadow}
+        style={[{ borderRadius: 9999 }, {
           width: 24,
           height: 24,
           backgroundColor: '#FFFFFF',
           marginLeft: value ? 20 : 0,
-          ...setShadow,
-        }}
+        }]}
       />
     </Pressable>
   )

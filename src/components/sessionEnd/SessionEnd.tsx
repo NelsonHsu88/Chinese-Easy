@@ -20,6 +20,7 @@ import {
   END_HERO_MIN,
   END_CONTENT_MAX,
 } from './tokens'
+import { ShadowSurface } from '../shadowReveal'
 
 /*
  * The review session's end screen, in its two states — built to the SS930
@@ -181,7 +182,7 @@ function doneSubtitle(mode: SessionMode, reviewed: number): string {
 
 function Panel({ children }: { children: ReactNode }) {
   return (
-    <View
+    <ShadowSurface shadow={endShadow}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -190,11 +191,10 @@ function Panel({ children }: { children: ReactNode }) {
         borderWidth: 1,
         borderColor: c.border,
         paddingVertical: 16,
-        ...endShadow,
       }}
     >
       {children}
-    </View>
+    </ShadowSurface>
   )
 }
 

@@ -32,7 +32,7 @@ import { Caveat_500Medium } from '@expo-google-fonts/caveat/500Medium'
 import { Caveat_700Bold } from '@expo-google-fonts/caveat/700Bold'
 import { Kalam_700Bold } from '@expo-google-fonts/kalam/700Bold'
 /*
- * The eleven CJK faces come from src/assets/fonts, not from their packages.
+ * The seven CJK faces come from src/assets/fonts, not from their packages.
  *
  * They are the same Noto faces, subset to the 13,349 characters this app can
  * actually display — a full Noto CJK face carries ~31,000 glyphs, and the rest
@@ -50,14 +50,10 @@ import { Kalam_700Bold } from '@expo-google-fonts/kalam/700Bold'
 const NotoSerifSC_400Regular = require('../assets/fonts/NotoSerifSC_400Regular.ttf')
 const NotoSerifSC_500Medium = require('../assets/fonts/NotoSerifSC_500Medium.ttf')
 const NotoSerifSC_600SemiBold = require('../assets/fonts/NotoSerifSC_600SemiBold.ttf')
-const NotoSerifSC_700Bold = require('../assets/fonts/NotoSerifSC_700Bold.ttf')
-const NotoSansTC_400Regular = require('../assets/fonts/NotoSansTC_400Regular.ttf')
-const NotoSansTC_500Medium = require('../assets/fonts/NotoSansTC_500Medium.ttf')
 const NotoSansTC_700Bold = require('../assets/fonts/NotoSansTC_700Bold.ttf')
 const NotoSerifTC_400Regular = require('../assets/fonts/NotoSerifTC_400Regular.ttf')
 const NotoSerifTC_500Medium = require('../assets/fonts/NotoSerifTC_500Medium.ttf')
 const NotoSerifTC_600SemiBold = require('../assets/fonts/NotoSerifTC_600SemiBold.ttf')
-const NotoSerifTC_700Bold = require('../assets/fonts/NotoSerifTC_700Bold.ttf')
 import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular'
 import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium'
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold'
@@ -93,10 +89,9 @@ function RootNavigator() {
     Caveat: Caveat_700Bold,
     NotoSerifSC: NotoSerifSC_400Regular,
     NotoSerifTC: NotoSerifTC_400Regular,
-    // Real bold faces — CJK has no synthesisable bold, so `fontWeight` alone
-    // leaves characters looking thin. Used via the `font-hanzi-bold` family.
-    NotoSerifSCBold: NotoSerifSC_700Bold,
-    NotoSerifTCBold: NotoSerifTC_700Bold,
+    // No 700 CJK face is loaded: its one use (PronunciationCheck) takes the
+    // script's SemiBold through `hanziFont`, and dropping SC + TC Bold saved
+    // 11MB. CJK has no synthesisable bold, so a new heavy use needs a face.
 
     // Reading Library / Story Reader faces. RN selects a weight by picking a
     // different family, so each one is registered separately — see the
@@ -121,8 +116,7 @@ function RootNavigator() {
     // Noto *Sans* TC — the writing guide sets its Chinese UI text (part labels,
     // radical examples) in a sans to sit with Nunito, where the reader and
     // dictionary use the serif. A different typeface, so registered separately.
-    NotoSansTC: NotoSansTC_400Regular,
-    NotoSansTCMedium: NotoSansTC_500Medium,
+    // Bold only: nothing set Regular or Medium, which were 7MB together.
     NotoSansTCBold: NotoSansTC_700Bold,
 
     NotoSerifTCMedium: NotoSerifTC_500Medium,
@@ -171,7 +165,10 @@ function RootNavigator() {
 
   if (!ready || !fontsLoaded || !authReady) return null
 
-  if (!onboardingComplete && pathname !== '/onboarding') {
+  /* `/auth/*` is exempt: an emailed confirmation or reset link can arrive
+     mid-onboarding, and redirecting it away would drop the code it carries.
+     Those screens send the learner on to '/' themselves when they're done. */
+  if (!onboardingComplete && pathname !== '/onboarding' && !pathname.startsWith('/auth/')) {
     return <Redirect href="/onboarding" />
   }
 

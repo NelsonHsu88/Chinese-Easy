@@ -23,6 +23,7 @@ import {
   CHAL_CONTENT_MAX,
   CHAL_ART_RATIO,
 } from './tokens'
+import { ShadowSurface } from '../shadowReveal'
 
 /*
  * The Challenges screen's building blocks, built to the Beta 2.1 reference.
@@ -93,9 +94,8 @@ export function StreakCard({ streak, week }: { streak: number; week: WeekDay[] }
   const note = streak === 0 ? 'Start one today!' : doneToday ? 'Keep going!' : 'Study today to keep it.'
 
   return (
-    <View
-      className="flex-row items-center"
-      style={{
+    <ShadowSurface shadow={chalShadow}
+      style={[{ flexDirection: 'row', alignItems: 'center' }, {
         backgroundColor: c.card,
         borderRadius: chalRadius.large,
         borderWidth: 1,
@@ -103,8 +103,7 @@ export function StreakCard({ streak, week }: { streak: number; week: WeekDay[] }
         paddingVertical: s.md + 2,
         paddingLeft: s.md + 2,
         paddingRight: s.sm,
-        ...chalShadow,
-      }}
+      }]}
     >
       <View
         className="flex-row items-center"
@@ -140,7 +139,7 @@ export function StreakCard({ streak, week }: { streak: number; week: WeekDay[] }
           </View>
         ))}
       </View>
-    </View>
+    </ShadowSurface>
   )
 }
 
@@ -294,7 +293,7 @@ export function ChallengeCard({
         state === 'claimed' ? 'Reward claimed.' : `Reward ${xpReward} XP.`
       }`}
     >
-      <View style={{ borderRadius: chalRadius.large, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, ...chalShadow }}>
+      <ShadowSurface shadow={chalShadow} style={{ borderRadius: chalRadius.large, backgroundColor: c.card, borderWidth: 1, borderColor: c.border,  }}>
         <View
           className="flex-row items-center"
           style={{ minHeight: chalCard.minHeight, borderRadius: chalRadius.large - 1, overflow: 'hidden' }}
@@ -338,7 +337,7 @@ export function ChallengeCard({
             <ChevronRight size={20} color={c.navy} strokeWidth={1.8} />
           </View>
         </View>
-      </View>
+      </ShadowSurface>
     </PressableScale>
   )
 }
@@ -462,10 +461,10 @@ export function CompletionRewardCard({
   const cornerWidth = Math.round(width * chalReward.cornerShare)
 
   return (
-    <View
+    <ShadowSurface shadow={chalShadow}
       accessible={state !== 'claimable'}
       accessibilityLabel={`${title}. ${description} ${state === 'claimed' ? 'Reward claimed.' : `Reward ${xpReward} XP.`}`}
-      style={{ borderRadius: chalRadius.large, backgroundColor: c.reward, borderWidth: 1, borderColor: c.border, ...chalShadow }}
+      style={{ borderRadius: chalRadius.large, backgroundColor: c.reward, borderWidth: 1, borderColor: c.border,  }}
     >
       <View className="flex-row items-center" style={{ minHeight: chalReward.minHeight, borderRadius: chalRadius.large - 1, overflow: 'hidden' }}>
         {/* Both shown whole, like the challenge cards' scenes, so neither
@@ -492,6 +491,6 @@ export function CompletionRewardCard({
           <RewardPill xp={xpReward} state={state} onClaim={onClaim} />
         </View>
       </View>
-    </View>
+    </ShadowSurface>
   )
 }

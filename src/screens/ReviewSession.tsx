@@ -34,8 +34,8 @@ import { DrillToast } from '../components/drills/parts'
 import { SessionEnd } from '../components/sessionEnd/SessionEnd'
 import { PronunciationCheck } from '../components/PronunciationCheck'
 import { isSpeechRecognitionAvailable } from '../lib/speechRecognition'
-import { playPositiveChime, playRetryTone } from '../lib/sound'
-import { celebrateHaptic } from '../lib/haptics'
+import { playCorrectSound, playRetryTone } from '../lib/sound'
+import { correctHaptic } from '../lib/haptics'
 import type { Grade, SrsCard, VocabWord } from '../types'
 import { useAds } from '../context/AdsContext'
 
@@ -303,8 +303,14 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
       },
     ],
     // Fades out towards the edges so the two screens don't read as one long
-    // filmstrip being dragged past.
-    opacity: slide.interpolate({ inputRange: [-1, -0.6, 0, 0.6, 1], outputRange: [0, 0.5, 1, 0.5, 0] }),
+    // filmstrip being dragged past. Not on Android: there a parent's opacity
+    // isn't applied to its children's elevation shadows, so every card's
+    // shadow and outline showed at full strength while the card itself was
+    // still half-faded — the shadow arriving before the card. The slide alone
+    // already carries each screen fully off and on.
+    ...(Platform.OS === 'android'
+      ? null
+      : { opacity: slide.interpolate({ inputRange: [-1, -0.6, 0, 0.6, 1], outputRange: [0, 0.5, 1, 0.5, 0] }) }),
   }
 
   const advance = () => {
@@ -393,8 +399,9 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     setStats((s) => ({ reviewed: s.reviewed + 1, correct: s.correct + (grade === 'again' ? 0 : 1) }))
 
     if (grade === 'easy' || grade === 'good') {
-      playPositiveChime()
-      celebrateHaptic()
+      /* The same "ding-ding" as a right answer in the mixed drills, felt on its two strikes. */
+      playCorrectSound()
+      correctHaptic()
       setCelebrateKey((k) => k + 1)
     } else {
       playRetryTone()

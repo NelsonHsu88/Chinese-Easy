@@ -14,6 +14,7 @@ import { ProfileCard } from '../components/settings/cards'
 import { TourTarget } from '../components/tour/targets'
 import { useScreenTransition } from '../components/settings/transition'
 import { setColors as c, setSpacing as s, setType as t, setRadius, SET_CONTENT_MAX } from '../components/settings/tokens'
+import { PAGE_TITLE_TOP } from '../components/pageHeader'
 
 /** Everything this screen can open. Typed so a renamed route fails the build. */
 type SettingsHref =
@@ -113,7 +114,7 @@ export function Settings() {
           The branch is drawn before the title and sits behind it in paint order,
           but it is out of flow, so the title's own box is untouched.
         */}
-        <View style={{ paddingTop: s.lg }}>
+        <View style={{ paddingTop: PAGE_TITLE_TOP }}>
           <SakuraCorner width={column * SAKURA_SHARE} />
           <Text
             className="font-lora-bold"

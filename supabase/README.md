@@ -2,10 +2,10 @@
 
 Version-controlled migrations for account-owned learning progress.
 
-**Applied to the live project (`qaotewdbkwyrphfytomw`) on 2026-08-18.** Both
-migrations are recorded in the remote migration history; all nine tables and
-twelve indexes were verified present afterwards, and a signed-out client is
-refused on every table with `42501 insufficient_privilege`.
+**Applied to the live project (`mbzxrrduymyjufypeqpm`) on 2026-10-13** —
+`0001`–`0006`, all recorded in the remote migration history, and the
+`delete-account` function deployed. (An earlier project, `qaotewdbkwyrphfytomw`,
+had `0001`–`0002` from 2026-08-18; `.env` no longer points at it.)
 
 **Nothing in the app reads or writes these tables yet.** `FEATURES.cloudSync`
 is false, and the app still stores everything locally, namespaced per account
@@ -18,6 +18,8 @@ Chinese Easy behaves today.
 | `migrations/0002_rls.sql` | Row Level Security + 36 policies + role grants |
 | `migrations/0003_constraints.sql` | Length/size bounds, value domains, `search_path` pin |
 | `migrations/0004_row_limits.sql` | Per-account row-count caps (one statement-level trigger per table) |
+| `migrations/0005_lock_rls_auto_enable.sql` | Revokes API access to Supabase's `rls_auto_enable()` (advisor lints 0028/0029) |
+| `migrations/0006_rls_initplan.sql` | Policies use `(select auth.uid())` — evaluated once per query, not per row |
 | `functions/delete-account/` | Edge Function behind Settings → General → Delete account |
 
 `0003` is the answer to a question `0002` does not address. RLS decides *whose*
@@ -109,10 +111,16 @@ list as the record of what they should be.
 
 | Setting | Where | Why it matters |
 |---|---|---|
-| **Redirect allowlist** | Authentication → URL Configuration | `AuthContext` derives its callback from the app scheme and relies entirely on this list to stop another app claiming the redirect. Must contain the `chineseeasy://auth/callback` and `exp://` forms, and the web origin. |
-| **Auth rate limits** | Authentication → Rate Limits | The only brute-force protection the project has — the app owns no rate limiter, and with no server tier there is nowhere to add one. Defaults are sane; the point is to know they are unchanged. |
-| **Leaked password protection** | Authentication → Policies | Free, and the only defence against credential stuffing if email/password is ever wired. Currently dormant: no screen calls `signInWithEmail`. |
-| **Email confirmation** | Authentication → Providers | `signUpWithEmail` already handles the no-session case (`needsEmailConfirmation`), so leaving this on costs nothing and is what makes that branch correct. |
+| **Redirect allowlist** | Authentication → URL Configuration | `AuthContext` derives its callbacks from the app scheme and relies entirely on this list to stop another app claiming the redirect. Two paths: `auth/callback` (Google, email confirmation, email change) and `auth/reset-password` (password reset), each in the `chineseeasy://`, `exp://…/--/` and web-origin forms. A URL missing from the list silently falls back to the Site URL. |
+| **Custom SMTP** | Authentication → Emails → SMTP Settings | Supabase's built-in sender only delivers to the project team's own addresses, a few per hour. Without a real provider (Resend, Postmark, SES) no learner receives a confirmation or reset email. |
+| **Email templates** | Authentication → Emails → Templates | Confirm signup, Reset password and Change email address — branded as Chinese Easy rather than Supabase's defaults. |
+| **Password policy** | Authentication → Providers → Email | Minimum length **8**, matching `lib/passwordRules.ts` — the app's check is a courtesy; anyone can call the API directly. |
+| **Leaked password protection** | Authentication → Attack Protection | Rejects passwords seen in breaches (HaveIBeenPwned). Pro plan. `readableError` already maps the rejection to plain English. |
+| **CAPTCHA** | Authentication → Attack Protection | Turnstile secret key here, site key in `EXPO_PUBLIC_TURNSTILE_SITE_KEY`. **Turn both on together** — with protection on and no site key, every email sign-in, Apple sign-in and reset is refused. |
+| **Secure email change** | Authentication → Providers → Email | On (default): an email change needs confirming from both the old and new address, so a stolen session can't quietly move the account. |
+| **Apple provider** | Authentication → Providers → Apple | Enabled, with the bundle id `com.chineseeasy.app` under Client IDs. Native sign-in uses ID tokens, so no secret key is needed for iOS. |
+| **Auth rate limits** | Authentication → Rate Limits | The only brute-force protection besides CAPTCHA — the app owns no rate limiter. Defaults are sane; the point is to know they are unchanged. |
+| **Email confirmation** | Authentication → Providers | On. `signUpWithEmail` handles the no-session case (`needsEmailConfirmation`) and onboarding says "Check your inbox". |
 | **Test users** | Authentication → Users | The two accounts `scripts/testRls.mjs` signs in as. Give them distinct high-entropy passwords, and prefer a separate project so a test credential grants nothing on production. |
 
 ## Notes on the design

@@ -51,6 +51,7 @@ import {
 } from '../lib/subscription'
 import { useAuth } from './AuthContext'
 import { FEATURES } from '../lib/features'
+import { earnedHskLevel, studiedByLevel } from '../lib/selectors'
 import { getLevelFromXp } from '../lib/progression/levels'
 import { countDailyChallengeClaims, type AchievementStats } from '../lib/progression/achievements'
 import type { ProfileRewardId } from '../lib/progression/profileRewards'
@@ -1167,6 +1168,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     (id: string) => wordByIdInBank(id) ?? customWords.find((w) => w.id === id),
     [customWords],
   )
+
+  /*
+   * Moves the learner up an HSK level once they've studied enough of theirs
+   * (`levelUpTarget`). Only ever up: a level chosen by the placement test or in
+   * Settings is never taken away.
+   */
+  useEffect(() => {
+    if (!ready) return
+    const studied = studiedByLevel(deck, (id) => getWord(id)?.hskLevel)
+    const earned = earnedHskLevel(wordBank, studied, settings.hskLevel)
+    if (earned > settings.hskLevel) setSettings((prev) => ({ ...prev, hskLevel: Math.max(prev.hskLevel, earned) }))
+  }, [ready, deck, wordBank, getWord, settings.hskLevel])
 
   const registerActivity = useCallback(() => {
     setStreakState((prev) => {

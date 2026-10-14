@@ -1,6 +1,6 @@
 import type { AppSettings, LearningGoal, SrsCard, VocabWord, WordCategory } from '../types'
 import { isCardDue } from './srs'
-import { contentRank, isFunctionWord, isTeachableWord } from './definitions'
+import { isFunctionWord, isTeachableWord } from './definitions'
 
 export function orderCards(cards: SrsCard[], order: AppSettings['reviewOrder']): SrsCard[] {
   const copy = [...cards]
@@ -100,15 +100,18 @@ function hasExampleSentence(word: VocabWord): boolean {
  * the queue serves up transliterated names, surnames and bare grammatical notes
  * alongside real vocabulary. See `isTeachableWord`.
  */
-export function newWordsPool(allWords: VocabWord[], deck: SrsCard[], settings: AppSettings): VocabWord[] {
+export function newWordsPool(
+  allWords: VocabWord[],
+  deck: SrsCard[],
+  settings: AppSettings,
+  /** Shuffles near-equal frequencies; omit for a fixed order. See {@link NEW_WORDS_SESSION_SEED}. */
+  seed?: number,
+): VocabWord[] {
   const addedIds = new Set(deck.map((c) => c.wordId))
   const candidates = allWords
-    .filter((w) => !addedIds.has(w.id) && !w.custom)
+    .filter((w) => !addedIds.has(w.id))
     .filter((w) => w.hskLevel >= settings.hskLevel && w.hskLevel <= settings.hskLevel + 1)
-    .filter((w) => characterCount(w) <= NEW_WORD_MAX_CHARS)
-    .filter(hasExampleSentence)
-    .filter(isTeachableWord)
-    .filter((w) => !isFunctionWord(w))
+    .filter(isNewWordCandidate)
 
   /*
    * Order matters as much as membership here. This used to sort by id, which for
@@ -117,20 +120,105 @@ export function newWordsPool(allWords: VocabWord[], deck: SrsCard[], settings: A
    * 一樣… twelve in a row before reaching anything else.
    *
    * The word bank is stored in frequency order (的, 我, 你, 是, 在, 他 …), so a
-   * word's position in it is a genuine measure of how much use it will get. That
-   * is the real answer to "show me words worth learning", and it beats any
-   * heuristic scoring: concrete words first via contentRank, then commonest
-   * first within each band.
+   * word's position in it is a genuine measure of how much use it will get:
+   * within each HSK level, the commonest word comes first.
+   *
+   * With a seed, each word's rank is nudged by up to NEW_WORD_JITTER places, so
+   * words of near-equal frequency arrive in a different order each session
+   * while the commonest still come well before the rare. The nudge hangs off
+   * the word's id, not its position in this list, so adding or skipping a word
+   * never reshuffles the rest.
    */
   const frequencyRank = new Map(allWords.map((w, i) => [w.id, i]))
-  const ordered = candidates.sort(
-    (a, b) =>
-      a.hskLevel - b.hskLevel ||
-      contentRank(a) - contentRank(b) ||
-      (frequencyRank.get(a.id) ?? 0) - (frequencyRank.get(b.id) ?? 0),
-  )
+  const rank = (w: VocabWord) =>
+    (frequencyRank.get(w.id) ?? 0) + (seed === undefined ? 0 : jitter(w.id, seed) * NEW_WORD_JITTER)
+  const ordered = candidates.sort((a, b) => a.hskLevel - b.hskLevel || rank(a) - rank(b))
 
   return spreadHeadCharacters(weightTowardsGoal(ordered, settings.learningGoal))
+}
+
+/** How far, in frequency places, a seeded shuffle may move a word. */
+const NEW_WORD_JITTER = 30
+
+/**
+ * One seed per app launch, shared by every screen that offers new words, so
+ * Home's card and New Words agree on what comes next.
+ */
+export const NEW_WORDS_SESSION_SEED = Math.floor(Math.random() * 2 ** 31)
+
+/** A stable pseudo-random number in [0, 1) for this word under this seed (FNV-1a). */
+function jitter(id: string, seed: number): number {
+  let h = (2166136261 ^ seed) >>> 0
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i)
+    h = Math.imul(h, 16777619) >>> 0
+  }
+  return h / 2 ** 32
+}
+
+/** Whether New Words could ever offer this word, regardless of level or deck. */
+function isNewWordCandidate(w: VocabWord): boolean {
+  return (
+    !w.custom &&
+    characterCount(w) <= NEW_WORD_MAX_CHARS &&
+    hasExampleSentence(w) &&
+    isTeachableWord(w) &&
+    !isFunctionWord(w)
+  )
+}
+
+// --- HSK level progress ---------------------------------------------------------
+
+export const HSK_MAX_LEVEL = 6
+
+/**
+ * The share of a level's teachable words a learner studies before moving up.
+ *
+ * New Words serves each level commonest-first, so 60% of it is the words a
+ * learner will meet most. The other 40% is the long tail, which takes far longer
+ * to learn and gives far less back. Measured against the teachable pool (626 at
+ * HSK 1, 1,264 at HSK 4), not the raw level, because the rest of the level
+ * (names, three-character compounds, words with no example) is never offered.
+ */
+const LEVEL_UP_SHARE = 0.6
+
+const teachableCounts = new WeakMap<VocabWord[], Map<number, number>>()
+
+/** Words studied at a level before the learner moves past it. */
+export function levelUpTarget(allWords: VocabWord[], level: number): number {
+  let counts = teachableCounts.get(allWords)
+  if (!counts) {
+    counts = new Map()
+    for (const w of allWords) if (isNewWordCandidate(w)) counts.set(w.hskLevel, (counts.get(w.hskLevel) ?? 0) + 1)
+    teachableCounts.set(allWords, counts)
+  }
+  return Math.max(1, Math.round((counts.get(level) ?? 0) * LEVEL_UP_SHARE))
+}
+
+/**
+ * Words at each HSK level the learner has *studied*: in the deck and reviewed
+ * at least once. Adding a word isn't learning it, so a learner can't level up
+ * just by adding words.
+ */
+export function studiedByLevel(deck: SrsCard[], wordLevel: (wordId: string) => number | undefined): Map<number, number> {
+  const out = new Map<number, number>()
+  for (const card of deck) {
+    if (card.reps < 1) continue
+    const level = wordLevel(card.wordId)
+    if (level) out.set(level, (out.get(level) ?? 0) + 1)
+  }
+  return out
+}
+
+/**
+ * The level a learner at `level` has earned: one up for each level whose
+ * target they've met, in a row. Never lower than where they are, so a level
+ * set by the placement test or by hand is never taken away.
+ */
+export function earnedHskLevel(allWords: VocabWord[], studied: Map<number, number>, level: number): number {
+  let earned = level
+  while (earned < HSK_MAX_LEVEL && (studied.get(earned) ?? 0) >= levelUpTarget(allWords, earned)) earned++
+  return earned
 }
 
 /** The share of the queue New Words aims to fill from the learner's goal categories. */

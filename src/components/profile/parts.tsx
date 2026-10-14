@@ -40,6 +40,7 @@ import {
   PROF_CONTENT_MAX,
   type ProfileInk,
 } from './tokens'
+import { ShadowSurface } from '../shadowReveal'
 
 /*
  * The Profile family's building blocks, built to the Beta 2.1 reference.
@@ -213,7 +214,7 @@ export function ProfileCard({
    * says what the top half does.
    */
   return (
-    <View style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, ...profShadow }}>
+    <ShadowSurface shadow={profShadow} style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border,  }}>
       <View style={{ borderRadius: profRadius.large - 1, overflow: 'hidden' }}>
         {misty && (
           <View pointerEvents="none" style={{ position: 'absolute', right: 0, top: 0 }}>
@@ -318,7 +319,7 @@ export function ProfileCard({
         </View>
 
       </View>
-    </View>
+    </ShadowSurface>
   )
 }
 
@@ -362,7 +363,7 @@ export function SectionCard({
   children: ReactNode
 }) {
   return (
-    <View style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.md, ...profShadow }}>
+    <ShadowSurface shadow={profShadow} style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.md,  }}>
       <View className="flex-row items-center justify-between" style={{ marginBottom: s.md, paddingLeft: 4 }}>
         <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, color: c.navy, flexShrink: 1 }}>
           {title}
@@ -388,7 +389,7 @@ export function SectionCard({
         )}
       </View>
       {children}
-    </View>
+    </ShadowSurface>
   )
 }
 

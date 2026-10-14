@@ -218,7 +218,7 @@ export function MyWords() {
           >
             My Words
           </Text>
-          <Text className="font-sans" style={{ ...t.subtitle, color: c.slate, marginTop: 2 }}>
+          <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: 4 }}>
             Review and organize your saved vocabulary.
           </Text>
 

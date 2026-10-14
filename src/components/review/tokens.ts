@@ -17,6 +17,7 @@
  */
 
 import { dashColors, dashShadow, dashShadowLifted } from '../dashboard/tokens'
+import { PAGE_SUBTITLE, PAGE_TITLE } from '../pageHeader'
 
 export const revColors = {
   ...dashColors,
@@ -27,7 +28,7 @@ export const revColors = {
    * un-blended watercolour only reconstructs cleanly over the colour it was
    * un-blended from.
    */
-  background: '#FBFAF4',
+  background: '#FFFFFF',
   /** Card surface — likewise the colour the three card scenes were keyed against. */
   card: '#FDFBF8',
   border: '#E7E4DE',
@@ -71,9 +72,9 @@ export const revSpacing = {
  */
 export const revType = {
   /** Lora Bold. "Review" — the strongest thing on the page. */
-  title: { fontSize: 48, lineHeight: 54, letterSpacing: -0.6 },
+  title: PAGE_TITLE,
   /** Lora. The two lines under it. */
-  subtitle: { fontSize: 17, lineHeight: 22 },
+  subtitle: PAGE_SUBTITLE,
   /** Lora. Shifu's line. */
   bubble: { fontSize: 14, lineHeight: 19 },
   /** Nunito ExtraBold / SemiBold, the streak pill. */

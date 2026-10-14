@@ -8,7 +8,7 @@ module.exports = {
       colors: {
         // The warm ivory page background the reference mockups sit on — a shade lighter
         // than the visual system's "Soft Cream" (#FFF5E6), which is used for panels.
-        canvas: '#fdfaf4',
+        canvas: '#ffffff',
         // "Jade Green" from the app's visual-system reference — matches Tailwind's
         // stock green-500 (#22c55e) almost exactly, so the scale below is that palette.
         brand: {
@@ -56,7 +56,7 @@ module.exports = {
         // The governing idea: nothing is pure grey or pure black — even the darkest
         // ink carries a little navy, which is what keeps the screens feeling soft.
         read: {
-          cream: '#fdfbf5',
+          cream: '#ffffff',
           paper: '#fffdf8',
           ink: '#1a1a2e',
           body: '#292936',
@@ -95,7 +95,7 @@ module.exports = {
         // objects, and every one of these values is consumed by a class name.
         dict: {
           // Rice paper. Never pure white — the whole screen reads as paper.
-          page: '#FDFBF5',
+          page: '#FFFFFF',
           // A card is a shade *warmer* than white, and lighter than the page.
           card: '#FFFDFA',
           // Deep ink with a hint of navy, not black.
@@ -133,8 +133,6 @@ module.exports = {
         // "Source Han Serif SC" from the visual system — Noto Serif SC/TC is the same
         // typeface family under Google's naming, so it's the closest real match.
         hanzi: ['NotoSerifSC', 'NotoSerifTC', 'serif'],
-        // CJK glyphs have no synthesisable bold — this maps to the real 700 face.
-        'hanzi-bold': ['NotoSerifSCBold', 'NotoSerifTCBold', 'serif'],
         // "Nunito Rounded" from the visual system.
         sans: ['Nunito', 'sans-serif'],
         // The marker-hand script the reading screens use for their one
@@ -146,8 +144,8 @@ module.exports = {
         handwritten: ['KalamBold', 'cursive'],
 
         // Reading-UI faces. React Native can't synthesise weights the way a browser
-        // can, so every weight is loaded as its own family (same reason
-        // `font-hanzi-bold` exists above) and selected by family, not fontWeight.
+        // can, so every weight is loaded as its own family (CJK most of
+        // all: it has no synthesisable bold) and selected by family, not fontWeight.
         'nunito-semibold': ['NunitoSemiBold', 'sans-serif'],
         'nunito-bold': ['NunitoBold', 'sans-serif'],
         'nunito-extrabold': ['NunitoExtraBold', 'sans-serif'],
@@ -170,8 +168,6 @@ module.exports = {
         // Sans-serif traditional hanzi, for the writing guide — its Chinese UI
         // text sits inside Nunito sentences, where the serif reads as a quote
         // from the reader rather than as part of the sentence.
-        'hanzi-sans': ['NotoSansTC', 'sans-serif'],
-        'hanzi-sans-medium': ['NotoSansTCMedium', 'sans-serif'],
         'hanzi-sans-bold': ['NotoSansTCBold', 'sans-serif'],
         'handwriting-medium': ['CaveatMedium', 'cursive'],
 

@@ -82,7 +82,7 @@ export function StoryReader() {
    */
   const [request, setRequest] = useState<{ page: number; from: number; token: number } | null>(null)
   const [narrationOpen, setNarrationOpen] = useState(false)
-  /** The header's 讀音 dropdown. */
+  /** The header's readings dropdown. */
   const [readingsOpen, setReadingsOpen] = useState(false)
   /** The character being spoken, or -1 for none. This is what the highlight follows. */
   const [spokenChar, setSpokenChar] = useState(-1)
@@ -467,7 +467,7 @@ export function StoryReader() {
 
   const renderPage = (i: number) =>
     i === 0 ? (
-      <TitlePage story={story} width={pageW} height={pageH} script={settings.script} />
+      <TitlePage story={story} width={pageW} height={pageH} script={settings.script} phoneticScript={settings.phoneticScript} />
     ) : i === endPage ? (
       <EndPage story={story} width={pageW} height={pageH} script={settings.script} onDone={leave} />
     ) : (
@@ -569,11 +569,8 @@ export function StoryReader() {
                   alignItems: 'center',
                 }}
               >
-                <Text
-                  className={hanziFont(settings.script, 'semibold')}
-                  style={{ fontSize: 15, color: c.ink, includeFontPadding: false }}
-                >
-                  {forScript('讀音', settings.script)}
+                <Text style={{ fontFamily: 'LoraBold', fontSize: 14, color: c.ink, includeFontPadding: false }}>
+                  {readingsOption(settings.showReadings ? settings.phoneticScript : 'hidden').label}
                 </Text>
                 <ChevronDown size={16} color={c.ink} strokeWidth={2.4} style={{ marginLeft: 4 }} />
               </View>
@@ -792,6 +789,7 @@ export function StoryReader() {
         <BookCover
           story={story}
           script={settings.script}
+          phoneticScript={settings.phoneticScript}
           resuming={resumeAt > 1}
           onBack={leave}
           onStart={() => setBookIndex(Math.max(0, Math.min(resumeAt, screens.length)))}
@@ -804,14 +802,22 @@ export function StoryReader() {
 
 type ReadingsChoice = 'hidden' | PhoneticScript
 
-const READINGS_OPTIONS: { value: ReadingsChoice; label: string; a11y: string }[] = [
-  { value: 'hidden', label: '隱藏', a11y: 'Hide readings' },
-  { value: 'zhuyin', label: '注音', a11y: 'Zhuyin' },
-  { value: 'pinyin', label: '拼音', a11y: 'Pinyin' },
+/*
+ * In English: the learners are English speakers, and 隱藏 / 注音 / 拼音 are
+ * exactly the words they can't read yet. Each choice shows what it looks like.
+ */
+const READINGS_OPTIONS: { value: ReadingsChoice; label: string; hint: string; a11y: string }[] = [
+  { value: 'pinyin', label: 'Pinyin', hint: 'nǐ hǎo', a11y: 'Show pinyin' },
+  { value: 'zhuyin', label: 'Zhuyin', hint: 'ㄋㄧˇ ㄏㄠˇ', a11y: 'Show zhuyin' },
+  { value: 'hidden', label: 'Hide', hint: 'Characters only', a11y: 'Hide readings' },
 ]
 
+function readingsOption(value: ReadingsChoice) {
+  return READINGS_OPTIONS.find((o) => o.value === value) ?? READINGS_OPTIONS[0]
+}
+
 /**
- * The 讀音 dropdown (SS1012): a paper card hung under the pill, one radio row
+ * The readings dropdown (SS1012): a paper card hung under the pill, one radio row
  * per choice. Laid over the whole screen with a transparent backdrop, so a tap
  * anywhere else closes it rather than turning a page or opening a word.
  */
@@ -839,7 +845,7 @@ function ReadingsMenu({
           position: 'absolute',
           top,
           right,
-          width: 150,
+          width: 190,
           padding: 6,
           borderRadius: 14,
           backgroundColor: c.readingsPill,
@@ -864,7 +870,7 @@ function ReadingsMenu({
             >
               <View
                 style={{
-                  height: 44,
+                  height: 52,
                   borderRadius: 10,
                   paddingHorizontal: 12,
                   flexDirection: 'row',
@@ -885,12 +891,10 @@ function ReadingsMenu({
                 >
                   {picked && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.narratorDisc }} />}
                 </View>
-                <Text
-                  className={hanziFont(script, 'medium')}
-                  style={{ marginLeft: 12, fontSize: 15, color: c.ink, includeFontPadding: false }}
-                >
-                  {forScript(o.label, script)}
-                </Text>
+                <View style={{ marginLeft: 12 }}>
+                  <Text style={{ fontFamily: 'LoraBold', fontSize: 15, lineHeight: 19, color: c.ink }}>{o.label}</Text>
+                  <Text style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 16, color: c.inkSoft }}>{o.hint}</Text>
+                </View>
               </View>
             </Pressable>
           )
