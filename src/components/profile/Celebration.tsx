@@ -104,6 +104,8 @@ export function ProgressionCelebration() {
                     router.push(`/profile/achievements?replace=${id}` as Href)
                   } else {
                     close()
+                    // navigate, not push: no second copy if the profile is already on top.
+                    router.navigate('/profile' as Href)
                   }
                 }}
               />

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
-import { View, Text, Image, Pressable, Animated } from 'react-native'
+import { View, Text, Image, Animated } from 'react-native'
 import { Check, ChevronRight, Clock, Star } from 'lucide-react-native'
-import { PressableScale } from '../dashboard/parts'
+import { LiftedFace, PressableScale } from '../dashboard/parts'
 /* The entrance machinery is shared with the Dashboard and Review rather than
    reimplemented — same `Animated`-not-Reanimated constraint, same hidden-tab
    backstop. Only the timings differ, and those live in `chalEntrance`. */
@@ -179,7 +179,8 @@ function DayDot({ day }: { day: WeekDay }) {
 
 /**
  * Daily · Weekly · Special, as three separate pills rather than a segmented
- * track: the active one filled jade, the others a drawn outline.
+ * track: the active one filled jade, the others a drawn outline. Raised like
+ * every other button in the app (`LiftedFace`), so each one sinks when pressed.
  */
 export function ShelfTabs<T extends string>({
   value,
@@ -195,28 +196,24 @@ export function ShelfTabs<T extends string>({
       {options.map((option) => {
         const active = option.value === value
         return (
-          <Pressable
+          <PressableScale
             key={option.value}
             onPress={() => onChange(option.value)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: active }}
-            className="flex-1 active:opacity-70"
+            accessibilityLabel={active ? `${option.label}, selected` : option.label}
+            wrapperStyle={{ flex: 1 }}
           >
-            <View
-              className="items-center justify-center"
-              style={{
-                height: 40,
-                borderRadius: chalRadius.pill,
-                backgroundColor: active ? c.jade : c.card,
-                borderWidth: 1,
-                borderColor: active ? c.jade : c.border,
-              }}
+            <LiftedFace
+              height={40}
+              fill={active ? c.jade : c.card}
+              shoulder={active ? c.jadeShoulder : c.quietShoulder}
+              border={active ? undefined : c.border}
+              shadow={active}
             >
-              <Text className="font-lora" style={{ ...t.tab, color: active ? c.onJade : c.navy }}>
+              <Text className="font-lora-bold" style={{ ...t.tab, color: active ? c.onJade : c.navy }}>
                 {option.label}
               </Text>
-            </View>
-          </Pressable>
+            </LiftedFace>
+          </PressableScale>
         )
       })}
     </View>
@@ -391,13 +388,17 @@ export function RewardPill({
   if (state === 'claimable') {
     return (
       <PressableScale onPress={onClaim} haptic={false} accessibilityLabel={`Claim ${xp} XP`}>
-        <Pill fill={c.jade}>
-          {/* "Claim" alone: the amount was on the gold pill a moment ago, and
-              "Claim +10" is wide enough to truncate the card's title. */}
-          <Text className="font-lora-bold" style={{ ...t.reward, color: c.onJade }}>
-            Claim
-          </Text>
-        </Pill>
+        {/* Raised, like the app's other buttons: it is the one thing on the
+            card asking to be pressed. */}
+        <LiftedFace height={32} fill={c.jade} shoulder={c.jadeShoulder}>
+          <View style={{ minWidth: 60, paddingHorizontal: s.md - 2, alignItems: 'center' }}>
+            {/* "Claim" alone: the amount was on the gold pill a moment ago, and
+                "Claim +10" is wide enough to truncate the card's title. */}
+            <Text className="font-lora-bold" style={{ ...t.reward, color: c.onJade }}>
+              Claim
+            </Text>
+          </View>
+        </LiftedFace>
       </PressableScale>
     )
   }

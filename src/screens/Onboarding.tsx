@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Pressable, Platform, KeyboardAvoidingView, useWindowDimensions } from 'react-native'
-import { router } from 'expo-router'
+import { View, Text, Pressable, Platform, KeyboardAvoidingView, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native'
+import { Redirect, router, useLocalSearchParams } from 'expo-router'
 import {
   Sprout,
   Luggage,
@@ -24,7 +24,7 @@ import {
   Sun,
   Moon,
 } from 'lucide-react-native'
-import { useApp } from '../context/AppContext'
+import { DEFAULT_SETTINGS, useApp } from '../context/AppContext'
 import {
   OnbShell,
   OnbTopBar,
@@ -51,7 +51,7 @@ import { GoogleMark } from '../components/onboarding/GoogleMark'
 import { AppleSignInButton } from '../components/auth/AppleSignInButton'
 import { useCaptcha } from '../components/auth/Captcha'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../lib/passwordRules'
-import { accountFor, useAuth } from '../context/AuthContext'
+import { accountFor, isReturningAccount, useAuth } from '../context/AuthContext'
 import { ArtLayer } from '../components/onboarding/PageArt'
 import { CornerBranch, PageFoot, HeroArt, useClearance } from '../components/onboarding/RedesignArt'
 import { emailError as emailProblem, fieldForServerError, logInErrors, signUpErrors, type AuthField, type FieldErrors } from '../lib/authForm'
@@ -183,15 +183,21 @@ const REMINDER_SLOTS: { id: ReminderSlot; label: string; time: string; display: 
 ]
 
 export function Onboarding() {
-  const { completeOnboarding, updateSettings, settings, onboardingComplete, offerTour } = useApp()
+  const { completeOnboarding, updateSettings, settings, onboardingComplete, placementResult, loadedUserId, offerTour } =
+    useApp()
+  const { retake } = useLocalSearchParams<{ retake?: string }>()
 
   /*
-   * Reaching this screen with onboarding already done means Settings sent the
-   * learner back to retake the placement test. Everything before the test has
-   * an answer already, so it is skipped rather than asked again.
+   * A retake: Settings reopened the placement test, which keeps the old result
+   * while `complete` is false. Everything before the test has an answer
+   * already, so it is skipped rather than asked again.
+   *
+   * Otherwise, reaching this screen with onboarding done means a sign-in just
+   * loaded an account that finished it on this device (the switch to its
+   * storage remounts the screen right here) — that learner goes home.
    */
   /*
-   * Frozen at mount, deliberately, rather than read live.
+   * Both frozen at mount, deliberately, rather than read live.
    *
    * `completeOnboarding` fires from an effect the moment the learner reaches the
    * final page, so `onboardingComplete` is already true by the time they press
@@ -199,7 +205,8 @@ export function Onboarding() {
    * a retake at exactly the moment it mattered — the finish handler took the
    * retake branch, and Shifu's tour never started for the one person it is for.
    */
-  const [isRetake] = useState(onboardingComplete)
+  const [isRetake] = useState(retake === '1' || (!onboardingComplete && placementResult !== undefined))
+  const [alreadyOnboarded] = useState(onboardingComplete && !isRetake)
   const [step, setStep] = useState<Step>(() => (isRetake ? 'test' : 'welcome'))
   /*
    * The script choice, held locally until Continue commits it.
@@ -222,6 +229,8 @@ export function Onboarding() {
   const [googleBusy, setGoogleBusy] = useState(false)
   const [googleError, setGoogleError] = useState<string | null>(null)
   const [authMode, setAuthMode] = useState<AuthMode>('email')
+  /** Arrived by the welcome page's "Log in": the account page offers sign-in, not sign-up. */
+  const [loggingIn, setLoggingIn] = useState(false)
   const viaProvider = authMode === 'provider'
   /* Two widgets, one per page: the page transition mounts both pages at once,
      and one Turnstile token can't serve two forms. Inert until a site key is set. */
@@ -343,7 +352,7 @@ export function Onboarding() {
   const leftFirstPage = useRef(false)
   if (step !== 'welcome') leftFirstPage.current = true
   useEffect(() => {
-    if (isRetake || leftFirstPage.current || !session) return
+    if (isRetake || leftFirstPage.current || !session || isReturningAccount(session.user)) return
     const provider = session.user.app_metadata?.provider
     if (provider !== 'google' && provider !== 'apple') return
     const account = accountFor(session.user)
@@ -353,6 +362,30 @@ export function Onboarding() {
     setHistory(['welcome', 'script', 'goal', 'account'])
     setStep('profile')
   }, [session, isRetake])
+
+  /*
+   * An existing account signed in — by "Log in", or by picking a Google or
+   * Apple account that already exists. Onboarding is for new learners: this one
+   * goes straight home, keeping the level already in settings rather than
+   * sitting the placement test again.
+   *
+   * Waits for `loadedUserId` to match the session, because the sign-in switches
+   * storage to the account's own namespace; writing before that lands would
+   * mark the *guest* as onboarded and then be overwritten by the account's load.
+   */
+  const sentHome = useRef(false)
+  useEffect(() => {
+    if (isRetake || alreadyOnboarded || sentHome.current || !session) return
+    if (loadedUserId !== session.user.id || !isReturningAccount(session.user)) return
+    sentHome.current = true
+    const account = accountFor(session.user)
+    updateSettings({
+      ...(account.name && settings.username === DEFAULT_SETTINGS.username ? { username: account.name } : {}),
+      ...(account.email ? { email: account.email } : {}),
+    })
+    completeOnboarding({ estimatedHsk: settings.hskLevel, completedAt: todayISO() })
+    router.replace('/')
+  }, [session, loadedUserId, isRetake, alreadyOnboarded])
 
   const continueWithApple = async () => {
     if (googleBusy) return
@@ -674,7 +707,20 @@ export function Onboarding() {
               <OnbButton
                 label="Let's get started"
                 icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
-                onPress={() => goTo('script')}
+                onPress={() => {
+                  setLoggingIn(false)
+                  goTo('script')
+                }}
+              />
+              {/* Returning learners skip the questions and go straight to signing in. */}
+              <LogInPrompt
+                question="Already have an account?"
+                action="Log in"
+                onPress={() => {
+                  tapHaptic()
+                  setLoggingIn(true)
+                  goTo('account')
+                }}
               />
               <OnbDots index={DOT_INDEX.welcome!} total={DOT_TOTAL} />
             </View>
@@ -934,9 +980,11 @@ export function Onboarding() {
         <View className="flex-1 justify-center" style={{ paddingBottom: s.huge * 3 }}>
           <OnbRise index={0}>
             <View className="items-center">
-              <OnbTitle>Create your account</OnbTitle>
+              <OnbTitle>{loggingIn ? 'Welcome back' : 'Create your account'}</OnbTitle>
               <OnbBody style={{ marginTop: s.sm }}>
-                {'Join thousands of learners and start\nyour Mandarin journey.'}
+                {loggingIn
+                  ? 'Log in to pick up right where\nyou left off.'
+                  : 'Join thousands of learners and start\nyour Mandarin journey.'}
               </OnbBody>
             </View>
           </OnbRise>
@@ -998,32 +1046,41 @@ export function Onboarding() {
             */}
             <OnbRise index={3}>
               <AuthButton
-                label="Email address"
+                label={loggingIn ? 'Log in with email' : 'Email address'}
                 muted
                 icon={<Mail size={22} color={c.textSecondary} strokeWidth={1.9} />}
                 onPress={() => {
                   tapHaptic()
-                  startEmail('email')
+                  startEmail(loggingIn ? 'login' : 'email')
                 }}
               />
             </OnbRise>
 
             <OnbRise index={4}>
-              <View className="flex-row items-center justify-center" style={{ gap: 6, marginTop: s.lg }}>
-                <Text className="font-nunito-semibold" style={{ fontSize: 14.5, color: c.textSecondary }}>
-                  Already have an account?
-                </Text>
-                {/*
-                  Real log-in: address and password. The name comes back from
-                  the account (stored at sign-up), so a returning learner isn't
-                  greeted as "Learner".
-                */}
-                <Pressable onPress={() => startEmail('login')} accessibilityRole="button" hitSlop={10}>
-                  <Text className="font-lora-bold" style={{ fontSize: 15.5, color: c.greenDark }}>
-                    Log in
-                  </Text>
-                </Pressable>
-              </View>
+              {/*
+                Real log-in: address and password. The name comes back from
+                the account (stored at sign-up), so a returning learner isn't
+                greeted as "Learner". Arrived to log in, the way out is the
+                other way round: new learners start onboarding from the top.
+              */}
+              {loggingIn ? (
+                <LogInPrompt
+                  question="New here?"
+                  action="Get started"
+                  style={{ marginTop: s.lg }}
+                  onPress={() => {
+                    setLoggingIn(false)
+                    goTo('script')
+                  }}
+                />
+              ) : (
+                <LogInPrompt
+                  question="Already have an account?"
+                  action="Log in"
+                  style={{ marginTop: s.lg }}
+                  onPress={() => startEmail('login')}
+                />
+              )}
             </OnbRise>
           </View>
         </View>
@@ -1394,7 +1451,7 @@ export function Onboarding() {
               onPress={settled ? nextQuestion : confirm}
               disabled={!settled && picked === null}
             />
-            <Text className="text-center font-nunito-semibold" style={{ ...t.footnote, color: c.textMuted }}>
+            <Text className="text-center font-nunito-bold" style={{ ...t.footnote, color: c.textMuted }}>
               Question {questionIndex + 1} of {questions.length}
             </Text>
           </View>
@@ -1449,7 +1506,7 @@ export function Onboarding() {
                   <Volume2 size={32} color={c.greenDark} strokeWidth={2.2} />
                 </Pressable>
                 <Text
-                  className="font-nunito-semibold"
+                  className="font-nunito-bold"
                   style={{ ...t.footnote, color: c.textMuted, marginTop: s.sm }}
                 >
                   Tap to hear it again
@@ -1472,7 +1529,7 @@ export function Onboarding() {
                 </Text>
                 {question.translation && (
                   <Text
-                    className="text-center font-nunito-semibold"
+                    className="text-center font-nunito-bold"
                     style={{ ...t.bodyClassic, color: c.textSecondary, marginTop: s.sm }}
                   >
                     {question.translation}
@@ -1488,7 +1545,7 @@ export function Onboarding() {
                   {displayWord(question.word, settings.script)}
                 </Text>
                 <Text
-                  className="text-center font-nunito-semibold"
+                  className="text-center font-nunito-bold"
                   style={{ fontSize: 15, color: c.textSecondary, marginTop: 2 }}
                 >
                   {displayPinyin(question.word, settings.phoneticScript)}
@@ -1540,7 +1597,7 @@ export function Onboarding() {
                   >
                     <Radio selected={chosen || showRight} size={20} />
                     <Text
-                      className={listening ? 'flex-1 font-hanzi-sans-bold' : 'flex-1 font-nunito-semibold'}
+                      className={listening ? 'flex-1 font-hanzi-sans-bold' : 'flex-1 font-nunito-bold'}
                       style={{
                         fontSize: listening ? 22 : 14,
                         lineHeight: listening ? 32 : undefined,
@@ -1643,6 +1700,8 @@ export function Onboarding() {
   )
   }
 
+  if (alreadyOnboarded) return <Redirect href="/" />
+
   return (
     <>
       <OnbPageTransition pageKey={step} direction={direction}>
@@ -1662,8 +1721,8 @@ export function Onboarding() {
           onContinue={nextQuestion}
           continueLabel={questionIndex + 1 >= questions.length ? 'See my level' : 'Continue'}
           detail={
-            <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 20, color: listenColors.slate }}>
-              <Text className={hanziFont(settings.script, 'medium')} style={{ fontSize: 18, color: listenColors.ink }}>
+            <Text numberOfLines={2} style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 20, color: listenColors.slate }}>
+              <Text className={hanziFont(settings.script, 'semibold')} style={{ fontSize: 18, color: listenColors.ink }}>
                 {displayWord(question.word, settings.script)}
               </Text>
               {'  '}— {shortGloss(question.word)}
@@ -1686,6 +1745,32 @@ export function Onboarding() {
 
 /** The height of the app mark the welcome page once opened on; its room is kept. */
 const WELCOME_MARK_ROOM = 70
+
+/** "Already have an account? Log in" — a line of text with one link in it. */
+function LogInPrompt({
+  question,
+  action,
+  onPress,
+  style,
+}: {
+  question: string
+  action: string
+  onPress: () => void
+  style?: StyleProp<ViewStyle>
+}) {
+  return (
+    <View className="flex-row items-center justify-center" style={[{ gap: 6 }, style]}>
+      <Text className="font-nunito-semibold" style={{ fontSize: 14.5, color: c.textSecondary }}>
+        {question}
+      </Text>
+      <Pressable onPress={onPress} accessibilityRole="button" hitSlop={10}>
+        <Text className="font-lora-bold" style={{ fontSize: 15.5, color: c.greenDark }}>
+          {action}
+        </Text>
+      </Pressable>
+    </View>
+  )
+}
 
 function RowRule({ tint = c.hairline }: { tint?: string }) {
   return <View style={{ height: 1, backgroundColor: tint }} />

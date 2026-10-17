@@ -1,5 +1,5 @@
 import '../global.css'
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Stack, Redirect, usePathname } from 'expo-router'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -69,8 +69,72 @@ import { ScreenTourOverlay } from '../components/tour/ScreenTourOverlay'
 import { ProgressionCelebration } from '../components/profile/Celebration'
 import { useSubscribePrompt } from '../components/subscription/useSubscribePrompt'
 import { configureAudioSession } from '../lib/sound'
+import { LaunchIntro } from '../components/launch/LaunchIntro'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
+
+/* Shared by the navigator and the launch intro, which reveals the app only
+   once every face is in — the navigator draws nothing until then. */
+const APP_FONTS = {
+  Nunito: Nunito_400Regular,
+  // Only the bold face is loaded — the greeting is the sole place it's used.
+  Caveat: Caveat_700Bold,
+  NotoSerifSC: NotoSerifSC_400Regular,
+  NotoSerifTC: NotoSerifTC_400Regular,
+  // No 700 CJK face is loaded: its one use (PronunciationCheck) takes the
+  // script's SemiBold through `hanziFont`, and dropping SC + TC Bold saved
+  // 11MB. CJK has no synthesisable bold, so a new heavy use needs a face.
+
+  // Reading Library / Story Reader faces. RN selects a weight by picking a
+  // different family, so each one is registered separately — see the
+  // `fontFamily` block in tailwind.config.js for the class names these back.
+  NunitoSemiBold: Nunito_600SemiBold,
+  NunitoBold: Nunito_700Bold,
+  // The Challenges screen's headings. Its spec asks for ExtraBold on titles
+  // and Black nowhere — 900 is heavy enough that everything important stops
+  // looking important.
+  NunitoExtraBold: Nunito_800ExtraBold,
+  NunitoBlack: Nunito_900Black,
+  Inter: Inter_400Regular,
+  InterMedium: Inter_500Medium,
+  InterSemiBold: Inter_600SemiBold,
+  InterBold: Inter_700Bold,
+  Lora: Lora_400Regular,
+  // The dictionary's editorial headings ("Dictionary", "Recent", "Explore")
+  // and its one italic aside. A real bold, because a synthesised one does not
+  // exist on native.
+  LoraItalic: Lora_400Regular_Italic,
+  LoraBold: Lora_700Bold,
+  // Noto *Sans* TC — the writing guide sets its Chinese UI text (part labels,
+  // radical examples) in a sans to sit with Nunito, where the reader and
+  // dictionary use the serif. A different typeface, so registered separately.
+  // Bold only: nothing set Regular or Medium, which were 7MB together.
+  NotoSansTCBold: NotoSansTC_700Bold,
+
+  NotoSerifTCMedium: NotoSerifTC_500Medium,
+  NotoSerifTCSemiBold: NotoSerifTC_600SemiBold,
+  // The simplified counterparts, for surfaces that follow `settings.script`
+  // rather than always rendering traditional — see `hanziFont` in lib/hanzi.ts.
+  // Medium is the story reader's prose weight, mirroring NotoSerifTCMedium.
+  NotoSerifSCMedium: NotoSerifSC_500Medium,
+  NotoSerifSCSemiBold: NotoSerifSC_600SemiBold,
+  CaveatMedium: Caveat_500Medium,
+  /*
+   * The Dashboard's handwritten learner name. Kalam rather than the Caveat
+   * above: Caveat is a connected, slanted script, where the reference's name
+   * is an upright marker hand with even stroke weight — at 33pt over a gold
+   * brush stroke the difference is the whole character of the greeting.
+   */
+  KalamBold: Kalam_700Bold,
+
+  // Dictionary faces. Nunito *Sans*, not the rounded Nunito the rest of the app
+  // uses — a separate typeface, registered per weight for the same reason as
+  // everything above.
+  NunitoSans: NunitoSans_400Regular,
+  NunitoSansSemiBold: NunitoSans_600SemiBold,
+  NunitoSansBold: NunitoSans_700Bold,
+  NunitoSansExtraBold: NunitoSans_800ExtraBold,
+}
 
 function RootNavigator() {
   const { ready, onboardingComplete } = useApp()
@@ -83,66 +147,7 @@ function RootNavigator() {
    */
   const { ready: authReady } = useAuth()
   const pathname = usePathname()
-  const [fontsLoaded] = useFonts({
-    Nunito: Nunito_400Regular,
-    // Only the bold face is loaded — the greeting is the sole place it's used.
-    Caveat: Caveat_700Bold,
-    NotoSerifSC: NotoSerifSC_400Regular,
-    NotoSerifTC: NotoSerifTC_400Regular,
-    // No 700 CJK face is loaded: its one use (PronunciationCheck) takes the
-    // script's SemiBold through `hanziFont`, and dropping SC + TC Bold saved
-    // 11MB. CJK has no synthesisable bold, so a new heavy use needs a face.
-
-    // Reading Library / Story Reader faces. RN selects a weight by picking a
-    // different family, so each one is registered separately — see the
-    // `fontFamily` block in tailwind.config.js for the class names these back.
-    NunitoSemiBold: Nunito_600SemiBold,
-    NunitoBold: Nunito_700Bold,
-    // The Challenges screen's headings. Its spec asks for ExtraBold on titles
-    // and Black nowhere — 900 is heavy enough that everything important stops
-    // looking important.
-    NunitoExtraBold: Nunito_800ExtraBold,
-    NunitoBlack: Nunito_900Black,
-    Inter: Inter_400Regular,
-    InterMedium: Inter_500Medium,
-    InterSemiBold: Inter_600SemiBold,
-    InterBold: Inter_700Bold,
-    Lora: Lora_400Regular,
-    // The dictionary's editorial headings ("Dictionary", "Recent", "Explore")
-    // and its one italic aside. A real bold, because a synthesised one does not
-    // exist on native.
-    LoraItalic: Lora_400Regular_Italic,
-    LoraBold: Lora_700Bold,
-    // Noto *Sans* TC — the writing guide sets its Chinese UI text (part labels,
-    // radical examples) in a sans to sit with Nunito, where the reader and
-    // dictionary use the serif. A different typeface, so registered separately.
-    // Bold only: nothing set Regular or Medium, which were 7MB together.
-    NotoSansTCBold: NotoSansTC_700Bold,
-
-    NotoSerifTCMedium: NotoSerifTC_500Medium,
-    NotoSerifTCSemiBold: NotoSerifTC_600SemiBold,
-    // The simplified counterparts, for surfaces that follow `settings.script`
-    // rather than always rendering traditional — see `hanziFont` in lib/hanzi.ts.
-    // Medium is the story reader's prose weight, mirroring NotoSerifTCMedium.
-    NotoSerifSCMedium: NotoSerifSC_500Medium,
-    NotoSerifSCSemiBold: NotoSerifSC_600SemiBold,
-    CaveatMedium: Caveat_500Medium,
-    /*
-     * The Dashboard's handwritten learner name. Kalam rather than the Caveat
-     * above: Caveat is a connected, slanted script, where the reference's name
-     * is an upright marker hand with even stroke weight — at 33pt over a gold
-     * brush stroke the difference is the whole character of the greeting.
-     */
-    KalamBold: Kalam_700Bold,
-
-    // Dictionary faces. Nunito *Sans*, not the rounded Nunito the rest of the app
-    // uses — a separate typeface, registered per weight for the same reason as
-    // everything above.
-    NunitoSans: NunitoSans_400Regular,
-    NunitoSansSemiBold: NunitoSans_600SemiBold,
-    NunitoSansBold: NunitoSans_700Bold,
-    NunitoSansExtraBold: NunitoSans_800ExtraBold,
-  })
+  const [fontsLoaded] = useFonts(APP_FONTS)
 
   // One-time audio session setup. Without it, iOS mutes every effect whenever
   // the ring/silent switch is on.
@@ -159,11 +164,13 @@ function RootNavigator() {
    */
   useSubscribePrompt()
 
-  useEffect(() => {
-    if (ready && fontsLoaded && authReady) SplashScreen.hideAsync().catch(() => {})
-  }, [ready, fontsLoaded, authReady])
+  const appReady = ready && fontsLoaded && authReady
 
-  if (!ready || !fontsLoaded || !authReady) return null
+  useEffect(() => {
+    if (appReady) SplashScreen.hideAsync().catch(() => {})
+  }, [appReady])
+
+  if (!appReady) return null
 
   /* `/auth/*` is exempt: an emailed confirmation or reset link can arrive
      mid-onboarding, and redirecting it away would drop the code it carries.
@@ -193,6 +200,34 @@ function RootNavigator() {
   )
 }
 
+/*
+ * The launch intro, beside the navigator rather than inside it: the router
+ * remounts the root navigator's subtree when it first gets a navigator to
+ * show, which restarted the intro the moment the app finished loading. Out
+ * here it plays once, takes over from the native splash (plain white, like
+ * its first frame) as soon as it can draw, and covers the app while it
+ * hydrates. RootNavigator's hide on `appReady` stays as the fallback.
+ */
+function LaunchLayer() {
+  const { ready } = useApp()
+  const { ready: authReady } = useAuth()
+  // The same set as RootNavigator's; expo-font loads each face once.
+  const [fontsLoaded] = useFonts(APP_FONTS)
+  const [done, setDone] = useState(false)
+  const hideSplash = useCallback(() => {
+    SplashScreen.hideAsync().catch(() => {})
+  }, [])
+  const end = useCallback(() => setDone(true), [])
+  if (done) return null
+  return (
+    <LaunchIntro
+      appReady={ready && authReady && fontsLoaded}
+      onVisible={hideSplash}
+      onDone={end}
+    />
+  )
+}
+
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -214,6 +249,8 @@ export default function RootLayout() {
             <AdsProvider>
               <RootNavigator />
             </AdsProvider>
+            {/* Last, so it covers everything until its wave has passed. */}
+            <LaunchLayer />
           </AppProvider>
         </AuthProvider>
       </SafeAreaProvider>

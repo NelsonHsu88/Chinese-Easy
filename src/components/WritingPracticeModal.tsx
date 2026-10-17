@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { View, Text, Pressable, Modal as RNModal } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { X, RotateCw, Lightbulb, Volume2 } from 'lucide-react-native'
+import { X, RotateCw, PlayCircle, PenLine, Volume2 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
 import { HanziStage } from './HanziStage'
@@ -19,7 +19,7 @@ import { AnswerSheet } from './drills/parts'
  * Tailwind config: each shoulder a step or two below its face.
  */
 const RAISED = {
-  hint: { fill: '#d6fae3', shoulder: '#9fe2b8' },
+  strokeOrder: { fill: '#d6fae3', shoulder: '#9fe2b8' },
 } as const
 
 interface Props {
@@ -48,6 +48,9 @@ interface Props {
  */
 const PLAYBACK_DELAY_MS = 900
 
+/** How long the last stroke of "Stroke order" stays up before the pad clears for writing. */
+const STROKE_ORDER_HOLD_MS = 700
+
 /** White circular speaker chip, as used in the reference design. */
 function SpeakChip({ text, size = 22, dim = 48 }: { text: string; size?: number; dim?: number }) {
   return (
@@ -68,12 +71,17 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
   const [attempt, setAttempt] = useState(0)
   /** Bumped to clear only the character currently being written — see `resetActive`. */
   const [resetActiveKey, setResetActiveKey] = useState(0)
-  const [hintKey, setHintKey] = useState(0)
   const [strokesDone, setStrokesDone] = useState(0)
   const [totalStrokes, setTotalStrokes] = useState(0)
   const [finished, setFinished] = useState(false)
   /** The stage has switched from the learner's quiz to the stroke-order demo. */
   const [playing, setPlaying] = useState(false)
+  /**
+   * "Stroke order" is playing mid-practice: the pad shows the animation in
+   * place of the quiz, then hands back a clean pad to write on. Separate from
+   * `playing`, which is the replay after the word is finished.
+   */
+  const [watching, setWatching] = useState(false)
   /**
    * Which characters in the word are already written — the progress
    * indicator's whole reason for existing. Indexes into `characters` below,
@@ -172,6 +180,25 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
     setAttempt((n) => n + 1)
   }
 
+  /** Back to an empty pad after watching the stroke order — the word starts over. */
+  const stopWatching = () => {
+    setWatching(false)
+    setStrokesDone(0)
+    setCompletedChars(new Set())
+  }
+
+  useEffect(() => {
+    if (!watching) return
+    // Backstop: if the animation never reports its end, the pad still comes back.
+    const timer = setTimeout(stopWatching, 6000 * Math.max(1, characters.length))
+    return () => clearTimeout(timer)
+  }, [watching, characters.length])
+
+  const handleDemoComplete = () => {
+    if (!watching) return
+    setTimeout(stopWatching, STROKE_ORDER_HOLD_MS)
+  }
+
   /**
    * "Reset" during practice — clears only the character currently being
    * written. `HanziStage` is what actually knows which one that is, so this
@@ -245,19 +272,19 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
         >
           <HanziStage
             character={text}
-            mode={playing ? 'demo' : 'quiz'}
+            mode={playing || watching ? 'demo' : 'quiz'}
             // Slow, like the review flashcard's playback: it is watched once,
             // at a glance, rather than studied.
             speed={playing ? 'slow' : 'normal'}
             showOutline
             showGuides
-            hintKey={hintKey}
-            resetKey={`${attempt}-${playing}`}
+            resetKey={`${attempt}-${playing}-${watching}`}
             resetActiveKey={resetActiveKey}
             holdCharacterOnComplete
             onQuizProgress={handleProgress}
             onCharacterComplete={handleCharacterComplete}
             onQuizComplete={handleComplete}
+            onDemoComplete={handleDemoComplete}
           />
         </View>
 
@@ -275,7 +302,7 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
           </View>
         ) : null}
 
-        {/* Reset and Hint keep their place once the word is written — hidden
+        {/* Reset and Stroke order keep their place once the word is written — hidden
             under the answer sheet rather than removed, so nothing above moves. */}
         <View
           pointerEvents={finished ? 'none' : 'auto'}
@@ -284,24 +311,31 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
           style={{ opacity: finished ? 0 : 1 }}
         >
           <View className="flex-row items-center justify-between px-5 pb-4 pt-4">
-            <Pressable onPress={resetActive} className="flex-row items-center gap-2.5 p-1 active:opacity-60">
+            <Pressable
+              onPress={watching ? undefined : resetActive}
+              style={{ opacity: watching ? 0.4 : 1 }}
+              className="flex-row items-center gap-2.5 p-1 active:opacity-60"
+            >
               <RotateCw size={22} color="#94a3b8" strokeWidth={2.5} />
               <Text className="text-[18px] font-semibold text-slate-400">Reset</Text>
             </Pressable>
+            {/* Plays the whole word's stroke order on the pad, then clears it to
+                write; pressed while playing, it goes straight back to writing. */}
             <PressableScale
               onPress={() => {
                 playTapSound()
                 tickHaptic()
-                setHintKey((n) => n + 1)
+                if (watching) stopWatching()
+                else setWatching(true)
               }}
               haptic={false}
-              accessibilityLabel="Hint"
+              accessibilityLabel={watching ? 'Back to writing' : 'View stroke order'}
             >
-              <LiftedFace height={44} fill={RAISED.hint.fill} shoulder={RAISED.hint.shoulder} shadow={false}>
+              <LiftedFace height={44} fill={RAISED.strokeOrder.fill} shoulder={RAISED.strokeOrder.shoulder} shadow={false}>
                 {/* The face is content-sized, so the pill's padding lives here. */}
                 <View className="flex-row items-center" style={{ gap: 8, paddingHorizontal: 20 }}>
-                  <Lightbulb size={20} color="#16a34a" />
-                  <Text className="text-[18px] font-bold text-brand-700">Hint</Text>
+                  {watching ? <PenLine size={20} color="#16a34a" /> : <PlayCircle size={20} color="#16a34a" />}
+                  <Text className="text-[18px] font-bold text-brand-700">{watching ? 'Write it' : 'Stroke order'}</Text>
                 </View>
               </LiftedFace>
             </PressableScale>

@@ -60,6 +60,11 @@ export interface RateEstimator {
    * guessed at.
    */
   observeRun(chars: number, ms: number): void
+  /**
+   * One measured stretch of speech, pauses already taken out. Blended into the
+   * estimate rather than replacing it, so one odd interval can't swing it.
+   */
+  sample(chars: number, seconds: number): void
   /** The current best guess, always within the bounds above. */
   perSecond(): number
 }
@@ -99,6 +104,13 @@ export function createRateEstimator(initial = DEFAULT_CHARS_PER_SECOND): RateEst
       if (seconds >= MIN_WINDOW && chars > 0) {
         estimate = clamp(chars / seconds, MIN_CHARS_PER_SECOND, MAX_CHARS_PER_SECOND)
       }
+    },
+    sample(chars, seconds) {
+      if (seconds <= 0 || chars <= 0) return
+      const measured = clamp(chars / seconds, MIN_CHARS_PER_SECOND, MAX_CHARS_PER_SECOND)
+      // Longer stretches are better measurements and count for more.
+      const weight = clamp(seconds / 3, 0.15, 0.6)
+      estimate = clamp(estimate + (measured - estimate) * weight, MIN_CHARS_PER_SECOND, MAX_CHARS_PER_SECOND)
     },
     perSecond() {
       return estimate
@@ -144,6 +156,135 @@ export function clauseEnd(text: string, from: number): number {
     if (CLAUSE_BREAK.test(text[i])) return i - 1
   }
   return Math.max(0, text.length - 1)
+}
+
+/*
+ * How long a voice rests at punctuation, in seconds. A prediction that reads
+ * straight through a comma runs ahead of a voice that pauses there, then has to
+ * wait for it — which is what made the line stall and then lurch.
+ */
+const CLAUSE_PAUSE = 0.22
+const SENTENCE_PAUSE = 0.4
+const SENTENCE_END = /[。！？!?…]/
+
+function pauseAt(ch: string): number {
+  if (SENTENCE_END.test(ch)) return SENTENCE_PAUSE
+  if (CLAUSE_BREAK.test(ch)) return CLAUSE_PAUSE
+  return 0
+}
+
+/** One before the next sentence-ending mark after `from`, or the end of the text. */
+export function sentenceEnd(text: string, from: number): number {
+  for (let i = Math.max(0, from) + 1; i < text.length; i++) {
+    if (SENTENCE_END.test(text[i])) return i - 1
+  }
+  return Math.max(0, text.length - 1)
+}
+
+/**
+ * How far a voice gets in `seconds` from `from`, paying each character's share
+ * of the rate and resting at punctuation.
+ */
+function advance(text: string, from: number, seconds: number, charsPerSecond: number): number {
+  const perChar = 1 / charsPerSecond
+  let at = from
+  let left = seconds
+  while (at < text.length - 1) {
+    const cost = perChar + pauseAt(text[at])
+    if (left < cost) break
+    left -= cost
+    at++
+  }
+  return at
+}
+
+/** Seconds a voice spends on `text[from..to)`, the same way `advance` counts them. */
+function spokenSeconds(text: string, from: number, to: number, charsPerSecond: number): { speech: number; pauses: number } {
+  let pauses = 0
+  for (let i = from; i < to; i++) pauses += pauseAt(text[i])
+  return { speech: (to - from) / charsPerSecond, pauses }
+}
+
+/**
+ * How far a boundary may fall behind the line before the line goes back to it.
+ * Smaller corrections are absorbed by holding still until the voice catches
+ * up; the line never visibly steps backwards over a word or two.
+ */
+const BACKTRACK_TOLERANCE = 6
+
+export interface NarrationFollower {
+  /** The voice has actually started (the engine's start event). */
+  started(now?: number): void
+  /** A boundary event, as an absolute character offset into the page text. */
+  boundary(charIndex: number, now?: number): void
+  /** Where to draw the line now. Never moves backwards except to a boundary well behind it. */
+  position(now?: number): number
+}
+
+/**
+ * Follows a voice through one run of text: from `from` to the end of the page.
+ *
+ * Between boundary events the line is predicted from the clock, with the pauses
+ * a voice takes at punctuation, at a rate learned from the boundaries themselves
+ * (fed back into `rate` so skips use it too). Engines differ in how often they
+ * report — per word on iOS, per clause or per sentence on Android voices — so
+ * the prediction is held at the end of whichever unit the voice has been seen
+ * to report in, rather than always at the next comma: capped at a comma, a
+ * once-a-sentence voice left the line parked mid-sentence and then jumping.
+ * Nothing moves until the voice starts, since engines take a moment to begin.
+ */
+export function createNarrationFollower(
+  text: string,
+  from: number,
+  rate: RateEstimator,
+  now: number = Date.now(),
+): NarrationFollower {
+  let anchor = from
+  let anchorAt = now
+  let speaking = false
+  let shown = from
+  let lastBoundary = -1
+  let lastBoundaryAt = 0
+  /** Whether boundaries arrive at least once per clause; null until one interval has been seen. */
+  let perClause: boolean | null = null
+  let boundaries = 0
+
+  return {
+    started(at = Date.now()) {
+      if (speaking) return
+      speaking = true
+      anchorAt = at
+    },
+    boundary(charIndex, at = Date.now()) {
+      speaking = true
+      boundaries++
+      if (lastBoundary >= 0 && charIndex > lastBoundary) {
+        const span = text.slice(lastBoundary, charIndex)
+        const crossedClause = [...span.slice(1)].some((ch) => CLAUSE_BREAK.test(ch))
+        // Once a voice has skipped a clause between reports, it is a coarse reporter.
+        perClause = perClause === false ? false : !crossedClause
+        const elapsed = (at - lastBoundaryAt) / 1000
+        const { pauses } = spokenSeconds(text, lastBoundary, charIndex, rate.perSecond())
+        const speech = elapsed - pauses
+        if (speech > 0.15) rate.sample(charIndex - lastBoundary, speech)
+      }
+      lastBoundary = charIndex
+      lastBoundaryAt = at
+      anchor = charIndex
+      anchorAt = at
+      if (charIndex > shown || shown - charIndex > BACKTRACK_TOLERANCE) shown = charIndex
+    },
+    position(at = Date.now()) {
+      if (!speaking) return shown
+      let target = advance(text, anchor, (at - anchorAt) / 1000, rate.perSecond())
+      if (boundaries > 0) {
+        const cap = perClause === false ? sentenceEnd(text, anchor) : clauseEnd(text, anchor)
+        target = Math.min(target, cap)
+      }
+      if (target > shown) shown = target
+      return shown
+    },
+  }
 }
 
 /** Seconds, as m:ss. */

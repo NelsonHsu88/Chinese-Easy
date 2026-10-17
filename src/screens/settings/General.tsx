@@ -291,7 +291,8 @@ function AccountSection() {
       setStage('confirm')
       return
     }
-    /* Signed out now; the root layout decides where a guest belongs. */
+    /* Signed out with a fresh guest, so the root layout redirects to the
+       first page of onboarding. */
     router.replace('/')
   }
 

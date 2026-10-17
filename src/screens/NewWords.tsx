@@ -19,7 +19,7 @@ import type { ReactNode } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
 import { useApp, type NewWordSeen } from '../context/AppContext'
 import { newWordsPool, NEW_WORDS_SESSION_SEED } from '../lib/selectors'
-import { displayWord, displayExample, displayPinyin, hanziFont } from '../lib/hanzi'
+import { displayWord, displayExample, displayPinyin } from '../lib/hanzi'
 import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { FlexGap } from '../components/FlexGap'
 import { revealedShadow, SHADOW_EASING, shadowDuration } from '../components/shadowReveal'
@@ -967,7 +967,22 @@ function WordCard({
 
       {example ? (
         <View style={{ marginHorizontal: 22, paddingTop: 16, borderTopWidth: 1, borderTopColor: c.border }}>
-          <Text style={{ fontFamily: 'NunitoBold', fontSize: 16, lineHeight: 21, color: c.navy, marginBottom: 8 }}>Example</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <Text style={{ fontFamily: 'NunitoBold', fontSize: 16, lineHeight: 21, color: c.navy }}>Example</Text>
+            {/* Reads the sentence aloud. Claims its press like the word's
+                speaker, so it doesn't also open writing practice. */}
+            <PressFace
+              onPress={() => {
+                claim()
+                tapHaptic()
+                speak(example)
+              }}
+              face={{ padding: 4 }}
+              accessibilityLabel="Play the example sentence"
+            >
+              <Volume2 size={20} color={c.green} fill={c.green} strokeWidth={2} />
+            </PressFace>
+          </View>
           {/* Every sentence in the app goes through `ReadingSentence`: a reading
               under each word, in the learner's own phonetic script, with the
               word being learned tinted inside it. */}
@@ -1055,23 +1070,57 @@ function RecentWordsSheet({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable className="flex-1 justify-end bg-black/40" onPress={onClose}>
+      {/* No dimmed backdrop, by request: the page stays as it is behind the
+          sheet, and a tap on it still closes the sheet. The sheet's own border
+          and lifted shadow are what set it apart from the page. */}
+      <Pressable style={{ flex: 1, justifyContent: 'flex-end' }} onPress={onClose}>
         {/* Stops a tap inside the sheet from closing it — the backdrop is the
             dismiss target, and without this every row press dismisses too. */}
-        <Pressable onPress={() => {}} className="max-h-[80%] rounded-t-3xl bg-white dark:bg-slate-900">
-          <View className="flex-row items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+        <Pressable
+          onPress={() => {}}
+          style={{
+            maxHeight: '80%',
+            width: '100%',
+            maxWidth: DASH_CONTENT_MAX,
+            alignSelf: 'center',
+            borderTopLeftRadius: 28,
+            borderTopRightRadius: 28,
+            borderWidth: 1,
+            borderBottomWidth: 0,
+            borderColor: c.border,
+            backgroundColor: c.card,
+            ...dashShadowLifted,
+          }}
+        >
+          <View style={{ alignItems: 'center', paddingTop: 10 }}>
+            <View style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: c.neutralTrack }} />
+          </View>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingHorizontal: 22,
+              paddingTop: 10,
+              paddingBottom: 14,
+              borderBottomWidth: 1,
+              borderBottomColor: c.border,
+            }}
+          >
             <View>
-              <Text className="text-lg font-bold text-slate-900 dark:text-white">Recent words</Text>
-              <Text className="text-xs text-slate-400">Cards you've skipped or added</Text>
+              <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 21, lineHeight: 27, color: c.navy }}>Recent words</Text>
+              <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 19, color: c.textMuted }}>
+                Cards you've skipped or added
+              </Text>
             </View>
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={10} className="p-1">
-              <X size={22} color="#64748b" />
-            </Pressable>
+            <PressFace onPress={onClose} face={{ padding: 6 }} accessibilityLabel="Close">
+              <X size={24} color={c.textSecondary} strokeWidth={2.2} />
+            </PressFace>
           </View>
 
           {rows.length === 0 ? (
-            <View className="items-center gap-2 px-6 py-12">
-              <Text className="text-center text-sm text-slate-400">
+            <View style={{ alignItems: 'center', paddingHorizontal: 28, paddingVertical: 48 }}>
+              <Text style={{ textAlign: 'center', fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 21, color: c.textSecondary }}>
                 Nothing yet. Words you skip or add will show up here so you can go back to them.
               </Text>
             </View>
@@ -1080,38 +1129,73 @@ function RecentWordsSheet({
               {rows.map(({ entry, word }) => (
                 <View
                   key={entry.wordId}
-                  className="flex-row items-center gap-3 border-b border-slate-50 px-5 py-3 dark:border-slate-800/60"
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 12,
+                    paddingHorizontal: 22,
+                    paddingVertical: 12,
+                    borderBottomWidth: 1,
+                    borderBottomColor: c.border,
+                  }}
                 >
-                  <View className="flex-1">
-                    <View className="flex-row items-baseline gap-2">
-                      <Text className={`${hanziFont(script)} text-[24px] leading-[32px] text-slate-900 dark:text-white`}>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                      <Text style={{ fontFamily: serif(script), fontSize: 24, lineHeight: 32, color: c.navy }}>
                         {displayWord(word, script)}
                       </Text>
-                      <Text className="text-sm text-slate-400">{displayPinyin(word, phoneticScript)}</Text>
+                      <Text style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 20, color: c.textSecondary }}>
+                        {displayPinyin(word, phoneticScript)}
+                      </Text>
                     </View>
-                    <Text numberOfLines={1} className="text-sm text-slate-500 dark:text-slate-400">
+                    <Text
+                      numberOfLines={1}
+                      style={{ fontFamily: 'NunitoSemiBold', fontSize: 14.5, lineHeight: 20, color: c.textSecondary }}
+                    >
                       {shortGloss(word)}
                     </Text>
                   </View>
 
                   {entry.outcome === 'added' ? (
-                    <View className="flex-row items-center gap-1.5 rounded-full bg-brand-100 px-3 py-1.5 dark:bg-brand-900/40">
-                      <Check size={14} color="#16a34a" />
-                      <Text className="text-xs font-bold text-brand-700 dark:text-brand-300">Added</Text>
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        borderRadius: 999,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        backgroundColor: c.greenSoft,
+                      }}
+                    >
+                      <Check size={14} color={c.greenDark} strokeWidth={2.6} />
+                      <Text style={{ fontFamily: 'NunitoBold', fontSize: 13, lineHeight: 17, color: c.greenDark }}>Added</Text>
                     </View>
                   ) : (
                     /* The only action here. An added word is already in the deck
                        and has its own home in My Words; a skipped one is the case
                        with nowhere else to go. */
-                    <Pressable
-                      onPress={() => onUnskip(entry.wordId)}
-                      accessibilityRole="button"
+                    <PressFace
+                      onPress={() => {
+                        tickHaptic()
+                        onUnskip(entry.wordId)
+                      }}
                       accessibilityLabel={`Put ${displayWord(word, script)} back in the queue`}
-                      className="flex-row items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1.5 dark:border-slate-700"
+                      face={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: c.border,
+                        backgroundColor: c.background,
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                      }}
                     >
-                      <RotateCcw size={14} color="#64748b" />
-                      <Text className="text-xs font-bold text-slate-500 dark:text-slate-400">Unskip</Text>
-                    </Pressable>
+                      <RotateCcw size={14} color={c.textSecondary} strokeWidth={2.4} />
+                      <Text style={{ fontFamily: 'NunitoBold', fontSize: 13, lineHeight: 17, color: c.textSecondary }}>Unskip</Text>
+                    </PressFace>
                   )}
                 </View>
               ))}

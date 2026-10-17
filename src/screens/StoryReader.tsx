@@ -9,7 +9,7 @@ import { segmentText } from '../lib/textSegmentation'
 import { displayExample, displayPinyin, displayWord, hanziFont } from '../lib/hanzi'
 import { forScript } from '../lib/scriptConversion'
 import { speak, speakWithProgress, stopSpeaking } from '../lib/speech'
-import { clauseEnd, createRateEstimator, segmentSpans, skipTarget, predictedChar } from '../lib/narration'
+import { createNarrationFollower, createRateEstimator, segmentSpans, skipTarget } from '../lib/narration'
 import { paginateStory, budgetForArea } from '../lib/pagination'
 import { playTapSound } from '../lib/sound'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
@@ -241,18 +241,14 @@ export function StoryReader() {
 
     /*
      * The highlight runs on the clock between whatever boundaries the voice
-     * reports. Chrome fires none at all for its remote voices, and Android's
-     * Mandarin engines typically fire one per *clause* — so stopping the clock
-     * at the first real boundary, as this used to, left the line parked on the
-     * first word of every clause while the voice read on. Each boundary
-     * re-anchors the prediction; once a voice has proved it reports them, the
-     * prediction is held inside the clause it is in, so the next boundary is
-     * always a step forward rather than a correction back.
+     * reports (Chrome's remote voices report none; Android's report per clause
+     * or per sentence; iOS per word). `createNarrationFollower` holds the
+     * line until the voice starts, rests at punctuation the way a voice does,
+     * and never steps backwards over a word or two — see `lib/narration.ts`.
      */
     let sawBoundary = false
-    let anchor = request.from
-    let anchoredAt = Date.now()
-    const startedAt = anchoredAt
+    let startedAt = Date.now()
+    const follower = createNarrationFollower(text, request.from, rate, startedAt)
     const moveTo = (at: number) => {
       if (at === spokenCharRef.current) return
       spokenCharRef.current = at
@@ -260,19 +256,24 @@ export function StoryReader() {
     }
     const ticker = setInterval(() => {
       if (cancelled) return
-      const predicted = predictedChar(anchor, Date.now() - anchoredAt, rate.perSecond(), text.length)
-      moveTo(sawBoundary ? Math.min(predicted, clauseEnd(text, anchor)) : predicted)
-    }, 110)
+      moveTo(follower.position())
+    }, 80)
+    // An engine that never reports its start still gets a moving line.
+    const startBackstop = setTimeout(() => {
+      if (!cancelled) follower.started()
+    }, 1200)
 
     speakWithProgress(text.slice(request.from), {
+      onStart: () => {
+        if (cancelled) return
+        startedAt = Date.now()
+        follower.started(startedAt)
+      },
       onBoundary: (offset) => {
         if (cancelled) return
         sawBoundary = true
-        const at = request.from + offset
-        anchor = at
-        anchoredAt = Date.now()
-        moveTo(at)
-        rate.record(at)
+        follower.boundary(request.from + offset)
+        moveTo(follower.position())
       },
       onDone: () => {
         if (cancelled) return
@@ -304,6 +305,7 @@ export function StoryReader() {
     return () => {
       cancelled = true
       clearInterval(ticker)
+      clearTimeout(startBackstop)
       stopSpeaking()
     }
     // `settings.script` is in here so switching script mid-page restarts speech

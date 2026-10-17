@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Pressable, ScrollView, Animated, Easing, useWindowDimensions } from 'react-native'
+import { View, Text, Pressable, ScrollView, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
 import { ArrowLeft } from 'lucide-react-native'
@@ -243,9 +243,42 @@ function CardSlot({
   )
 }
 
+/*
+ * Switching shelves is a "fade through", the Material pattern for moving
+ * between sibling views that aren't spatially related: the old list fades out
+ * quickly with nothing else moving, then the new one fades in a little slower
+ * while rising a few points into place. The tab itself answers at once — only
+ * the content waits.
+ *
+ * All three shelves stay mounted, the hidden ones stacked out of the flow at
+ * opacity 0, so a switch never mounts a list of cards and their paintings in
+ * the middle of the animation. Each shelf owns its opacity and rise values,
+ * bound once: moving one value between views makes Android draw a frame at the
+ * default opacity. The fade-in starts from an effect, after the swap has
+ * committed — started from the timer, the native fade began on the old list.
+ */
+const SHELF_FADE_OUT_MS = 120
+const SHELF_FADE_IN_MS = 240
+const SHELF_RISE = 8
+
 export function Challenges() {
   const { xp, claimedChallengeIds, claimChallenge, dailyProgress, streak, completedLessonIds, settings } = useApp()
+  /** The tab that is selected — moves the moment it is tapped. */
   const [shelf, setShelf] = useState<Shelf>('daily')
+  /** The shelf whose challenges are on screen — swaps once the old list has faded out. */
+  const [shownShelf, setShownShelf] = useState<Shelf>('daily')
+  const shelfOpacity = useRef<Record<Shelf, Animated.Value>>({
+    daily: new Animated.Value(1),
+    weekly: new Animated.Value(0),
+    milestone: new Animated.Value(0),
+  }).current
+  const shelfRise = useRef<Record<Shelf, Animated.Value>>({
+    daily: new Animated.Value(0),
+    weekly: new Animated.Value(SHELF_RISE),
+    milestone: new Animated.Value(SHELF_RISE),
+  }).current
+  const shelfTimers = useRef<ReturnType<typeof setTimeout>[]>([])
+  useEffect(() => () => shelfTimers.current.forEach(clearTimeout), [])
 
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
@@ -311,7 +344,75 @@ export function Challenges() {
     if (next === shelf) return
     tickHaptic()
     setShelf(next)
+
+    // A tap mid-transition restarts it towards the newest choice.
+    shelfTimers.current.forEach(clearTimeout)
+    shelfTimers.current = []
+
+    /* Back to the list still on screen before it finished leaving: bring it
+       back where it is, with no swap. */
+    if (next === shownShelf) {
+      fadeShelfIn(next, false)
+      return
+    }
+
+    for (const { value } of SHELVES) {
+      if (value === next) continue
+      shelfOpacity[value].stopAnimation()
+      Animated.timing(shelfOpacity[value], {
+        toValue: 0,
+        duration: SHELF_FADE_OUT_MS,
+        easing: Easing.in(Easing.quad),
+        useNativeDriver: Platform.OS !== 'web',
+      }).start()
+    }
+
+    /*
+     * The swap hangs off a timer rather than the fade-out's completion
+     * callback: rAF stops in a hidden browser tab, and a callback that never
+     * fires would leave the list invisible. The fade-in follows the swap's
+     * commit (the effect below).
+     */
+    shelfTimers.current = [
+      setTimeout(() => {
+        for (const { value } of SHELVES) if (value !== next) shelfOpacity[value].setValue(0)
+        setShownShelf(next)
+      }, SHELF_FADE_OUT_MS),
+    ]
   }
+
+  const fadeShelfIn = (value: Shelf, fromHidden: boolean) => {
+    const opacity = shelfOpacity[value]
+    const rise = shelfRise[value]
+    const native = Platform.OS !== 'web'
+    opacity.stopAnimation()
+    rise.stopAnimation()
+    if (fromHidden) {
+      opacity.setValue(0)
+      rise.setValue(SHELF_RISE)
+    }
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: SHELF_FADE_IN_MS, easing: Easing.out(Easing.cubic), useNativeDriver: native }),
+      Animated.timing(rise, { toValue: 0, duration: SHELF_FADE_IN_MS, easing: Easing.out(Easing.cubic), useNativeDriver: native }),
+    ]).start()
+    // Forces the end state if the frames never run (a hidden browser tab).
+    shelfTimers.current.push(
+      setTimeout(() => {
+        opacity.setValue(1)
+        rise.setValue(0)
+      }, SHELF_FADE_IN_MS + 200),
+    )
+  }
+
+  const firstShown = useRef(true)
+  useEffect(() => {
+    if (firstShown.current) {
+      firstShown.current = false
+      return
+    }
+    fadeShelfIn(shownShelf, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shownShelf])
 
   /*
    * The list, with finished work sorted to the foot.
@@ -322,41 +423,41 @@ export function Challenges() {
    * claimed so it holds its old slot until the animation ends; only then does
    * the sort move it.
    */
-  const rows = useMemo(() => {
+  const shelves = useMemo(() => {
     const claimedNow = (def: ChallengeDef) =>
       claimedChallengeIds.includes(challengeInstanceId(def)) && def.id !== leavingId
 
-    return offeredChallenges(shelf)
-      .map((def) => {
-        const target = challengeTarget(def, context)
-        const current = Math.min(target, def.progress(context))
-        const claimed = claimedNow(def)
-        const state: ChallengeCardState = claimed ? 'claimed' : current >= target ? 'claimable' : 'open'
-        return { def, target, current, claimed, state }
-      })
-      // Stable: finished work drops to the bottom, everything else keeps the
-      // order the definitions declare.
-      .sort((a, b) => Number(a.claimed) - Number(b.claimed))
-  }, [shelf, claimedChallengeIds, leavingId, context])
+    return SHELVES.map(({ value, heading }) => {
+      const rows = offeredChallenges(value)
+        .map((def) => {
+          const target = challengeTarget(def, context)
+          const current = Math.min(target, def.progress(context))
+          const claimed = claimedNow(def)
+          const state: ChallengeCardState = claimed ? 'claimed' : current >= target ? 'claimable' : 'open'
+          return { def, target, current, claimed, state }
+        })
+        // Stable: finished work drops to the bottom, everything else keeps the
+        // order the definitions declare.
+        .sort((a, b) => Number(a.claimed) - Number(b.claimed))
 
-  /** The bonus for the whole set — daily and weekly only; milestones have no "all". */
-  const reward = useMemo(() => {
-    if (shelf === 'milestone') return null
-    const def = COMPLETION_REWARDS[shelf]
-    const instanceId = challengeInstanceId(def)
-    const state: ChallengeCardState = claimedChallengeIds.includes(instanceId)
-      ? 'claimed'
-      : isCompletionRewardEarned(shelf, context)
-        ? 'claimable'
-        : 'open'
-    return { def, instanceId, state }
-  }, [shelf, claimedChallengeIds, context])
-
-  const heading = SHELVES.find((x) => x.value === shelf)?.heading ?? ''
-  /* Recomputed per shelf and per focus rather than ticking live: a countdown
-     that moves while you read it is a distraction on a board like this. */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const resets = useMemo(() => resetsInLabel(shelf), [shelf, run])
+      /** The bonus for the whole set — daily and weekly only; milestones have no "all". */
+      let reward: { def: (typeof COMPLETION_REWARDS)['daily']; instanceId: string; state: ChallengeCardState } | null = null
+      if (value !== 'milestone') {
+        const def = COMPLETION_REWARDS[value]
+        const instanceId = challengeInstanceId(def)
+        const state: ChallengeCardState = claimedChallengeIds.includes(instanceId)
+          ? 'claimed'
+          : isCompletionRewardEarned(value, context)
+            ? 'claimable'
+            : 'open'
+        reward = { def, instanceId, state }
+      }
+      /* Recomputed per focus rather than ticking live: a countdown that moves
+         while you read it is a distraction on a board like this. */
+      return { value, heading, rows, reward, resets: resetsInLabel(value) }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimedChallengeIds, leavingId, context, run])
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
@@ -405,6 +506,30 @@ export function Challenges() {
               <ShelfTabs value={shelf} options={SHELVES} onChange={changeShelf} />
             </View>
 
+            {/*
+              Everything below the tabs fades through together, one layer per
+              shelf. Each is flattened while it fades (`needsOffscreenAlphaCompositing`,
+              the hardware texture on Android) so the cards' elevation shadows
+              fade with them instead of lingering after the cards have gone.
+              The shelf on screen is in the flow and sets the height; the other
+              two sit on top of it, invisible and untouchable.
+            */}
+            <View>
+            {shelves.map(({ value, heading, rows, reward, resets }) => {
+              const active = value === shownShelf
+              return (
+            <Animated.View
+              key={value}
+              needsOffscreenAlphaCompositing
+              renderToHardwareTextureAndroid
+              pointerEvents={active ? 'auto' : 'none'}
+              accessibilityElementsHidden={!active}
+              importantForAccessibility={active ? 'auto' : 'no-hide-descendants'}
+              style={[
+                { opacity: shelfOpacity[value], transform: [{ translateY: shelfRise[value] }] },
+                active ? null : { position: 'absolute', top: 0, left: 0, right: 0 },
+              ]}
+            >
             <View style={{ marginTop: s.xl, marginBottom: s.md }}>
               <SectionHeading title={heading} resets={resets} />
             </View>
@@ -474,6 +599,10 @@ export function Challenges() {
                 />
               </>
             )}
+            </Animated.View>
+              )
+            })}
+            </View>
           </Reveal>
 
           {/*

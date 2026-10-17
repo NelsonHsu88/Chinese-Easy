@@ -44,6 +44,7 @@ export type StorageKey =
   | 'matchHistory'
   | 'newlyAddedWordIds'
   | 'favoriteWordIds'
+  | 'basicsProgress'
   | 'progression'
   | 'subscription'
   | 'quarantinedCards'
@@ -91,6 +92,7 @@ export const ACCOUNT_KEYS: ReadonlySet<StorageKey> = new Set<StorageKey>([
   'matchHistory',
   'newlyAddedWordIds',
   'favoriteWordIds',
+  'basicsProgress',
   'progression',
   'subscription',
   'quarantinedCards',

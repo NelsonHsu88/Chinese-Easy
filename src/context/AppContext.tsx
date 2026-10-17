@@ -9,7 +9,7 @@ import type {
   VocabWord,
 } from '../types'
 import { hskFrequency, wordById as wordByIdInBank } from '../data/hskFrequency'
-import { deviceStore, getActiveScope, loadStored, purgeDeletedAccounts, saveStored, setActiveScope } from '../lib/storage'
+import { deviceStore, eraseGuestScopeIfRequested, getActiveScope, loadStored, purgeDeletedAccounts, saveStored, setActiveScope } from '../lib/storage'
 import { scopeId } from '../lib/storageKeys'
 import { installationId, resolveScope } from '../lib/storageScope'
 import {
@@ -40,6 +40,7 @@ import {
   type ReviewPreview,
 } from '../lib/srs'
 import { xpForGrade, XP_PER_LESSON } from '../lib/townEconomy'
+import { EMPTY_BASICS_PROGRESS, withFinished, withStep, type BasicsProgress } from '../lib/basics'
 import { devNow, setDevClockOverride } from '../lib/devClock'
 import { setSoundEnabled } from '../lib/sound'
 import {
@@ -253,6 +254,21 @@ interface AppContextValue {
    */
   favoriteWordIds: string[]
   toggleFavorite: (wordId: string) => void
+
+  /**
+   * Chinese Basics: where each unfinished lesson was left, and the latest
+   * checks of each finished one. Completion itself is `completedLessonIds`.
+   * See `lib/basics.ts`.
+   */
+  basicsProgress: BasicsProgress
+  /** Records the step a Basics lesson is on, so it reopens there. */
+  saveBasicsStep: (key: string, index: number) => void
+  /**
+   * Finishes a Basics lesson: clears its resume point, stores its result, and
+   * — the first time — marks it complete and awards the lesson's XP. Returns
+   * whether this was the first time.
+   */
+  finishBasicsLesson: (key: string, result: { correct: number; total: number }) => boolean
   completePracticeRep: (wordId: string) => void
 
   /*
@@ -288,6 +304,12 @@ interface AppContextValue {
   dismissCelebration: (id: string) => void
 
   onboardingComplete: boolean
+  /**
+   * The signed-in account whose data is loaded into memory, or null for the
+   * guest namespace. Lags the auth session during a switch, so a screen that
+   * writes on sign-in waits for this to match `session.user.id` first.
+   */
+  loadedUserId: string | null
   placementResult?: PlacementResult
   completeOnboarding: (result: PlacementResult) => void
   retakePlacementTest: () => void
@@ -479,6 +501,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [xp, setXp] = useState(0)
   const [unlockedBuildingIds, setUnlockedBuildingIds] = useState<string[]>([])
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([])
+  const [basicsProgress, setBasicsProgress] = useState<BasicsProgress>(EMPTY_BASICS_PROGRESS)
   const [newlyAddedWordIds, setNewlyAddedWordIds] = useState<string[]>([])
   const [favoriteWordIds, setFavoriteWordIds] = useState<string[]>([])
   const [progression, setProgression] = useState<ProgressionState>(DEFAULT_PROGRESSION)
@@ -510,6 +533,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    */
   const [quarantinedCards, setQuarantinedCards] = useState<SrsCard[]>([])
   const [recoverableProgress, setRecoverableProgress] = useState<RecoverableProgress | null>(null)
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null)
   /* Bumped to force the scope effect to run again after an explicit adoption. */
   const [scopeEpoch, setScopeEpoch] = useState(0)
 
@@ -559,6 +583,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadedQuarantined,
         loadedFavoriteWordIds,
         loadedProgression,
+        loadedBasicsProgress,
       ] = await Promise.all([
         loadStored('settings', DEFAULT_SETTINGS),
         loadStored('deck', [] as SrsCard[]),
@@ -588,6 +613,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         loadStored('quarantinedCards', [] as SrsCard[]),
         loadStored('favoriteWordIds', [] as string[]),
         loadStored('progression', DEFAULT_PROGRESSION as unknown),
+        loadStored('basicsProgress', EMPTY_BASICS_PROGRESS),
       ])
       if (cancelled) return
       // `script` is a real preference again — it used to be forced to
@@ -634,6 +660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setListeningHistory(loadedListeningHistory)
       setMatchHistory(loadedMatchHistory)
       setFavoriteWordIds(loadedFavoriteWordIds)
+      setBasicsProgress({ ...EMPTY_BASICS_PROGRESS, ...loadedBasicsProgress })
       setProgression(normaliseProgression(loadedProgression))
       setCelebrations([])
       setCustomWords(loadedCustomWords)
@@ -718,6 +745,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       /* Storage now points away from any account deleted a moment ago, so its
          on-device copy can be erased without a save racing it back. */
       void purgeDeletedAccounts()
+      /* After a deletion the guest starts over, so the load below finds
+         onboarding incomplete and the root layout sends them to its start. */
+      await eraseGuestScopeIfRequested(scope)
+      if (cancelled) return
       /* The store learns who is signed in at the same instant storage does, so
          an entitlement and a deck can never describe two different people. */
       await identifyUser(scope.kind === 'user' ? scope.userId : null)
@@ -725,6 +756,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!first) resetAccountState()
       rearmFirstSaveGuards()
 
+      setLoadedUserId(scope.kind === 'user' ? scope.userId : null)
       await hydrate()
       if (cancelled) return
       hydratedScope.current = scopeId(scope)
@@ -783,6 +815,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     quarantinedCards: true,
     favoriteWordIds: true,
     progression: true,
+    basicsProgress: true,
   })
 
   /**
@@ -971,6 +1004,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setListeningHistory([])
     setMatchHistory({})
     setFavoriteWordIds([])
+    setBasicsProgress(EMPTY_BASICS_PROGRESS)
     setProgression(DEFAULT_PROGRESSION)
     setCelebrations([])
     setCustomWords([])
@@ -1045,6 +1079,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (skipNextSave.current.favoriteWordIds) { skipNextSave.current.favoriteWordIds = false; return }
     void saveStored('favoriteWordIds', favoriteWordIds)
   }, [favoriteWordIds])
+
+  useEffect(() => {
+    if (skipNextSave.current.basicsProgress) { skipNextSave.current.basicsProgress = false; return }
+    void saveStored('basicsProgress', basicsProgress)
+  }, [basicsProgress])
 
   useEffect(() => {
     if (!writeGate.current) return
@@ -1357,6 +1396,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     awardXp(XP_PER_LESSON, { type: 'lesson', lessonId })
   }, [awardXp])
 
+  const saveBasicsStep = useCallback((key: string, index: number) => {
+    setBasicsProgress((prev) => withStep(prev, key, index))
+  }, [])
+
+  const finishBasicsLesson = useCallback(
+    (key: string, result: { correct: number; total: number }) => {
+      setBasicsProgress((prev) => withFinished(prev, key, result, devNow().toISOString()))
+      const firstTime = !completedLessonIds.includes(key)
+      if (firstTime) completeLesson(key)
+      return firstTime
+    },
+    [completedLessonIds, completeLesson],
+  )
+
   const addWordFromBook = useCallback(
     (wordId: string) => {
       addToReviewDeck(wordId)
@@ -1532,6 +1585,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setListeningHistory([])
     setMatchHistory({})
     setFavoriteWordIds([])
+    setBasicsProgress(EMPTY_BASICS_PROGRESS)
     setProgression(DEFAULT_PROGRESSION)
     setCelebrations([])
     setCustomWords([])
@@ -1749,6 +1803,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     celebrations,
     dismissCelebration,
     onboardingComplete: onboarding.complete,
+    loadedUserId,
     placementResult: onboarding.result,
     completeOnboarding,
     retakePlacementTest,
@@ -1774,6 +1829,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     noteWordsMatched,
     favoriteWordIds,
     toggleFavorite,
+    basicsProgress,
+    saveBasicsStep,
+    finishBasicsLesson,
     devClockOverride,
     updateDevClockOverride,
     claimedChallengeIds,

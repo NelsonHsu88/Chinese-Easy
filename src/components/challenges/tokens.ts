@@ -37,6 +37,10 @@ export const chalColors = {
 
   /** The active tab, the progress bars and the day checks. */
   jade: '#3C9561',
+  /** The side of a raised jade button (active tab, Claim) — a step below `jade`. */
+  jadeShoulder: '#2B7148',
+  /** The side of a raised quiet button (an inactive tab). */
+  quietShoulder: '#DCD9CF',
   bar: '#459E67',
   track: '#E7E6E2',
   /** Today, begun but not yet counted: a pale disc in the check's family. */

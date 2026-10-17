@@ -16,7 +16,7 @@ export const FEATURES = {
    *
    * Note the Lessons *tab* stays in the tab bar when this is off — it's the only
    * way to reach New Words and Books, so it just loses its Lessons Path card
-   * (`src/screens/Learn.tsx` shows Writing Basics in that slot instead) and is
+   * (`src/screens/Learn.tsx` shows Chinese Basics in that slot instead) and is
    * relabelled "Learn".
    */
   lessons: false,

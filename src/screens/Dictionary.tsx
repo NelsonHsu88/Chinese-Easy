@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ChevronLeft, Search, X, Layers } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
-import { displayPinyin } from '../lib/hanzi'
+import { defaultPhoneticFor, displayPinyin } from '../lib/hanzi'
 import {
   buildDeckIndex,
   characterList,
@@ -497,9 +497,12 @@ export function Dictionary() {
                   panelOpen={panelOpen}
                   refined={field !== 'all'}
                   onScope={setLevelOnly}
-                  onScript={() =>
-                    updateSettings({ script: settings.script === 'traditional' ? 'simplified' : 'traditional' })
-                  }
+                  onScript={() => {
+                    /* The script brings its usual reading system with it, as it does
+                       in onboarding and Learning Preferences. */
+                    const script = settings.script === 'traditional' ? 'simplified' : 'traditional'
+                    updateSettings({ script, phoneticScript: defaultPhoneticFor(script) })
+                  }}
                   onPanel={() => setPanelOpen((open) => !open)}
                 />
                 </TourTarget>

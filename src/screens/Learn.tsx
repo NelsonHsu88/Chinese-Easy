@@ -8,7 +8,6 @@ import { dashColors as c, dashShadow, DASH_CONTENT_MAX } from '../components/das
 import { PressableScale } from '../components/dashboard/parts'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { FEATURES } from '../lib/features'
-import { WritingGuideModal } from '../components/WritingGuideModal'
 import { TourTarget } from '../components/tour/targets'
 import type { TourTargetId } from '../lib/tour'
 import { ShadowRevealProvider, ShadowSurface, useShadowReveal } from '../components/shadowReveal'
@@ -16,7 +15,7 @@ import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHea
 
 /**
  * The Learn tab: a header with Shifu and his line, over three cards (New Words,
- * Books, Writing Basics), built to the Beta 2.1 reference "SS103 Learn
+ * Books, Chinese Basics), built to the Beta 2.1 reference "SS103 Learn
  * Redesigned UI.png". The reference's back arrow is left out — this is tab
  * content, with nothing behind it to go back to.
  *
@@ -33,8 +32,9 @@ import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHea
  * hero and foot) or `dashColors.card` (the card scenes) — both exactly the
  * mockup's own colours, so change neither without re-running the script.
  *
- * With `FEATURES.lessons` off, the third card is Writing Basics (the existing
- * four-page primer); flipping the flag brings the Lessons Path card back.
+ * With `FEATURES.lessons` off, the third card is Chinese Basics (the beginner
+ * course at `/basics`, which also holds the old writing primer); flipping the
+ * flag brings the Lessons Path card back.
  */
 
 const ART = {
@@ -56,7 +56,7 @@ const CARD_GAP = 12
 const CARD_RADIUS = 24
 /**
  * Share of the card the illustration takes. The mockup's is 45% (400 of 887),
- * but that leaves a 360pt phone's text column too narrow for "Writing Basics"
+ * but that leaves a 360pt phone's text column too narrow for "Chinese Basics"
  * on one line; 40% keeps the scene the dominant half and the copy at three lines.
  */
 const ART_SHARE = '40%'
@@ -213,7 +213,6 @@ function SpeechBubble({ message }: { message: string }) {
 }
 
 export function Learn() {
-  const [showGuide, setShowGuide] = useState(false)
   /*
    * Measured from the viewport and the header — never from the card column,
    * whose height the cards themselves set. Neither input depends on the cards,
@@ -293,12 +292,12 @@ export function Learn() {
           onPress: () => router.push('/lessons'),
         }
       : {
-          key: 'writing-basics',
+          key: 'chinese-basics',
           tourId: 'learn-third',
-          title: 'Writing Basics',
-          description: 'How Chinese characters are built, one stroke at a time.',
+          title: 'Chinese Basics',
+          description: 'Sounds, characters and first sentences, from zero.',
           art: ART.writingBasics,
-          onPress: () => setShowGuide(true),
+          onPress: () => router.push('/basics'),
         },
   ]
 
@@ -370,7 +369,6 @@ export function Learn() {
         </ShadowRevealProvider>
       </ScrollView>
 
-      {showGuide && <WritingGuideModal onClose={() => setShowGuide(false)} />}
     </SafeAreaView>
   )
 }

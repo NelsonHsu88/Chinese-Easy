@@ -97,7 +97,7 @@ export function GoalSettings() {
             icon={RotateCcw}
             onPress={() => {
               retakePlacementTest()
-              router.push('/onboarding')
+              router.push('/onboarding?retake=1')
             }}
           />
           <View

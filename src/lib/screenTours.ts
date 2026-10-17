@@ -69,8 +69,8 @@ export const SCREEN_TOURS: readonly ScreenTour[] = [
           }
         : {
             targetId: 'learn-third',
-            title: 'How characters are built',
-            body: 'A short guide to stroke order: watch a character drawn, then trace it yourself.',
+            title: 'Start from zero',
+            body: 'Short lessons on how Chinese works: tones, characters, writing and your first sentences.',
             shifu: 'celebrate',
           },
     ],

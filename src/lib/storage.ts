@@ -87,6 +87,37 @@ export async function purgeDeletedAccounts(): Promise<void> {
   }
 }
 
+/*
+ * Set when an account is deleted: the guest namespace the app falls back to
+ * still holds whatever this handset did before signing in (onboarding
+ * complete, usually), and someone who just deleted their account should start
+ * over rather than land on that guest's Home.
+ */
+let freshStartPending = false
+
+/** Asks the next switch into the guest scope to begin from a fresh install. */
+export function requestFreshStart(): void {
+  freshStartPending = true
+}
+
+/**
+ * Erases the guest's account keys if a fresh start was requested. Called by
+ * AppContext with writes suspended, after the scope is set and before hydrate,
+ * so the load that follows sees nothing and falls back to defaults. Device
+ * keys are left alone.
+ */
+export async function eraseGuestScopeIfRequested(scope: StorageScope): Promise<void> {
+  if (!freshStartPending || scope.kind !== 'guest') return
+  const prefix = `${PREFIX}guest:${scope.installationId}:`
+  try {
+    const keys = await AsyncStorage.getAllKeys()
+    await AsyncStorage.multiRemove(keys.filter((key) => key.startsWith(prefix)))
+    freshStartPending = false
+  } catch {
+    /* stays requested, tried again on the next switch */
+  }
+}
+
 /**
  * Points subsequent account reads and writes at a different learner.
  *

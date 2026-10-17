@@ -556,7 +556,7 @@ export function OnbTitle({
   )
 }
 
-/** The supporting line under a title. `classic`: see `OnbTitle`. */
+/** The supporting line under a title. `classic`: see `OnbTitle` — and bold, like the rest of the placement test. */
 export function OnbBody({
   children,
   style,
@@ -568,7 +568,7 @@ export function OnbBody({
 }) {
   return (
     <Text
-      className="text-center font-nunito-semibold"
+      className={classic ? 'text-center font-nunito-bold' : 'text-center font-nunito-semibold'}
       style={[{ ...(classic ? t.bodyClassic : t.body), color: c.textSecondary }, style as never]}
     >
       {children}

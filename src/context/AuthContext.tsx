@@ -4,7 +4,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
 import * as Linking from 'expo-linking'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase'
-import { deviceStore, markAccountForPurge } from '../lib/storage'
+import { deviceStore, markAccountForPurge, requestFreshStart } from '../lib/storage'
 import { recordGuestAdoptionIntent } from '../lib/storageScope'
 
 /*
@@ -160,6 +160,30 @@ export function accountFor(user: User | null | undefined): { email: string; name
     (value): value is string => typeof value === 'string' && value.trim().length > 0,
   )
   return { email: user?.email ?? '', name: name?.trim() ?? '' }
+}
+
+/** How long after an account is created (or confirmed) a sign-in counts as a return visit. */
+const RETURNING_AFTER_MS = 10 * 60 * 1000
+
+/**
+ * True when this session is an existing account signing back in, rather than
+ * one made a moment ago by onboarding's own sign-up.
+ *
+ * Read from Supabase's timestamps because the session is all onboarding has
+ * after a sign-in: the switch to the account's storage remounts the screen, so
+ * nothing it held about *how* the learner got here survives. A new Google or
+ * Apple account signs in the instant it is created, and an emailed sign-up
+ * signs in the instant it is confirmed; a log-in to an established account is
+ * long after both.
+ */
+export function isReturningAccount(user: User | null | undefined): boolean {
+  if (!user) return false
+  const signedIn = Date.parse(user.last_sign_in_at ?? '')
+  const created = Date.parse(user.created_at ?? '')
+  const confirmed = Date.parse(user.email_confirmed_at ?? user.confirmed_at ?? '')
+  if (!Number.isFinite(signedIn) || !Number.isFinite(created)) return false
+  const joined = Number.isFinite(confirmed) ? Math.max(created, confirmed) : created
+  return signedIn - joined > RETURNING_AFTER_MS
 }
 
 /**
@@ -478,6 +502,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     markAccountForPurge(userId)
+    /* Back to the first page of onboarding, not to this handset's guest. */
+    requestFreshStart()
     /* Local only: the user no longer exists, so there is no server session left
        to revoke, and a network sign-out would only fail. */
     await supabase.auth.signOut({ scope: 'local' })

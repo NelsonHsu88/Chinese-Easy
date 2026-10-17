@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { View, Text, Pressable, Modal, Image } from 'react-native'
-import { useLocalSearchParams } from 'expo-router'
+import { router, useLocalSearchParams, type Href } from 'expo-router'
 import { X } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
 import {
@@ -58,6 +58,10 @@ export function Achievements() {
   const earnedCount = Object.keys(progression.achievements.unlocked).length
   const pinned = progression.achievements.pinned
 
+  /** Pinning a badge goes to where it now shows: back to the profile if it's
+      underneath, else replacing this page with it. */
+  const showOnProfile = () => router.dismissTo('/profile' as Href)
+
   const togglePin = (def: AchievementDefinition) => {
     tickHaptic()
     if (pinned.includes(def.id)) {
@@ -65,6 +69,7 @@ export function Achievements() {
       return
     }
     if (pinAchievement(def.id) === 'full') setIncoming(def.id)
+    else showOnProfile()
   }
 
   return (
@@ -78,6 +83,7 @@ export function Achievements() {
           onPick={(outgoing) => {
             if (incoming) replacePinnedAchievement(outgoing, incoming)
             setIncoming(null)
+            if (incoming) showOnProfile()
           }}
           onClose={() => setIncoming(null)}
         />

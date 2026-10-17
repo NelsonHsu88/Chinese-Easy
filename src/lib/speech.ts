@@ -82,12 +82,61 @@ export function speak(text: string, opts: { rate?: number } = {}): void {
   })
 }
 
+export interface TrackedSpeechOptions {
+  rate?: number
+  onStart?: () => void
+  /** Finished, or cut short by another utterance or `stopSpeaking`. */
+  onEnd?: () => void
+  onError?: () => void
+}
+
+/**
+ * `speak`, with the lifecycle reported — for a play button that shows
+ * loading and playing states. Stops whatever was speaking first, so two never
+ * overlap; the stopped utterance's `onEnd` fires as it goes.
+ */
+export function speakTracked(text: string, opts: TrackedSpeechOptions = {}): void {
+  if (!text) {
+    opts.onEnd?.()
+    return
+  }
+  Speech.stop()
+  void mandarinVoice().then((voice) => {
+    Speech.speak(text, {
+      language: voice?.language ?? FALLBACK_LANGUAGE,
+      voice: voice?.identifier,
+      rate: opts.rate ?? SPEECH_RATE,
+      onStart: () => opts.onStart?.(),
+      onDone: () => opts.onEnd?.(),
+      onStopped: () => opts.onEnd?.(),
+      onError: () => opts.onError?.(),
+    })
+  })
+}
+
+/**
+ * Whether the device has a Mandarin voice: true, false, or null when the
+ * platform can't say (it doesn't enumerate voices). Without one, speech falls
+ * back to the language tag and may come out in another language or not at all.
+ */
+export async function hasMandarinVoice(): Promise<boolean | null> {
+  try {
+    const voices = await Speech.getAvailableVoicesAsync()
+    if (!voices.length) return null
+    return voices.some((v) => Number.isFinite(rank(v.language)))
+  } catch {
+    return null
+  }
+}
+
 export interface ProgressSpeechOptions {
   /**
    * Fired as each word begins, with its offset **into the text passed here** —
    * the caller adds its own base offset if it handed over a slice.
    */
   onBoundary?: (charIndex: number) => void
+  /** The voice has begun — engines take a moment, and nothing should move before this. */
+  onStart?: () => void
   /** The whole run finished on its own. Not called when `Speech.stop()` cuts it short. */
   onDone?: () => void
 }
@@ -124,6 +173,7 @@ export function speakWithProgress(text: string, opts: ProgressSpeechOptions): vo
         const at = event?.charIndex
         if (typeof at === 'number') opts.onBoundary?.(at)
       },
+      onStart: () => opts.onStart?.(),
       onDone: () => opts.onDone?.(),
     })
   })
