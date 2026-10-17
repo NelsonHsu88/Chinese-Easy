@@ -5,11 +5,12 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router'
 import { Check, ChevronLeft, X } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { Reveal } from '../components/dashboard/entrance'
-import { basicsColors as c, basicsSpacing as sp, basicsType as t, BASICS_CONTENT_MAX, BASICS_GUTTER } from '../components/basics/tokens'
+import { basicsColors as c, basicsSpacing as sp, basicsType as t, BASICS_CONTENT_MAX, BASICS_GUTTER, BASICS_GROUP_HUE } from '../components/basics/tokens'
+import { playTints } from '../components/dashboard/tokens'
 import { BasicsButton, BasicsPill, BasicsProgressBar, BasicsRaised } from '../components/basics/parts'
 import { PressableScale } from '../components/dashboard/parts'
 import { AnswerSheet } from '../components/drills/parts'
-import { Card, makeCtx, type Gate } from '../components/basics/lessonParts'
+import { Card, LessonTintContext, makeCtx, type Gate } from '../components/basics/lessonParts'
 import { initialGate, StepView } from '../components/basics/steps'
 import { AudioNotice, stopAudio, useStopAudioOnUnmount } from '../components/basics/audio'
 import {
@@ -122,9 +123,13 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
     goTo(0)
   }
 
+  /* The group's hue (SS1017): its progress bar and every lesson card take it. */
+  const tint = playTints[BASICS_GROUP_HUE[lesson.group]]
+
   if (finished) {
     const next = lessonAfter(lesson.id, [...completedLessonIds, key], phonetic)
     return (
+      <LessonTintContext.Provider value={tint}>
       <SafeAreaView edges={['top', 'bottom']} className="flex-1" style={{ backgroundColor: c.background }}>
         <FinishCard
           column={column}
@@ -138,6 +143,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
           onDone={leave}
         />
       </SafeAreaView>
+      </LessonTintContext.Provider>
     )
   }
 
@@ -145,7 +151,18 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
   const label = !gate.onPress && isLast && gate.label === 'Continue' ? 'Finish lesson' : gate.label
 
   return (
+    <LessonTintContext.Provider value={tint}>
     <SafeAreaView edges={['top', 'bottom']} className="flex-1" style={{ backgroundColor: c.background }}>
+      {/* The Basics foot painting, out of flow behind everything, so a short
+          step sits over scenery rather than an empty page. */}
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center' }}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      >
+        <Image source={LESSON_FOOT} resizeMode="contain" style={{ width: column, height: column / LESSON_FOOT_RATIO }} />
+      </View>
       <View style={{ flex: 1, width: column, alignSelf: 'center', paddingHorizontal: BASICS_GUTTER }}>
         {/* Close, title, reading toggle. */}
         <View style={{ height: 50, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -201,7 +218,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
               <ChevronLeft size={22} color={c.jadeDark} strokeWidth={2.2} />
             </View>
           </Pressable>
-          <BasicsProgressBar done={index + 1} total={steps.length} />
+          <BasicsProgressBar done={index + 1} total={steps.length} tint={tint} />
           <Text
             className="font-nunito-semibold"
             accessibilityLabel={`Step ${index + 1} of ${steps.length}`}
@@ -217,6 +234,21 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
           contentContainerStyle={{ paddingTop: sp.md, paddingBottom: gate.correct !== undefined ? SHEET_ROOM : sp.xxl }}
           showsVerticalScrollIndicator={false}
         >
+          {/* Which group this lesson belongs to, in the group's hue. */}
+          <View
+            style={{
+              alignSelf: 'flex-start',
+              marginBottom: sp.md,
+              paddingHorizontal: 10,
+              paddingVertical: 3,
+              borderRadius: 999,
+              backgroundColor: tint.soft,
+            }}
+          >
+            <Text className="font-nunito-bold" style={{ ...t.pill, color: tint.text }}>
+              {groupById(lesson.group)?.title ?? 'Chinese Basics'}
+            </Text>
+          </View>
           <Reveal from="right" at={0} duration={280} run={0} distance={20}>
             <StepView
               step={step}
@@ -264,8 +296,13 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
         />
       )}
     </SafeAreaView>
+    </LessonTintContext.Provider>
   )
 }
+
+/** The Basics foot painting (941×98), shared with Chinese Basics' own screen. */
+const LESSON_FOOT = require('../assets/images/basics/foot.png')
+const LESSON_FOOT_RATIO = 941 / 98
 
 /** Room under a step's content for the answer sheet, so the step can scroll clear of it. */
 const SHEET_ROOM = 240

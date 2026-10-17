@@ -11,6 +11,7 @@ import { tapHaptic } from '../../lib/haptics'
 import { hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
 import { TourScrollContext } from '../tour/targets'
+import { playTints, type PlayHue } from '../dashboard/tokens'
 
 /**
  * Page frame for the two detail screens: a hairline nav bar over the
@@ -79,10 +80,17 @@ export function DetailShell({ title, children }: { title: string; children: Reac
           accessibilityRole="button"
           accessibilityLabel="Back"
           className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
+          style={{ backgroundColor: playTints.jade.fill, borderWidth: 1, borderColor: playTints.jade.border }}
         >
-          <ChevronLeft size={26} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
+          <ChevronLeft size={24} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
         </Pressable>
-        <Text className="flex-1 text-center font-dict-bold text-[20px] leading-[26px] text-dict-heading">{title}</Text>
+        <Text
+          className="flex-1 text-center font-lora-bold text-dict-heading"
+          accessibilityRole="header"
+          style={{ fontSize: 21, lineHeight: 27 }}
+        >
+          {title}
+        </Text>
         {/* Balances the back button so the title sits truly centred. */}
         <View className="h-10 w-10" />
       </View>
@@ -112,8 +120,14 @@ export function DetailShell({ title, children }: { title: string; children: Reac
  * `shadow-dict` class compiles to iOS shadow props only, so this card was flat
  * on Android all along.
  */
-export function DetailCard({ children }: { children: ReactNode }) {
-  return <View style={DETAIL_CARD}>{children}</View>
+export function DetailCard({ children, hue }: { children: ReactNode; hue?: PlayHue }) {
+  /* SS1017's playful pass: a section card may wear one of the shared washes. */
+  const tint = hue ? playTints[hue] : null
+  return (
+    <View style={[DETAIL_CARD, tint ? { backgroundColor: tint.fill, borderWidth: 1, borderColor: tint.border } : null]}>
+      {children}
+    </View>
+  )
 }
 
 /** `rounded-dict bg-dict-card p-5 shadow-dict`, spelled out. */
@@ -128,8 +142,13 @@ const DETAIL_CARD = {
   elevation: 2,
 } as const
 
+/** A section's heading, in the app's editorial serif like every other screen's. */
 export function CardTitle({ children }: { children: ReactNode }) {
-  return <Text className="font-dict-bold text-[19px] leading-[25px] text-dict-heading">{children}</Text>
+  return (
+    <Text className="font-lora-bold text-dict-heading" accessibilityRole="header" style={{ fontSize: 19, lineHeight: 25 }}>
+      {children}
+    </Text>
+  )
 }
 
 /**

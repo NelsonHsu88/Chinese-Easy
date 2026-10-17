@@ -22,6 +22,7 @@ import {
   REV_FOOT_RATIO,
 } from './tokens'
 import { ShadowReveal, ShadowSurface } from '../shadowReveal'
+import { playTints, type PlayTint } from '../dashboard/tokens'
 
 /*
  * The Review hub's building blocks, built to the Beta 2.1 reference.
@@ -237,9 +238,9 @@ export function DueIcon() {
   return (
     <View
       className="items-center justify-center"
-      style={{ width: 24, height: 24, borderRadius: revRadius.small - 4, backgroundColor: c.mint }}
+      style={{ width: 24, height: 24, borderRadius: revRadius.small - 4, backgroundColor: playTints.jade.soft }}
     >
-      <BookOpen size={14} color={c.jadeDark} strokeWidth={2} />
+      <BookOpen size={14} color={playTints.jade.ink} strokeWidth={2.2} />
     </View>
   )
 }
@@ -249,7 +250,14 @@ export function StreakIcon() {
 }
 
 export function WeakIcon() {
-  return <ChartNoAxesColumnIncreasing size={20} color={c.steel} strokeWidth={3} />
+  return (
+    <View
+      className="items-center justify-center"
+      style={{ width: 22, height: 22, borderRadius: revRadius.small - 4, backgroundColor: playTints.sky.soft }}
+    >
+      <ChartNoAxesColumnIncreasing size={14} color={playTints.sky.ink} strokeWidth={3} />
+    </View>
+  )
 }
 
 /**
@@ -331,12 +339,18 @@ export function ReviewModeCard({
   art,
   count,
   width,
+  tint,
+  countLabel = 'due',
   onPress,
 }: {
   title: string
   description: string
   art: number
   count: number
+  /** The card's SS1017 wash; its pill takes `pillTint`'s hue. */
+  tint: PlayTint
+  /** "due", or "items" for the mistakes pile. */
+  countLabel?: string
   /** The card's own width. The painting's share, and the title size, are measured off it. */
   width: number
   onPress: () => void
@@ -364,9 +378,9 @@ export function ReviewModeCard({
       <ShadowSurface shadow={revShadow}
         style={{
           borderRadius: revRadius.large,
-          backgroundColor: c.card,
+          backgroundColor: tint.fill,
           borderWidth: 1,
-          borderColor: c.border,
+          borderColor: tint.border,
         }}
       >
         <View
@@ -403,8 +417,8 @@ export function ReviewModeCard({
             className="flex-row items-center"
             style={{ gap: s.sm, marginLeft: s.sm, paddingRight: revCard.paddingRight }}
           >
-            <DuePill count={count} />
-            <ChevronRight size={20} color={c.navy} strokeWidth={1.8} />
+            <DuePill count={count} label={countLabel} tint={tint} />
+            <ChevronRight size={20} color={tint.text} strokeWidth={2.2} />
           </View>
         </View>
       </ShadowSurface>
@@ -413,11 +427,18 @@ export function ReviewModeCard({
 }
 
 /**
- * "12 due", as a quiet mint pill that should never compete with the title.
- * Zero reads "None" on a neutral tint — a bold 0 reads as a broken counter,
- * where "None" is the truth and is not a failure.
+ * "12 due", as a quiet pill in a hue that sets it apart from its card (blossom
+ * on Flashcards, honey on Mixed, sky on Mistakes, as in SS1017) and never
+ * competes with the title. Zero reads "None" on a neutral tint — a bold 0 reads
+ * as a broken counter, where "None" is the truth and is not a failure.
  */
-function DuePill({ count }: { count: number }) {
+const PILL_FOR: Record<string, PlayTint> = {
+  [playTints.sky.fill]: playTints.blossom,
+  [playTints.jade.fill]: playTints.honey,
+  [playTints.blossom.fill]: playTints.sky,
+}
+function DuePill({ count, label, tint }: { count: number; label: string; tint: PlayTint }) {
+  const hue = PILL_FOR[tint.fill] ?? tint
   const empty = count === 0
   return (
     <View
@@ -427,11 +448,11 @@ function DuePill({ count }: { count: number }) {
         minWidth: 58,
         paddingHorizontal: s.md,
         borderRadius: revRadius.pill,
-        backgroundColor: empty ? c.neutralTrack : c.mint,
+        backgroundColor: empty ? c.neutralTrack : hue.soft,
       }}
     >
-      <Text className="font-nunito-extrabold" style={{ ...t.pill, color: empty ? c.slate : c.jadeDark }}>
-        {empty ? 'None' : `${count} due`}
+      <Text className="font-nunito-extrabold" style={{ ...t.pill, color: empty ? c.slate : hue.text }}>
+        {empty ? 'None' : `${count} ${label}`}
       </Text>
     </View>
   )
@@ -458,15 +479,42 @@ export function ReviewButton({
   tone,
   onPress,
   accessibilityLabel,
+  compact = false,
 }: {
   label: string
   icon?: ComponentType<{ color: string; size: number; strokeWidth: number }>
   tone: 'primary' | 'quiet'
   onPress: () => void
   accessibilityLabel?: string
+  /** Half of a pair (SS1017's Quick 5-min Review | My Words): shorter, smaller type, chevron inline. */
+  compact?: boolean
 }) {
   const primary = tone === 'primary'
   const ink = primary ? '#FFFFFF' : c.navy
+  if (compact) {
+    return (
+      <PressableScale
+        onPress={onPress}
+        scaleTo={1}
+        haptic={false}
+        accessibilityLabel={accessibilityLabel ?? label}
+        wrapperStyle={{ flex: 1 }}
+      >
+        <LiftedFace height={revButton.compactHeight} fill={c.card} shoulder={revShoulders.quiet} border={c.outline} shadow={false}>
+          <View className="flex-row items-center" style={{ gap: 6, paddingHorizontal: s.sm, maxWidth: '100%' }}>
+            {Icon && <Icon color={c.slate} size={16} strokeWidth={2} />}
+            <Text
+              className="font-lora-bold"
+              numberOfLines={1}
+              style={{ ...t.cta, fontSize: 13.5, color: ink, flexShrink: 1 }}
+            >
+              {label}
+            </Text>
+          </View>
+        </LiftedFace>
+      </PressableScale>
+    )
+  }
 
   return (
     <PressableScale

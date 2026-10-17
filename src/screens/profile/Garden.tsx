@@ -13,6 +13,7 @@ import {
 import { slotOf } from '../../lib/progression/state'
 import { ProfileSubpage, GardenScene, DecorationThumb, Tag, ProfileButton } from '../../components/profile/parts'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from '../../components/profile/tokens'
+import { playTints, playHueAt } from '../../components/dashboard/tokens'
 import { tickHaptic, tapHaptic } from '../../lib/haptics'
 
 /*
@@ -58,7 +59,10 @@ export function Garden() {
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: s.sm, paddingVertical: 4 }} style={{ marginHorizontal: -s.screen }}>
             <View style={{ width: s.screen - s.sm }} />
-            {GARDEN_ITEMS.map((def) => {
+            {GARDEN_ITEMS.map((def, i) => {
+              /* Each decoration keeps one hue (SS1017), so the shelf reads as a
+                 set of different things rather than a row of identical boxes. */
+              const tint = playTints[playHueAt(i)]
               const unlocked = progression.garden.unlockedItemIds.includes(def.id)
               const placed = !!slotOf(progression, def.id)
               const active = selected === def.id
@@ -75,8 +79,8 @@ export function Garden() {
                     paddingVertical: s.sm,
                     borderRadius: profRadius.medium,
                     borderWidth: 1.5,
-                    borderColor: active ? c.jade : c.border,
-                    backgroundColor: active ? c.mint : placed ? c.earnedTile : c.card,
+                    borderColor: active ? c.jade : tint.border,
+                    backgroundColor: active ? c.mint : tint.fill,
                   }}
                 >
                   <DecorationThumb item={def.id} size={60} dim={!unlocked} />

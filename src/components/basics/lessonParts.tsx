@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import { View, Text, Pressable } from 'react-native'
 import { Check, ChevronDown, ChevronUp, Info, RotateCcw } from 'lucide-react-native'
 import { ShadowSurface } from '../shadowReveal'
-import { dashShadow } from '../dashboard/tokens'
+import { dashShadow, type PlayTint } from '../dashboard/tokens'
 import { hanziFont } from '../../lib/hanzi'
 import { pinyinToZhuyin } from '../../lib/zhuyin'
 import { basicsReading, basicsText, zhText } from '../../lib/basics'
@@ -101,12 +101,26 @@ export function Gloss({ children }: { children: string }) {
   )
 }
 
+/**
+ * The lesson's group hue (`BASICS_GROUP_HUE`), provided by the lesson screen.
+ * Every lesson card takes its wash; answer options and verdicts do not — they
+ * keep the app's verdict palette, which must never be confused with decoration.
+ */
+export const LessonTintContext = createContext<PlayTint | null>(null)
+
 export function Card({ children, style }: { children: React.ReactNode; style?: object }) {
+  const tint = useContext(LessonTintContext)
   return (
     <ShadowSurface
       shadow={dashShadow}
       style={[
-        { borderRadius: radius.row, backgroundColor: c.card, borderWidth: 1, borderColor: c.border, padding: sp.lg },
+        {
+          borderRadius: radius.row,
+          backgroundColor: tint?.fill ?? c.card,
+          borderWidth: 1,
+          borderColor: tint?.border ?? c.border,
+          padding: sp.lg,
+        },
         style,
       ]}
     >

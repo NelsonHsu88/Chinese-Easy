@@ -18,6 +18,7 @@ import {
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, foldPinyin, hanziFont } from '../lib/hanzi'
 import { PressableScale } from '../components/dashboard/parts'
+import { playTints, type PlayTint } from '../components/dashboard/tokens'
 import { ReviewButton } from '../components/review/parts'
 import { TIER_ORDER } from '../components/ProficiencyChip'
 import { proficiencyFor, type Proficiency } from '../lib/proficiency'
@@ -576,45 +577,38 @@ function StatsPanel({
   onDue: () => void
   onFavorites: () => void
 }) {
-  const columns: { key: string; value: number; label: string; icon: ReactNode; onPress: () => void }[] = [
+  /* SS1017: three tiles, each in its own wash, rather than one panel. */
+  const columns: { key: string; value: number; label: string; icon: ReactNode; tint: PlayTint; onPress: () => void }[] = [
     {
       key: 'saved',
       value: saved,
       label: 'Saved words',
-      icon: <BookOpen size={24} color={c.savedIcon} strokeWidth={1.8} />,
+      tint: playTints.jade,
+      icon: <BookOpen size={22} color={playTints.jade.ink} strokeWidth={2} />,
       onPress: onSaved,
     },
     {
       key: 'due',
       value: due,
       label: 'Due today',
-      icon: <Clock3 size={24} color={c.dueIcon} strokeWidth={1.8} />,
+      tint: playTints.sky,
+      icon: <Clock3 size={22} color={playTints.sky.ink} strokeWidth={2} />,
       onPress: onDue,
     },
     {
       key: 'favorites',
       value: favorites,
       label: 'Favorites',
-      icon: <Star size={24} color={c.star} fill={c.star} strokeWidth={1.8} />,
+      tint: playTints.honey,
+      icon: <Star size={22} color={c.star} fill={c.star} strokeWidth={1.8} />,
       onPress: onFavorites,
     },
   ]
 
   return (
-    <View
-      className="flex-row"
-      style={{
-        marginTop: sp.lg,
-        backgroundColor: c.panel,
-        borderRadius: mwRadius.panel,
-        borderWidth: 1,
-        borderColor: c.panelBorder,
-        paddingVertical: sp.lg,
-      }}
-    >
-      {columns.map((col, i) => (
-        <View key={col.key} className="flex-1 flex-row">
-          {i > 0 && <View style={{ width: 1, marginVertical: 2, backgroundColor: c.panelBorder }} />}
+    <View className="flex-row" style={{ marginTop: sp.lg, gap: sp.sm }}>
+      {columns.map((col) => (
+        <View key={col.key} className="flex-1">
           <Pressable
             onPress={() => {
               tickHaptic()
@@ -623,8 +617,20 @@ function StatsPanel({
             accessibilityRole="button"
             accessibilityLabel={`${col.value} ${col.label}`}
             className="flex-1 items-center active:opacity-70"
+            style={{
+              paddingVertical: sp.md,
+              borderRadius: mwRadius.panel,
+              backgroundColor: col.tint.fill,
+              borderWidth: 1,
+              borderColor: col.tint.border,
+            }}
           >
-            {col.icon}
+            <View
+              className="items-center justify-center rounded-full"
+              style={{ width: 40, height: 40, backgroundColor: col.tint.soft }}
+            >
+              {col.icon}
+            </View>
             <Text className="font-lora-bold" style={{ ...t.statValue, color: c.navy, marginTop: 6 }}>
               {col.value}
             </Text>

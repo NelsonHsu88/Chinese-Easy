@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { View, Text, TextInput, useWindowDimensions } from 'react-native'
+import { View, Text, TextInput, Image, useWindowDimensions } from 'react-native'
 import { Search } from 'lucide-react-native'
 import { DetailShell } from '../components/dictionary/DetailShell'
 import { PressScale } from '../components/dictionary/PressScale'
@@ -9,6 +9,10 @@ import { useRevealedShadow } from '../components/shadowReveal'
 import { RadicalDetailModal } from '../components/RadicalDetailModal'
 import { RADICALS } from '../data/radicals'
 import type { Radical } from '../types'
+import { playTints, playHueAt, type PlayTint } from '../components/dashboard/tokens'
+
+/** The bonsai the Dictionary's Radicals tile wears, so this screen is visibly where that tile leads. */
+const INTRO_ART = { source: require('../assets/images/dashboard/bonsai.png'), ratio: 290 / 197 }
 
 interface Group {
   strokeCount: number
@@ -36,14 +40,14 @@ const CONTENT_MAX = 430
  * lone radical at 1 stroke) looking like a different, wider tile rather than
  * the same size sitting flush left.
  */
-function RadicalTile({ radical, width, onPress }: { radical: Radical; width: number; onPress: () => void }) {
+function RadicalTile({ radical, width, tint, onPress }: { radical: Radical; width: number; tint: PlayTint; onPress: () => void }) {
   const shadow = useRevealedShadow(DICT_CARD_SHADOW)
   return (
     <PressScale
       onPress={onPress}
       scaleTo={0.96}
-      style={[shadow, { width, borderRadius: 16, backgroundColor: DICT_BG.card }]}
-      className="items-center justify-center gap-1 rounded-2xl border border-dict-border bg-dict-card py-3.5"
+      style={[shadow, { width, borderRadius: 16, backgroundColor: tint.fill, borderWidth: 1, borderColor: tint.border }]}
+      className="items-center justify-center gap-1 py-3.5"
       accessibilityLabel={`${radical.character}, ${radical.pinyin}, ${radical.meaning}`}
     >
       <Text className="font-hanzi-tc-regular text-[26px] leading-[32px] text-dict-heading">{radical.character}</Text>
@@ -86,8 +90,20 @@ export function Radicals() {
 
   return (
     <DetailShell title="Radicals">
-      <View>
-        <Text className="font-dict-sans text-[14.5px] leading-[20px] text-dict-soft">
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          padding: 14,
+          borderRadius: 18,
+          backgroundColor: playTints.lilac.fill,
+          borderWidth: 1,
+          borderColor: playTints.lilac.border,
+        }}
+      >
+        <Image source={INTRO_ART.source} resizeMode="contain" style={{ width: 72, height: 72 / INTRO_ART.ratio }} />
+        <Text className="flex-1 font-dict-sans text-[14px] leading-[20px] text-dict-body">
           The building blocks characters are made of — {RADICALS.length} of the most common ones. These aren't full
           words, so they won't be added to My Words.
         </Text>
@@ -121,18 +137,28 @@ export function Radicals() {
         </Text>
       )}
 
-      {groups.map((group) => (
-        <View key={group.strokeCount} className="gap-2.5">
-          <Text className="font-dict-semibold text-[13px] leading-[17px] text-dict-soft">
-            {group.strokeCount} stroke{group.strokeCount === 1 ? '' : 's'}
-          </Text>
-          <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
-            {group.radicals.map((r) => (
-              <RadicalTile key={r.id} radical={r} width={tileWidth} onPress={() => setSelected(r)} />
-            ))}
+      {groups.map((group) => {
+        /* Each stroke count wears one hue, by its own number rather than its
+           position, so a search never recolours the groups it leaves. */
+        const tint = playTints[playHueAt(group.strokeCount - 1)]
+        return (
+          <View key={group.strokeCount} className="gap-2.5">
+            <View className="flex-row items-center" style={{ gap: 8 }}>
+              <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: tint.soft }}>
+                <Text className="font-dict-bold" style={{ fontSize: 12.5, lineHeight: 17, color: tint.text }}>
+                  {group.strokeCount} stroke{group.strokeCount === 1 ? '' : 's'}
+                </Text>
+              </View>
+              <View style={{ flex: 1, height: 1, backgroundColor: tint.border }} />
+            </View>
+            <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
+              {group.radicals.map((r) => (
+                <RadicalTile key={r.id} radical={r} width={tileWidth} tint={tint} onPress={() => setSelected(r)} />
+              ))}
+            </View>
           </View>
-        </View>
-      ))}
+        )
+      })}
 
       {selected && <RadicalDetailModal radical={selected} onClose={() => setSelected(null)} />}
     </DetailShell>

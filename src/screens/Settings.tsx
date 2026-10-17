@@ -1,4 +1,5 @@
 import { View, Text, useWindowDimensions } from 'react-native'
+import { BarChart3, Bell, BookOpen, Info, SlidersHorizontal, Sparkles, Target } from 'lucide-react-native'
 import { router } from 'expo-router'
 import { useApp } from '../context/AppContext'
 import { getLevelFromXp, levelTitle } from '../lib/progression/levels'
@@ -146,9 +147,11 @@ export function Settings() {
           <GroupCard>
             <NavRow
               title="Learning preferences"
-              subtitle="Script, phonetics and study options"
+              subtitle="Script, phonetics, study"
               value={phonetics}
               height={ROW_HEIGHT}
+              icon={BookOpen}
+              hue="sky"
               onPress={open('/settings/learning')}
             />
             <NavRow
@@ -160,6 +163,8 @@ export function Settings() {
               }
               value={settings.notificationsEnabled ? 'On' : 'Off'}
               height={ROW_HEIGHT}
+              icon={Bell}
+              hue="honey"
               onPress={open('/settings/reminders')}
             />
             <NavRow
@@ -167,6 +172,8 @@ export function Settings() {
               subtitle={`${GOAL_LABELS[settings.learningGoal] ?? 'Daily life'} · HSK ${settings.hskLevel}`}
               value={`${settings.dailyNewWordLimit} words`}
               height={ROW_HEIGHT}
+              icon={Target}
+              hue="jade"
               onPress={open('/settings/goal')}
             />
           </GroupCard>
@@ -189,18 +196,24 @@ export function Settings() {
               subtitle={isAdFree ? 'Thank you for supporting Chinese Easy' : 'Study without interruptions'}
               value={isAdFree ? 'Active' : undefined}
               height={ROW_HEIGHT}
+              icon={Sparkles}
+              hue="lilac"
               onPress={open('/subscribe')}
             />
             <NavRow
               title="Progress"
               subtitle="Track your learning journey"
               height={ROW_HEIGHT}
+              icon={BarChart3}
+              hue="jade"
               onPress={open('/settings/progress')}
             />
             <NavRow
               title="General"
               subtitle="Sounds, appearance, advanced"
               height={ROW_HEIGHT}
+              icon={SlidersHorizontal}
+              hue="sky"
               onPress={open('/settings/general')}
             />
             {/*
@@ -214,6 +227,8 @@ export function Settings() {
               title="About"
               subtitle="Version, licences and credits"
               height={ROW_HEIGHT}
+              icon={Info}
+              hue="blossom"
               onPress={open('/settings/about')}
             />
           </GroupCard>

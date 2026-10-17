@@ -1,3 +1,5 @@
+import type { PlayHue } from '../dashboard/tokens'
+import type { ProfileRewardId } from '../../lib/progression/profileRewards'
 /*
  * The Profile design system, built to the Beta 2.1 reference
  * (`SS 929 Redesigned Profile UI Screen.png`).
@@ -29,7 +31,8 @@ export const profColors = {
   border: '#E6E2DA',
 
   /** The avatar disc — the same muted sage as the Settings profile card's. */
-  sage: '#9BB295',
+  /* Greener for SS1017, and deep enough that the white initial on it reads (3:1). */
+  sage: '#6FA377',
 
   /** The streak stat's disc, and the XP star's. */
   fireDisc: '#FEE6D6',
@@ -90,6 +93,16 @@ export const profColors = {
  * The profile's accent ink — the XP bar, the level pill, the seal beside the
  * name. Default and Jade Ink; see the note at the top of the file.
  */
+/**
+ * Each cosmetic's hue in the SS1017 palette — the wash its tile wears on Profile
+ * and on Rewards: mist is sky, the wreath blossom, the ink jade.
+ */
+export const REWARD_HUE: Record<ProfileRewardId, PlayHue> = {
+  misty_mountain_background: 'sky',
+  sakura_frame: 'blossom',
+  jade_ink: 'jade',
+}
+
 export const profileInk = {
   plain: { bar: '#86B596', pill: '#E9F3EA', pillInk: '#3F7A55', seal: null },
   jade: { bar: '#2E7D57', pill: '#DDEFE3', pillInk: '#1F5E40', seal: '#2E7D57' },

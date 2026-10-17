@@ -29,6 +29,7 @@ export function PressScale({
   scaleTo = 0.96,
   accessibilityLabel,
   accessibilityRole = 'button',
+  accessibilityState,
 }: {
   children: ReactNode
   onPress?: () => void
@@ -57,6 +58,8 @@ export function PressScale({
   scaleTo?: number
   accessibilityLabel?: string
   accessibilityRole?: 'button' | 'link' | 'none'
+  /** Selection, for a pill that is one of a set. */
+  accessibilityState?: { selected?: boolean }
 }) {
   const scale = useRef(new Animated.Value(1)).current
 
@@ -79,6 +82,7 @@ export function PressScale({
       disabled={disabled}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ ...accessibilityState, disabled }}
       className={outerClassName}
       style={outerStyle}
     >

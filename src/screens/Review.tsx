@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react'
-import { View, ScrollView, useWindowDimensions } from 'react-native'
+import { View, Text, Image, ScrollView, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useScrollToTop } from 'expo-router'
 import { useScrollToTopOnFocus } from '../components/useScrollToTopOnFocus'
@@ -21,7 +21,9 @@ import { revArt } from '../components/review/art'
 import { Reveal, useEntranceRun } from '../components/dashboard/entrance'
 import { FlexGap } from '../components/FlexGap'
 import { TourScrollContext, TourTarget } from '../components/tour/targets'
-import { revColors as c, revSpacing as s, revEntrance as anim, revRadius, REV_CONTENT_MAX } from '../components/review/tokens'
+import { revColors as c, revSpacing as s, revEntrance as anim, revRadius, revShadow, REV_CONTENT_MAX } from '../components/review/tokens'
+import { playTints } from '../components/dashboard/tokens'
+import { ShadowSurface } from '../components/shadowReveal'
 import { dueCardsFor, dueCountFor, mistakeCardsFor, weakCardsFor } from '../lib/selectors'
 import { playTapSound } from '../lib/sound'
 import { tapHaptic, thunkHaptic } from '../lib/haptics'
@@ -30,7 +32,9 @@ import { PAGE_TITLE_TOP } from '../components/pageHeader'
 
 /*
  * The Review hub, built to the Beta 2.1 reference (`SS928 Redesigned Review
- * Screen.png`).
+ * Screen.png`) and coloured to "SS1017 New words flashcard and Review
+ * Redesign.png": Flashcards on sky, Mixed Drills on jade, Mistakes on blossom,
+ * the two quiet buttons paired in one row, and Shifu's quote at the foot.
  *
  * Its design system is `components/review/tokens.ts` and its pieces are in
  * `components/review/parts.tsx`. What lives here is the composition and the
@@ -159,6 +163,7 @@ export function Review() {
                 title="Flashcards"
                 description="Review words and meanings with spaced repetition."
                 art={revArt.cards.flashcards}
+                tint={playTints.sky}
                 count={counts.flashcards}
                 width={contentWidth}
                 onPress={() => openSession('flashcards')}
@@ -167,6 +172,7 @@ export function Review() {
                 title="Mixed Drills"
                 description="Listening, fill the gap, and match the pairs."
                 art={revArt.cards.listening}
+                tint={playTints.jade}
                 count={counts.mixed}
                 width={contentWidth}
                 onPress={() => openSession('mixed')}
@@ -175,6 +181,8 @@ export function Review() {
                 title="Mistakes"
                 description="Review words you’ve missed to make them stick."
                 art={revArt.cards.mistakes}
+                tint={playTints.blossom}
+                countLabel={counts.mistakes === 1 ? 'item' : 'items'}
                 count={counts.mistakes}
                 width={contentWidth}
                 onPress={() => openSession('mistakes')}
@@ -207,10 +215,15 @@ export function Review() {
                     openSession('full')
                   }}
                 />
+                <View style={{ flexDirection: 'row', gap: s.md }}>
                 <ReviewButton
-                  label="Quick 5-min Review"
+                  /* Half a row on a 360pt phone can't hold the full label in Lora
+                     Bold, and Android has no shrink-to-fit — so it says less. */
+                  label={column < 400 ? '5-min Review' : 'Quick 5-min Review'}
+                  accessibilityLabel="Quick 5-minute review"
                   icon={Clock}
                   tone="quiet"
+                  compact
                   onPress={() => {
                     tapHaptic()
                     openSession('quick')
@@ -226,6 +239,7 @@ export function Review() {
                   label="My Words"
                   icon={BookMarked}
                   tone="quiet"
+                  compact
                   accessibilityLabel={`My Words, ${deck.length} ${deck.length === 1 ? 'word' : 'words'} in your deck`}
                   onPress={() => {
                     tapHaptic()
@@ -233,8 +247,33 @@ export function Review() {
                     router.push('/my-words')
                   }}
                 />
+                </View>
               </View>
               </TourTarget>
+            </Reveal>
+
+            <Reveal from="bottom" {...beat}>
+              <ShadowSurface
+                shadow={revShadow}
+                style={{
+                  marginTop: s.lg,
+                  borderRadius: revRadius.large,
+                  backgroundColor: playTints.honey.fill,
+                  borderWidth: 1,
+                  borderColor: playTints.honey.border,
+                  paddingVertical: s.sm,
+                  paddingLeft: s.md,
+                  paddingRight: s.lg,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: s.sm,
+                }}
+              >
+                <Image source={revArt.shifuQuote} resizeMode="contain" style={{ width: 54, height: 58 }} />
+                <Text className="font-lora" style={{ flex: 1, fontSize: 14, lineHeight: 20, color: c.navy }}>
+                  “Progress isn’t about perfection, but showing up every day!”
+                </Text>
+              </ShadowSurface>
             </Reveal>
           </View>
         </View>

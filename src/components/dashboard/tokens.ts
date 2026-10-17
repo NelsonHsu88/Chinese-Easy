@@ -434,3 +434,45 @@ export const homeLayout = {
 
 /** The reference's own width, which every art offset below is measured in. */
 export const HOME_REF_WIDTH = 863
+
+// --- Playful tints (the SS1017 redesign) -----------------------------------------
+
+/*
+ * The SS1017 references ("Learn and Chinese Basic", "New words flashcard and
+ * Review", "Dictionary and Pronunciation", "Profile") stop every card being the
+ * same cream: each destination wears its own pale watercolour wash, and its
+ * chevron, chip, progress bar and number badge pick up the same hue a step or
+ * two deeper. One family, five hues, shared by every redesigned screen so a
+ * "blossom" card on Review is the same pink as one on Learn.
+ *
+ * Per hue:
+ * - `fill`    the card wash.
+ * - `border`  its hairline, one step down — what separates a pale card from the
+ *             white page without a heavy shadow.
+ * - `soft`    the chevron disc, chip and track fill sitting *on* the wash.
+ * - `ink`     icons, chevrons and bar fills (graphic contrast ≥ 3:1 on `soft`).
+ * - `text`    words drawn in the hue — chips, counts, links (≥ 4.5:1 on `soft`).
+ * - `badge`   the solid numbered disc on a section header (white text on it).
+ *
+ * Card art that sits on these is the `assets/images/tinted/` set, keyed by
+ * `scripts/processTintedArt.mjs` so its paper takes the wash rather than
+ * showing as a cream box. Light-only, like the rest of the family.
+ */
+export const playTints = {
+  jade: { fill: '#EFF8EE', border: '#D5EAD2', soft: '#DCEFD8', ink: '#3D8A4F', text: '#2E7340', badge: '#4E995E' },
+  blossom: { fill: '#FDF1F0', border: '#F5D9D7', soft: '#FADEDC', ink: '#C4504F', text: '#A9393F', badge: '#CC5A5A' },
+  sky: { fill: '#EDF5FD', border: '#D5E4F6', soft: '#DBE8F8', ink: '#4A7FCB', text: '#2C5C9F', badge: '#5B91DB' },
+  honey: { fill: '#FDF6E6', border: '#F0E2BF', soft: '#F8EACB', ink: '#A47420', text: '#8A6214', badge: '#AD802C' },
+  lilac: { fill: '#F5F1FC', border: '#E3DAF6', soft: '#E7DEF8', ink: '#7C5FD0', text: '#5B40AE', badge: '#9479DB' },
+} as const
+
+export type PlayHue = keyof typeof playTints
+export type PlayTint = (typeof playTints)[PlayHue]
+
+/** The order hues are dealt out when a list has no meaning to colour by. */
+export const PLAY_HUE_ORDER: readonly PlayHue[] = ['jade', 'blossom', 'sky', 'honey', 'lilac']
+
+/** A hue for the n-th item of a list, cycling through `PLAY_HUE_ORDER`. */
+export function playHueAt(index: number): PlayHue {
+  return PLAY_HUE_ORDER[((index % PLAY_HUE_ORDER.length) + PLAY_HUE_ORDER.length) % PLAY_HUE_ORDER.length]
+}

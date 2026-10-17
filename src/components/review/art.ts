@@ -14,11 +14,15 @@
 export const revArt = {
   hero: require('../../assets/images/review/hero.png'),
   foot: require('../../assets/images/review/foot.png'),
+  /* The `tinted/` copies (`scripts/processTintedArt.mjs`): each mode card
+     wears its own SS1017 wash, and their paper takes it. */
   cards: {
-    flashcards: require('../../assets/images/review/card-flashcards.png'),
-    listening: require('../../assets/images/review/card-listening.png'),
-    mistakes: require('../../assets/images/review/card-mistakes.png'),
+    flashcards: require('../../assets/images/tinted/review-card-flashcards.png'),
+    listening: require('../../assets/images/tinted/review-card-listening.png'),
+    mistakes: require('../../assets/images/tinted/review-card-mistakes.png'),
   },
+  /** Shifu, small, beside the quote at the foot. */
+  shifuQuote: require('../../assets/images/tour/shifu-welcome.png'),
   /** The app's own painted flame, shared with the Dashboard. */
   fire: require('../../assets/images/icons/fire.png'),
 } as const

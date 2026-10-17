@@ -27,6 +27,7 @@ import {
   SET_CONTENT_MAX,
 } from './tokens'
 import { tapHaptic, tickHaptic } from '../../lib/haptics'
+import { playTints, type PlayHue } from '../dashboard/tokens'
 import { useScrollToTopOnFocus } from '../useScrollToTopOnFocus'
 import { TourScrollContext } from '../tour/targets'
 
@@ -204,6 +205,8 @@ export function SettingsShell({
  * and `back()` then silently does nothing — an arrow that looks fine and is
  * simply inert.
  */
+const DETAIL_SAKURA_SHARE = 0.2
+
 export function DetailShell({ title, children }: { title: string; children: ReactNode }) {
   const { width } = useWindowDimensions()
   const column = Math.min(width, SET_CONTENT_MAX)
@@ -229,6 +232,9 @@ export function DetailShell({ title, children }: { title: string; children: Reac
             `elevation` shadow. */}
         <Animated.View style={[{ width: column }, style]} needsOffscreenAlphaCompositing>
           <View style={{ paddingHorizontal: s.screen }}>
+            {/* A small branch over the corner, so a detail screen belongs to
+                the hub it came from rather than reading as a bare form. */}
+            <SakuraCorner width={column * DETAIL_SAKURA_SHARE} />
             <View className="flex-row items-center" style={{ paddingTop: s.md, gap: s.md }}>
               <Pressable
                 onPress={() =>
@@ -241,12 +247,12 @@ export function DetailShell({ title, children }: { title: string; children: Reac
                 style={{
                   width: 40,
                   height: 40,
-                  backgroundColor: c.card,
+                  backgroundColor: playTints.jade.fill,
                   borderWidth: 1,
-                  borderColor: c.border,
+                  borderColor: playTints.jade.border,
                 }}
               >
-                <ArrowLeft size={20} color={c.navy} strokeWidth={2.4} />
+                <ArrowLeft size={20} color={playTints.jade.text} strokeWidth={2.4} />
               </Pressable>
               <Text className="font-nunito-extrabold" style={{ ...t.detailTitle, color: c.navy }}>
                 {title}
@@ -449,13 +455,19 @@ export function NavRow({
   value,
   height,
   onPress,
+  icon,
+  hue,
 }: {
   title: string
   subtitle: string
   value?: string
   height: number
   onPress: () => void
+  /** SS1017's playful pass: a tinted icon disc leading the row. */
+  icon?: ComponentType<{ color: string; size: number; strokeWidth: number }>
+  hue?: PlayHue
 }) {
+  const tint = playTints[hue ?? 'jade']
   const { width } = useWindowDimensions()
   const narrow = Math.min(width, SET_CONTENT_MAX) < HUB_NARROW_BELOW
   return (
@@ -470,6 +482,11 @@ export function NavRow({
         paddingHorizontal: narrow ? HUB_ROW_PADDING_NARROW : HUB_ROW_PADDING,
       }}
     >
+      {icon && (
+        <View style={{ marginRight: narrow ? s.md : s.lg }}>
+          <IconCircle icon={icon} tint={tint.soft} color={tint.ink} size={narrow ? 36 : 40} />
+        </View>
+      )}
       {/* Families in the style objects as well as the classes: on Android
           NativeWind can drop a class-derived style from some rows and not
           others, and a row that loses it falls back to the system face — the
@@ -501,7 +518,7 @@ export function NavRow({
       {value ? (
         <Text
           className="font-nunito-bold"
-          style={{ ...t.rowValue, fontFamily: 'NunitoBold', color: c.greenDark, marginRight: narrow ? s.sm : s.md }}
+          style={{ ...t.rowValue, fontFamily: 'NunitoBold', color: icon ? tint.text : c.greenDark, marginRight: narrow ? s.sm : s.md }}
         >
           {value}
         </Text>
@@ -514,16 +531,46 @@ export function NavRow({
 // --- Controls (detail screens) ------------------------------------------------
 
 /** A titled card of controls. The heading sits outside the card, like a section. */
-export function ControlGroup({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * Which hue each control group wears (SS1017's playful pass). Keyed by title so
+ * the detail screens need no change, and the same group always has the same
+ * colour; anything unlisted is jade.
+ */
+const GROUP_HUES: Record<string, PlayHue> = {
+  Feedback: 'honey',
+  Help: 'sky',
+  Appearance: 'lilac',
+  Account: 'blossom',
+  'Ad-free subscription': 'lilac',
+  'Built with': 'sky',
+  'Daily practice': 'honey',
+  'Daily target': 'jade',
+  "Why you're here": 'blossom',
+  Level: 'sky',
+  'Language & script': 'sky',
+  'Review & study': 'jade',
+  'Your deck': 'jade',
+  'Level and XP': 'honey',
+  'First run': 'sky',
+  'Restore progress': 'blossom',
+  'Simulated clock': 'lilac',
+}
+
+export function ControlGroup({ title, children, hue }: { title: string; children: ReactNode; hue?: PlayHue }) {
+  const tint = playTints[hue ?? GROUP_HUES[title] ?? 'jade']
   return (
     <View style={{ gap: s.md }}>
-      <Text
-        className="font-nunito-extrabold"
-        style={{ ...t.groupTitle, color: c.textMuted, textTransform: 'uppercase' }}
-      >
-        {title}
-      </Text>
-      <Card style={{ padding: setRow.padding, gap: s.xl }}>{children}</Card>
+      <View className="flex-row items-center" style={{ gap: s.sm }}>
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: tint.ink }} />
+        <Text
+          className="font-nunito-extrabold"
+          accessibilityRole="header"
+          style={{ ...t.groupTitle, color: tint.text, textTransform: 'uppercase' }}
+        >
+          {title}
+        </Text>
+      </View>
+      <Card style={{ padding: setRow.padding, gap: s.xl, borderColor: tint.border }}>{children}</Card>
     </View>
   )
 }

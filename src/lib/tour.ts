@@ -35,6 +35,7 @@ export type TourTargetId =
   | 'learn-new-words'
   | 'learn-books'
   | 'learn-third'
+  | 'learn-writing'
   | 'dictionary-search'
   | 'dictionary-filters'
   | 'dictionary-explore'

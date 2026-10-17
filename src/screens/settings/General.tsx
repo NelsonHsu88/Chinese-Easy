@@ -219,12 +219,15 @@ export function General() {
       */}
       {__DEV__ && (
         <View style={{ gap: s.md }}>
-          <Text
-            className="font-nunito-extrabold"
-            style={{ fontSize: 13, lineHeight: 17, letterSpacing: 0.3, color: c.textMuted, textTransform: 'uppercase' }}
-          >
-            Advanced
-          </Text>
+          <View className="flex-row items-center" style={{ gap: s.sm }}>
+            <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c.textMuted }} />
+            <Text
+              className="font-nunito-extrabold"
+              style={{ fontSize: 13, lineHeight: 17, letterSpacing: 0.3, color: c.textMuted, textTransform: 'uppercase' }}
+            >
+              Advanced
+            </Text>
+          </View>
           <Card>
             <PressRow
               /* Same exit as the row that opened this screen — a link one level

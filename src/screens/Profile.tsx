@@ -26,6 +26,8 @@ import {
 import { EditProfileSheet } from '../components/profile/EditProfileSheet'
 import { HskJourney } from '../components/profile/HskJourney'
 import { REWARD_ART } from '../components/profile/art'
+import { REWARD_HUE } from '../components/profile/tokens'
+import { playTints, type PlayTint } from '../components/dashboard/tokens'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profEntrance as anim, PROF_CONTENT_MAX } from '../components/profile/tokens'
 import { playTapSound } from '../lib/sound'
 
@@ -303,21 +305,24 @@ function Tile({
   foot,
   earned = false,
   achieved = false,
+  tint,
 }: {
   children: React.ReactNode
   foot: React.ReactNode
   earned?: boolean
   /** An earned achievement: the stronger green wash, since its medal is in full colour either way. */
   achieved?: boolean
+  /** A reward's own hue (`REWARD_HUE`); worn, it deepens to the hue's soft step. */
+  tint?: PlayTint
 }) {
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: achieved ? c.achievedTile : earned ? c.earnedTile : c.tile,
+        backgroundColor: tint ? (earned ? tint.soft : tint.fill) : achieved ? c.achievedTile : earned ? c.earnedTile : c.tile,
         borderRadius: profRadius.medium,
         borderWidth: 1,
-        borderColor: achieved ? c.achievedBorder : c.border,
+        borderColor: tint ? tint.border : achieved ? c.achievedBorder : c.border,
         padding: s.sm + 2,
       }}
     >
@@ -343,6 +348,7 @@ function RewardTile({ def, width, level, onPress }: { def: ProfileRewardDef; wid
     >
       <Tile
         earned={equipped}
+        tint={playTints[REWARD_HUE[def.id] ?? 'honey']}
         foot={
           equipped ? (
             <Tag tone="on">Equipped</Tag>

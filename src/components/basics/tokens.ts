@@ -15,6 +15,20 @@ import { drillColors, drillSheet, drillType } from '../drills/tokens'
 import { onbVerdict } from '../onboarding/tokens'
 import { revColors, revShoulders, revSpacing, revType } from '../review/tokens'
 import { PAGE_SUBTITLE, PAGE_TITLE } from '../pageHeader'
+import type { PlayHue } from '../dashboard/tokens'
+import type { BasicsGroupId } from '../../data/basics'
+
+/**
+ * Each group's hue in the SS1017 palette — its tile on Chinese Basics, and the
+ * wash its lessons' cards and progress take, so a lesson is visibly part of the
+ * group it was opened from.
+ */
+export const BASICS_GROUP_HUE: Record<BasicsGroupId, PlayHue> = {
+  pronunciation: 'blossom',
+  characters: 'jade',
+  writing: 'honey',
+  sentences: 'sky',
+}
 
 /*
  * Every role below resolves to a colour the rest of the app already uses —

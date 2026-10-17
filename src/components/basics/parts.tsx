@@ -4,6 +4,7 @@ import { router } from 'expo-router'
 import { ChevronLeft, ChevronRight } from 'lucide-react-native'
 import { DASH_LIFT, LiftedFace, PressableScale, usePressProgress } from '../dashboard/parts'
 import { basicsColors as c, basicsSpacing as sp, basicsType as t } from './tokens'
+import type { PlayTint } from '../dashboard/tokens'
 
 /*
  * The small pieces Chinese Basics' three screens share. Everything here is
@@ -31,18 +32,31 @@ export function BasicsBackRow({ fallback, right }: { fallback: string; right?: R
   )
 }
 
-/** The reference's thin sage bar on a warm grey track. */
-export function BasicsProgressBar({ done, total, height = 8 }: { done: number; total: number; height?: number }) {
+/**
+ * The reference's thin bar. Untinted it is sage on a warm grey track; on a
+ * tinted card (SS1017) it takes the card's hue — `ink` on `soft`.
+ */
+export function BasicsProgressBar({
+  done,
+  total,
+  height = 8,
+  tint,
+}: {
+  done: number
+  total: number
+  height?: number
+  tint?: PlayTint
+}) {
   const share = total > 0 ? Math.min(1, done / total) : 0
   return (
-    <View style={{ flex: 1, height, borderRadius: height / 2, backgroundColor: c.track, overflow: 'hidden' }}>
-      <View style={{ width: `${share * 100}%`, height: '100%', borderRadius: height / 2, backgroundColor: c.sage }} />
+    <View style={{ flex: 1, height, borderRadius: height / 2, backgroundColor: tint?.soft ?? c.track, overflow: 'hidden' }}>
+      <View style={{ width: `${share * 100}%`, height: '100%', borderRadius: height / 2, backgroundColor: tint?.ink ?? c.sage }} />
     </View>
   )
 }
 
 /** The soft round chevron at a tile's foot — decoration, never its own button. */
-export function BasicsChevron({ size = 40 }: { size?: number }) {
+export function BasicsChevron({ size = 40, tint }: { size?: number; tint?: PlayTint }) {
   return (
     <View
       style={{
@@ -51,10 +65,10 @@ export function BasicsChevron({ size = 40 }: { size?: number }) {
         borderRadius: size / 2,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: c.sageSoft,
+        backgroundColor: tint?.soft ?? c.sageSoft,
       }}
     >
-      <ChevronRight size={Math.round(size * 0.5)} color={c.sageDark} strokeWidth={2.4} />
+      <ChevronRight size={Math.round(size * 0.5)} color={tint?.ink ?? c.sageDark} strokeWidth={2.4} />
     </View>
   )
 }

@@ -9,6 +9,8 @@ import type { AchievementCategory } from '../../lib/progression/achievements'
  */
 export const profArt = {
   hero: require('../../assets/images/profile/hero.png'),
+  /** SS1017: Shifu cheering in front of the hero scenery. 155×209. */
+  shifu: require('../../assets/images/tour/shifu-celebrate.png'),
   /** Drawn only while the Misty Mountain Background is equipped. */
   cardMountains: require('../../assets/images/profile/card-mountains.png'),
   /** A full wreath: the Sakura Frame thumbnail *and* the frame around the avatar. */

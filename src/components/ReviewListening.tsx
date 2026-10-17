@@ -22,6 +22,7 @@ import { DrillShell, AnswerButtons, DRILL_PAD } from './drills/parts'
 /* The verdict palette is the placement test's, imported rather than re-picked:
    the same judgement should be the same colour wherever the learner meets it. */
 import { onbVerdict, type VerdictKind } from './onboarding/tokens'
+import { playTints } from './dashboard/tokens'
 import {
   listenColors as c,
   listenType as t,
@@ -235,14 +236,14 @@ export function ReviewListening({
                     width: listenSize.replay,
                     height: listenSize.replay,
                     borderRadius: listenSize.replay / 2,
-                    backgroundColor: c.replay,
+                    backgroundColor: playTints.sky.soft,
                     borderWidth: 1,
-                    borderColor: c.border,
+                    borderColor: playTints.sky.border,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <RotateCcw size={17} color={c.slate} strokeWidth={2.3} />
+                  <RotateCcw size={17} color={playTints.sky.ink} strokeWidth={2.3} />
                 </View>
               </Pressable>
             </View>

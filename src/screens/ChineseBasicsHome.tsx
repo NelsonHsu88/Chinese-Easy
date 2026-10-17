@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext'
 import { PressableScale } from '../components/dashboard/parts'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { ShadowRevealProvider, ShadowSurface, useShadowReveal } from '../components/shadowReveal'
-import { dashShadow } from '../components/dashboard/tokens'
+import { dashShadow, playTints, type PlayTint } from '../components/dashboard/tokens'
 import {
   basicsColors as c,
   basicsRadius as radius,
@@ -13,6 +13,7 @@ import {
   basicsType as t,
   BASICS_CONTENT_MAX,
   BASICS_GUTTER,
+  BASICS_GROUP_HUE,
 } from '../components/basics/tokens'
 import { BasicsBackRow, BasicsButton, BasicsChevron, BasicsProgressBar } from '../components/basics/parts'
 import { BASICS_LESSONS, type BasicsGroupId, type Phon } from '../data/basics'
@@ -31,16 +32,20 @@ import { basicsText, featuredLesson, groupById, groupProgress, isLessonDone, les
  *
  * All painting is cut from the reference by `scripts/processBasicsArt.mjs`,
  * sized here by the same factor the mockup's 941px width maps onto the column.
+ *
+ * Coloured to "SS1017 Learn and Chinese Basic redesign.png": the Continue card
+ * wears the sky wash and each tile its own hue, using the `tinted/` copies of
+ * the card art (`scripts/processTintedArt.mjs`) so their paper takes the wash.
  */
 
 const ART = {
   hero: require('../assets/images/basics/hero.png'),
-  continue: require('../assets/images/basics/continue.png'),
+  continue: require('../assets/images/tinted/basics-continue.png'),
   foot: require('../assets/images/basics/foot.png'),
-  pronunciation: require('../assets/images/basics/pronunciation.png'),
-  characters: require('../assets/images/basics/characters.png'),
-  writing: require('../assets/images/basics/writing.png'),
-  sentences: require('../assets/images/basics/sentences.png'),
+  pronunciation: require('../assets/images/tinted/basics-pronunciation.png'),
+  characters: require('../assets/images/tinted/basics-characters.png'),
+  writing: require('../assets/images/tinted/basics-writing.png'),
+  sentences: require('../assets/images/tinted/basics-sentences.png'),
 } as const
 
 /** The mockup's width, and each asset's pixel size in it. */
@@ -62,12 +67,14 @@ const TILE_ART_RATIO = { tall: 296 / 424, short: 190 / 424 }
 const GRID_GAP = sp.md
 const CARD_GAP = sp.xl
 
-const TILES: { group: BasicsGroupId; art: ImageSourcePropType; tall: boolean }[] = [
-  { group: 'pronunciation', art: ART.pronunciation, tall: true },
-  { group: 'characters', art: ART.characters, tall: true },
-  { group: 'writing', art: ART.writing, tall: false },
-  { group: 'sentences', art: ART.sentences, tall: false },
+const TILES: { group: BasicsGroupId; art: ImageSourcePropType; tall: boolean; tint: PlayTint }[] = [
+  { group: 'pronunciation', art: ART.pronunciation, tall: true, tint: playTints[BASICS_GROUP_HUE.pronunciation] },
+  { group: 'characters', art: ART.characters, tall: true, tint: playTints[BASICS_GROUP_HUE.characters] },
+  { group: 'writing', art: ART.writing, tall: false, tint: playTints[BASICS_GROUP_HUE.writing] },
+  { group: 'sentences', art: ART.sentences, tall: false, tint: playTints[BASICS_GROUP_HUE.sentences] },
 ]
+/** The Continue card's wash. */
+const START_TINT = playTints.sky
 
 const openGroup = (group: BasicsGroupId) =>
   router.push({ pathname: '/basics/[group]', params: { group } })
@@ -142,9 +149,9 @@ export function ChineseBasicsHome() {
                 shadow={dashShadow}
                 style={{
                   borderRadius: radius.card,
-                  backgroundColor: c.card,
+                  backgroundColor: START_TINT.fill,
                   borderWidth: 1,
-                  borderColor: c.border,
+                  borderColor: START_TINT.border,
                   overflow: 'hidden',
                   minHeight: continueArt.height,
                 }}
@@ -155,7 +162,7 @@ export function ChineseBasicsHome() {
                 <View style={{ width: cardWidth - continueArt.width, paddingLeft: sp.lg, paddingVertical: sp.lg }}>
                   <Text
                     className="font-nunito-bold"
-                    style={{ ...t.eyebrow, color: c.slate }}
+                    style={{ ...t.eyebrow, color: START_TINT.text }}
                   >
                     {eyebrow}
                   </Text>
@@ -169,7 +176,7 @@ export function ChineseBasicsHome() {
                     {offer ? `${featuredGroup.title} · ${featured.minutes} min` : 'Every lesson finished'}
                   </Text>
                   <View style={{ marginTop: sp.md, flexDirection: 'row', alignItems: 'center', gap: sp.md }}>
-                    <BasicsProgressBar done={featuredProgress.done} total={featuredProgress.total} />
+                    <BasicsProgressBar done={featuredProgress.done} total={featuredProgress.total} tint={START_TINT} />
                     <Text className="font-nunito-semibold" style={{ ...t.meta, color: c.slate }}>
                       {featuredProgress.done} / {featuredProgress.total}
                     </Text>
@@ -177,6 +184,7 @@ export function ChineseBasicsHome() {
                   <View style={{ marginTop: sp.md }}>
                     <BasicsButton
                       hub
+                      solid
                       label={buttonLabel}
                       onPress={() => openLesson(featured.id)}
                     />
@@ -204,9 +212,9 @@ export function ChineseBasicsHome() {
                           style={{
                             flex: 1,
                             borderRadius: radius.card,
-                            backgroundColor: c.card,
+                            backgroundColor: tile.tint.fill,
                             borderWidth: 1,
-                            borderColor: c.border,
+                            borderColor: tile.tint.border,
                             overflow: 'hidden',
                           }}
                         >
@@ -225,11 +233,14 @@ export function ChineseBasicsHome() {
                               {text(group.description)}
                             </Text>
                             <View style={{ flex: 1, minHeight: sp.md }} />
+                            <View style={{ flexDirection: 'row', marginBottom: sp.sm }}>
+                              <BasicsProgressBar done={progress.done} total={progress.total} height={6} tint={tile.tint} />
+                            </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                              <Text className="font-nunito-bold" style={{ ...t.meta, color: c.sageDark }}>
+                              <Text className="font-nunito-bold" style={{ ...t.meta, color: tile.tint.text }}>
                                 {progress.done === progress.total ? 'Complete' : `${progress.done} / ${progress.total} lessons`}
                               </Text>
-                              <BasicsChevron size={34} />
+                              <BasicsChevron size={34} tint={tile.tint} />
                             </View>
                           </View>
                         </ShadowSurface>

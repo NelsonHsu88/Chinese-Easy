@@ -120,6 +120,8 @@ export const revCard = {
 export const revButton = {
   primaryHeight: 54,
   quietHeight: 50,
+  /** Each half of the paired quiet row. */
+  compactHeight: 46,
 } as const
 
 /**

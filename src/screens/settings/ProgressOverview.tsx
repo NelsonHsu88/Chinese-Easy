@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { View, Text } from 'react-native'
+import { playTints, type PlayHue } from '../../components/dashboard/tokens'
 import { router } from 'expo-router'
 import { Flame, Sparkles, Repeat, CalendarCheck } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
@@ -28,22 +29,21 @@ function StatTile({
   icon: Icon,
   value,
   label,
-  tint,
-  ink,
+  hue,
 }: {
   icon: typeof Flame
   value: string
   label: string
-  tint: string
-  ink: string
+  hue: PlayHue
 }) {
+  const tint = playTints[hue]
   return (
-    <Card style={{ flex: 1, padding: s.lg, gap: s.sm }}>
+    <Card style={{ flex: 1, padding: s.lg, gap: s.sm, backgroundColor: tint.fill, borderColor: tint.border }}>
       <View
         className="items-center justify-center rounded-full"
-        style={{ width: 34, height: 34, backgroundColor: tint }}
+        style={{ width: 34, height: 34, backgroundColor: tint.soft }}
       >
-        <Icon size={17} color={ink} strokeWidth={2.3} />
+        <Icon size={17} color={tint.ink} strokeWidth={2.3} />
       </View>
       <View>
         <Text className="font-nunito-extrabold" style={{ fontSize: 22, lineHeight: 27, color: c.navy }}>
@@ -79,16 +79,14 @@ export function ProgressOverview() {
           <StatTile
             icon={Flame}
             value={String(streak)}
-            label={streak === 1 ? 'day streak' : 'day streak'}
-            tint={c.coralSoft}
-            ink={c.coralDark}
+            label="day streak"
+            hue="blossom"
           />
           <StatTile
             icon={CalendarCheck}
             value={`${summary.activeDays}`}
             label={`active days of ${WINDOW_DAYS}`}
-            tint={c.greenSoft}
-            ink={c.greenDark}
+            hue="jade"
           />
         </View>
         <View className="flex-row" style={{ gap: s.md }}>
@@ -96,15 +94,13 @@ export function ProgressOverview() {
             icon={Sparkles}
             value={String(summary.totalWordsLearned)}
             label="words learned"
-            tint={c.goldSoft}
-            ink={c.gold}
+            hue="honey"
           />
           <StatTile
             icon={Repeat}
             value={String(summary.totalReviewsCompleted)}
             label="reviews completed"
-            tint={c.blueSoft}
-            ink={c.blueGray}
+            hue="sky"
           />
         </View>
       </View>

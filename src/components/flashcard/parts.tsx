@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { View, Text, Pressable, Image, useWindowDimensions } from 'react-native'
 import { ChevronLeft, Timer } from 'lucide-react-native'
 import { onbVerdict } from '../onboarding/tokens'
+import type { PlayTint } from '../dashboard/tokens'
 import { fcArt } from './art'
 import {
   fcColors as c,
@@ -54,10 +55,21 @@ const clip = {
 } as const
 
 /** A round button on a card or in the header: reset, hint, back. */
-export function DiscButton({ onPress, label, children }: { onPress: () => void; label: string; children: ReactNode }) {
+export function DiscButton({
+  onPress,
+  label,
+  children,
+  tint,
+}: {
+  onPress: () => void
+  label: string
+  children: ReactNode
+  /** SS1017: a disc may wear one of the shared hues (the hint is honey, replay jade). */
+  tint?: PlayTint
+}) {
   return (
     <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={6}>
-      <View style={[disc, fcShadow]}>{children}</View>
+      <View style={[disc, fcShadow, tint ? { backgroundColor: tint.soft, borderColor: tint.border } : null]}>{children}</View>
     </Pressable>
   )
 }

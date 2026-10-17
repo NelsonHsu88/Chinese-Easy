@@ -73,11 +73,17 @@ export function ProfileHero({ column, run }: { column: number; run: number }) {
   const artWidth = profHero.artWidth * (column / PROF_CONTENT_MAX)
   const art = useReveal({ from: 'right', at: profEntrance.at, duration: profEntrance.for, run, distance: profEntrance.slideX })
   const text = useReveal({ from: 'bottom', at: profEntrance.at, duration: profEntrance.for, run, distance: profEntrance.slideY })
+  /* Shifu rises a beat after the scenery settles, as on Home. */
+  const shifu = useReveal({ from: 'bottom', at: profEntrance.at + 180, duration: profEntrance.for, run, distance: 18 })
+  const shifuHeight = Math.min(118, artWidth * 0.62)
 
   return (
     <View>
       <Animated.View pointerEvents="none" style={[{ position: 'absolute', right: -s.screen, bottom: -6 }, art]}>
         <Image source={profArt.hero} style={{ width: artWidth, height: artWidth / profHero.artRatio }} resizeMode="contain" />
+      </Animated.View>
+      <Animated.View pointerEvents="none" style={[{ position: 'absolute', right: s.sm, bottom: s.xs }, shifu]}>
+        <Image source={profArt.shifu} style={{ width: shifuHeight * (155 / 209), height: shifuHeight }} resizeMode="contain" />
       </Animated.View>
       <Animated.View style={[text, { paddingTop: s.sm, paddingBottom: s.xl }]}>
         <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.title, color: c.navy }}>

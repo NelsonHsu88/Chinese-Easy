@@ -1,16 +1,19 @@
-import { Animated, View, Text, ScrollView } from 'react-native'
+import { Animated, View, Text, ScrollView, Image } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import {
+  BookOpen,
+  ChartNoAxesColumnIncreasing,
   Check,
   ChevronRight,
-  Layers,
+  Clock,
+  LayoutGrid,
   Plus,
   SlidersHorizontal,
   Sparkle,
-  Sprout,
   Volume2,
   type LucideIcon,
 } from 'lucide-react-native'
+import { playTints, type PlayTint } from '../dashboard/tokens'
 import { PressScale } from './PressScale'
 import { ReadingSentence } from './ReadingSentence'
 import { DiscoverWash } from './DiscoverWash'
@@ -34,10 +37,11 @@ import type { AppSettings, ScriptMode, VocabWord } from '../../types'
  * block and header landscape deliberately left out: the page opens on the word
  * "Dictionary" and the search field, and nothing competes with them.
  *
- * The rule the whole screen follows is one expressive moment, the rest content.
- * That moment is the watercolour corner of Word to discover. Everything else is
- * warm paper, a drawn hairline edge and ink — no shadows, no pastel tiles, and
- * colour on an Explore card lives only in its glyph.
+ * Coloured to "SS1017 Dictionary and Pronunciation UI Redesign.png": each
+ * filter pill and Explore tile wears one of the shared `playTints` hues, the
+ * tiles carry a painting (the `tinted/` set, keyed so their paper takes the
+ * wash), and Recent is a row of small tinted cards. The reading content —
+ * results, entries, the example sentence — stays on white paper and ink.
  */
 
 /*
@@ -46,11 +50,11 @@ import type { AppSettings, ScriptMode, VocabWord } from '../../types'
  * Lucide and Text both take colour as a value, which is why these are hex here
  * rather than Tailwind classes; they are used nowhere else.
  */
-const EXPLORE_INK = {
-  jade: '#5E9A6A',
-  gold: '#B89A5E',
-  lavender: '#9486C4',
-  coral: '#E08A7E',
+const EXPLORE_ART = {
+  vocabulary: { source: require('../../assets/images/tinted/learn-books.png'), ratio: 400 / 276 },
+  characters: { source: require('../../assets/images/tinted/basics-characters.png'), ratio: 424 / 296 },
+  radicals: { source: require('../../assets/images/dashboard/bonsai.png'), ratio: 290 / 197 },
+  myWords: { source: require('../../assets/images/tinted/review-card-flashcards.png'), ratio: 290 / 205 },
 } as const
 
 /** Filter row height. Every pill and the round settings button share it. */
@@ -74,12 +78,17 @@ function Pill({
   onPress,
   flex,
   accessibilityLabel,
+  tint,
+  icon: Icon,
 }: {
   label: string
   selected?: boolean
   onPress: () => void
   flex: number
   accessibilityLabel?: string
+  /** The pill's hue. Selected, it fills with it; otherwise only its icon wears it. */
+  tint: PlayTint
+  icon: LucideIcon
 }) {
   /*
    * The share of the row sits on a plain wrapper, not on `PressScale`'s
@@ -94,17 +103,24 @@ function Pill({
         tickHaptic()
         onPress()
       }}
-      style={{ height: PILL_HEIGHT }}
-      className={`items-center justify-center rounded-full border px-3 ${
-        selected ? 'border-dict-green/40 bg-dict-green-pale' : 'border-dict-border bg-dict-card'
-      }`}
+      style={{
+        height: PILL_HEIGHT,
+        borderRadius: PILL_HEIGHT / 2,
+        borderWidth: selected ? 1.5 : 1,
+        borderColor: selected ? tint.ink : tint.border,
+        backgroundColor: selected ? tint.soft : tint.fill,
+      }}
+      className="flex-row items-center justify-center px-2.5"
       accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={{ selected }}
     >
+      <View style={{ marginRight: 5 }}>
+        <Icon size={15} color={tint.ink} strokeWidth={2.2} />
+      </View>
       <Text
         numberOfLines={1}
-        className={`text-[14.5px] leading-[19px] ${
-          selected ? 'font-dict-bold text-dict-green-dark' : 'font-dict-semibold text-dict-heading'
-        }`}
+        className={selected ? 'font-dict-bold' : 'font-dict-semibold'}
+        style={{ fontSize: 14, lineHeight: 19, color: selected ? tint.text : '#18263A', flexShrink: 1 }}
       >
         {label}
       </Text>
@@ -144,11 +160,28 @@ export function FilterRow({
 }) {
   return (
     <View className="flex-row items-center" style={{ gap: 10 }}>
-      <Pill label="All" flex={0.8} selected={!levelOnly} onPress={() => onScope(false)} accessibilityLabel="All levels" />
-      <Pill label={`HSK ${hskLevel}`} flex={1.05} selected={levelOnly} onPress={() => onScope(true)} />
+      <Pill
+        label="All"
+        flex={0.8}
+        tint={playTints.jade}
+        icon={LayoutGrid}
+        selected={!levelOnly}
+        onPress={() => onScope(false)}
+        accessibilityLabel="All levels"
+      />
+      <Pill
+        label={`HSK ${hskLevel}`}
+        flex={1.12}
+        tint={playTints.blossom}
+        icon={ChartNoAxesColumnIncreasing}
+        selected={levelOnly}
+        onPress={() => onScope(true)}
+      />
       <Pill
         label={script === 'traditional' ? 'Traditional' : 'Simplified'}
-        flex={1.3}
+        flex={1.4}
+        tint={playTints.sky}
+        icon={BookOpen}
         onPress={onScript}
         accessibilityLabel={`Characters: ${script}. Tap to switch.`}
       />
@@ -336,6 +369,74 @@ export function SectionHeading({ title, onSeeAll }: { title: string; onSeeAll?: 
  * moves the reading column whenever the window does, and the whole point is
  * that the readings line up.
  */
+/** Recent look-ups as a row of small tinted cards (SS1017), hues dealt in turn. */
+const RECENT_HUES: readonly PlayTint[] = [playTints.sky, playTints.blossom, playTints.jade, playTints.honey, playTints.lilac]
+const RECENT_CARD_WIDTH = 104
+
+export function RecentCards({
+  words,
+  settings,
+  onOpen,
+}: {
+  words: VocabWord[]
+  settings: AppSettings
+  onOpen: (word: VocabWord) => void
+}) {
+  if (words.length === 0) return <RecentList words={words} settings={settings} onOpen={onOpen} />
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={{ gap: 10, paddingRight: 4 }}
+      style={{ marginHorizontal: -2, paddingHorizontal: 2 }}
+    >
+      {words.map((word, i) => {
+        const tint = RECENT_HUES[i % RECENT_HUES.length]
+        const hanzi = displayWord(word, settings.script)
+        const count = [...hanzi].length
+        const size = count <= 2 ? 24 : count === 3 ? 19 : 16
+        const reading = displayPinyin(word, settings.phoneticScript)
+        return (
+          <PressScale
+            key={word.id}
+            onPress={() => {
+              tickHaptic()
+              onOpen(word)
+            }}
+            scaleTo={0.96}
+            style={{
+              width: RECENT_CARD_WIDTH,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: tint.border,
+              backgroundColor: tint.fill,
+              paddingHorizontal: 12,
+              paddingTop: 10,
+              paddingBottom: 12,
+            }}
+            accessibilityLabel={`${hanzi}, ${reading}, ${shortGloss(word)}`}
+          >
+            <View className="flex-row items-start justify-between">
+              <Text numberOfLines={1} className={hanziFont(settings.script, 'medium')} style={{ fontSize: size, lineHeight: size + 8, color: tint.text, flexShrink: 1 }}>
+                {hanzi}
+              </Text>
+              <View style={{ marginTop: 3 }}>
+                <Clock size={13} color={tint.ink} strokeWidth={2.2} />
+              </View>
+            </View>
+            <Text numberOfLines={1} className="mt-1 font-dict-semibold" style={{ fontSize: 12.5, lineHeight: 16, color: '#42526B' }}>
+              {reading}
+            </Text>
+            <Text numberOfLines={1} className="font-dict-sans" style={{ fontSize: 12.5, lineHeight: 16, color: '#5D6878' }}>
+              {shortGloss(word)}
+            </Text>
+          </PressScale>
+        )
+      })}
+    </ScrollView>
+  )
+}
+
 export function RecentList({
   words,
   settings,
@@ -408,21 +509,19 @@ export function RecentList({
 
 // --- Explore --------------------------------------------------------------------
 
-type ExploreMark = { kind: 'glyph'; traditional: string; simplified: string } | { kind: 'icon'; icon: LucideIcon }
+const EXPLORE_ART_HEIGHT = 66
 
 function ExploreTile({
-  mark,
-  ink,
+  art,
+  tint,
   title,
   subtitle,
-  script,
   onPress,
 }: {
-  mark: ExploreMark
-  ink: string
+  art: { source: number; ratio: number }
+  tint: PlayTint
   title: string
   subtitle: string
-  script: ScriptMode
   onPress: () => void
 }) {
   const shadow = useRevealedShadow(DICT_CARD_SHADOW)
@@ -435,19 +534,22 @@ function ExploreTile({
       }}
       outerClassName="flex-1"
       scaleTo={0.97}
-      style={[shadow, { borderRadius: 18, backgroundColor: DICT_BG.card }]}
-      className="rounded-[18px] border border-dict-border bg-dict-card px-4 pb-4 pt-3.5"
+      style={[shadow, { borderRadius: 18, backgroundColor: tint.fill, borderWidth: 1, borderColor: tint.border }]}
+      className="px-4 pb-4 pt-3"
       accessibilityLabel={`${title}. ${subtitle}`}
     >
-      <View className="flex-row items-center justify-between" style={{ height: 60 }}>
-        {mark.kind === 'glyph' ? (
-          <Text className={hanziFont(script, 'semibold')} style={{ fontSize: 48, lineHeight: 60, color: ink }}>
-            {script === 'simplified' ? mark.simplified : mark.traditional}
-          </Text>
-        ) : (
-          <mark.icon size={46} color={ink} strokeWidth={1.6} />
-        )}
-        <ChevronRight size={18} color={ICON_MUTED} strokeWidth={ICON_STROKE} />
+      <View className="flex-row items-center justify-between" style={{ height: EXPLORE_ART_HEIGHT }}>
+        <Image
+          source={art.source}
+          resizeMode="contain"
+          style={{ width: EXPLORE_ART_HEIGHT * art.ratio, height: EXPLORE_ART_HEIGHT, marginLeft: -6 }}
+        />
+        <View
+          className="items-center justify-center rounded-full"
+          style={{ width: 30, height: 30, backgroundColor: tint.soft }}
+        >
+          <ChevronRight size={17} color={tint.ink} strokeWidth={2.4} />
+        </View>
       </View>
       <Text numberOfLines={1} className="mt-2 font-dict-bold text-[16px] leading-[21px] text-dict-heading">
         {title}
@@ -479,37 +581,33 @@ export function ExploreGrid({
     <View style={{ gap: 12 }}>
       <View className="flex-row" style={{ gap: 12 }}>
         <ExploreTile
-          mark={{ kind: 'glyph', traditional: '詞', simplified: '词' }}
-          ink={EXPLORE_INK.jade}
+          art={EXPLORE_ART.vocabulary}
+          tint={playTints.jade}
           title="HSK Vocabulary"
           subtitle="Build your word power"
-          script={script}
           onPress={onVocabulary}
         />
         <ExploreTile
-          mark={{ kind: 'glyph', traditional: '字', simplified: '字' }}
-          ink={EXPLORE_INK.gold}
+          art={EXPLORE_ART.characters}
+          tint={playTints.honey}
           title="Characters"
           subtitle="Meaning in every stroke"
-          script={script}
           onPress={onCharacters}
         />
       </View>
       <View className="flex-row" style={{ gap: 12 }}>
         <ExploreTile
-          mark={{ kind: 'icon', icon: Sprout }}
-          ink={EXPLORE_INK.lavender}
+          art={EXPLORE_ART.radicals}
+          tint={playTints.lilac}
           title="Radicals"
           subtitle="The building blocks of Chinese"
-          script={script}
           onPress={onRadicals}
         />
         <ExploreTile
-          mark={{ kind: 'icon', icon: Layers }}
-          ink={EXPLORE_INK.coral}
+          art={EXPLORE_ART.myWords}
+          tint={playTints.blossom}
           title="My Words"
           subtitle="Everything you've added"
-          script={script}
           onPress={onMyWords}
         />
       </View>
@@ -574,8 +672,11 @@ export function WordToDiscover({
     // as the inner view so the shadow has a shape to follow. `Animated.View`
     // rather than `View`, so it can carry `useRevealedShadow`'s interpolated
     // values.
-    <Animated.View style={[useRevealedShadow(DICT_CARD_SHADOW), { borderRadius: 20, backgroundColor: DICT_BG.card }]}>
-      <View className="overflow-hidden rounded-[20px] border border-dict-border bg-dict-card px-5 pb-5 pt-4">
+    <Animated.View style={[useRevealedShadow(DICT_CARD_SHADOW), { borderRadius: 20, backgroundColor: playTints.honey.fill }]}>
+      <View
+        className="overflow-hidden rounded-[20px] px-5 pb-5 pt-4"
+        style={{ borderWidth: 1, borderColor: playTints.honey.border, backgroundColor: playTints.honey.fill }}
+      >
         <DiscoverWash width={width} />
 
         <View className="flex-row items-center gap-2">

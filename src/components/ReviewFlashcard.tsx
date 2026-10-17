@@ -21,6 +21,7 @@ import { ReadingSentence } from './dictionary/ReadingSentence'
 import { HanziStage } from './HanziStage'
 import { PressableScale, LiftedFace } from './dashboard/parts'
 import { onbVerdict } from './onboarding/tokens'
+import { playTints } from './dashboard/tokens'
 import { DiscButton, FlashcardHeader, WritingCard, card, useFlashcardColumn } from './flashcard/parts'
 import {
   fcColors as c,
@@ -231,15 +232,16 @@ export function ReviewFlashcard({
             corner={
               <>
                 {!revealed && !hintShown && direction === 'production' && (
-                  <DiscButton onPress={() => setHintShown(true)} label="Show a hint">
-                    <Lightbulb size={20} color={onbVerdict.unsure.accent} />
+                  <DiscButton onPress={() => setHintShown(true)} label="Show a hint" tint={playTints.honey}>
+                    <Lightbulb size={20} color={playTints.honey.ink} />
                   </DiscButton>
                 )}
                 <DiscButton
                   onPress={() => setAttempt((a) => a + 1)}
                   label={revealed ? 'Replay stroke order' : 'Restart writing attempt'}
+                  tint={playTints.jade}
                 >
-                  <RotateCcw size={20} color={c.body} />
+                  <RotateCcw size={20} color={playTints.jade.ink} />
                 </DiscButton>
               </>
             }
@@ -260,7 +262,17 @@ export function ReviewFlashcard({
           {/* The answer card — or, before the reveal, the question. */}
           {/* Plain paper: by request this card carries no painting, so nothing
               competes with the word and its sentence. */}
-          <Animated.View style={[card, fcShadow, { marginTop: 12 }, riseStyle]}>
+          {/* Before the reveal the question wears the sky wash (SS1017); the
+              answer turns back to paper, so the change of state reads at once. */}
+          <Animated.View
+            style={[
+              card,
+              fcShadow,
+              { marginTop: 12 },
+              revealed ? null : { backgroundColor: playTints.sky.fill, borderColor: playTints.sky.border },
+              riseStyle,
+            ]}
+          >
             {revealed ? (
               <View style={{ padding: 20, paddingBottom: 18 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
@@ -286,7 +298,7 @@ export function ReviewFlashcard({
             ) : (
               <View style={{ padding: 20, paddingBottom: 22, minHeight: 132 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                  <Text style={{ flex: 1, fontFamily: 'NunitoExtraBold', ...t.label, color: c.slate, textTransform: 'uppercase', marginTop: 6 }}>
+                  <Text style={{ flex: 1, fontFamily: 'NunitoExtraBold', ...t.label, color: playTints.sky.text, textTransform: 'uppercase', marginTop: 6 }}>
                     {direction === 'recognition' ? 'Recognize this' : 'Write in Chinese'}
                   </Text>
                   <DuePill isNew={isNew} />
@@ -399,6 +411,8 @@ function SpeakerDisc({ text }: { text: string }) {
 
 function DuePill({ isNew }: { isNew: boolean }) {
   const Icon = isNew ? Sparkles : BookOpen
+  /* A new word is honey, as on New Words; a due one jade. */
+  const tint = isNew ? playTints.honey : playTints.jade
   return (
     <View
       style={{
@@ -408,11 +422,11 @@ function DuePill({ isNew }: { isNew: boolean }) {
         paddingHorizontal: 12,
         paddingVertical: 7,
         borderRadius: 999,
-        backgroundColor: c.mint,
+        backgroundColor: tint.soft,
       }}
     >
-      <Icon size={15} color={c.greenDark} />
-      <Text style={{ fontFamily: 'NunitoBold', ...t.pill, color: c.greenDark }}>{isNew ? 'New word' : 'Due today'}</Text>
+      <Icon size={15} color={tint.ink} />
+      <Text style={{ fontFamily: 'NunitoBold', ...t.pill, color: tint.text }}>{isNew ? 'New word' : 'Due today'}</Text>
     </View>
   )
 }

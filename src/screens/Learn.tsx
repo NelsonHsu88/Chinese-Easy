@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { View, Text, Image, ScrollView, Animated, useWindowDimensions, type ImageSourcePropType } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { ChevronRight } from 'lucide-react-native'
-import { dashColors as c, dashShadow, DASH_CONTENT_MAX } from '../components/dashboard/tokens'
+import { dashColors as c, dashShadow, DASH_CONTENT_MAX, playTints, type PlayTint } from '../components/dashboard/tokens'
+import { WritingGuideModal } from '../components/WritingGuideModal'
 import { PressableScale } from '../components/dashboard/parts'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { FEATURES } from '../lib/features'
@@ -14,9 +15,10 @@ import { ShadowRevealProvider, ShadowSurface, useShadowReveal } from '../compone
 import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHeader'
 
 /**
- * The Learn tab: a header with Shifu and his line, over three cards (New Words,
- * Books, Chinese Basics), built to the Beta 2.1 reference "SS103 Learn
- * Redesigned UI.png". The reference's back arrow is left out — this is tab
+ * The Learn tab: a header with Shifu and his line, over four cards (New Words,
+ * Books, Chinese Basics, Writing Guide), built to "SS1017 Learn and Chinese
+ * Basic redesign.png" — each card in its own `playTints` wash (jade, blossom,
+ * sky, honey) with a chevron disc in the same hue. The reference's back arrow is left out — this is tab
  * content, with nothing behind it to go back to.
  *
  * **The whole page fits one screen and never scrolls.** Each card is an
@@ -27,10 +29,9 @@ import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHea
  * bubble is dropped — decoration goes before anything the learner taps. The
  * ScrollView stays only as a last resort at a large accessibility text size.
  *
- * Every piece of painting is cropped out of the reference by
- * `scripts/processLearnArt.mjs` and keyed against `dashColors.background` (the
- * hero and foot) or `dashColors.card` (the card scenes) — both exactly the
- * mockup's own colours, so change neither without re-running the script.
+ * The hero and foot are cropped by `scripts/processLearnArt.mjs` and keyed
+ * against `dashColors.background`. The card scenes are the `tinted/` copies
+ * (`scripts/processTintedArt.mjs`), whose paper takes each card's wash.
  *
  * With `FEATURES.lessons` off, the third card is Chinese Basics (the beginner
  * course at `/basics`, which also holds the old writing primer); flipping the
@@ -40,9 +41,11 @@ import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHea
 const ART = {
   hero: require('../assets/images/learn/hero.png'),
   foot: require('../assets/images/learn/foot.png'),
-  newWords: require('../assets/images/learn/new-words.png'),
-  books: require('../assets/images/learn/books.png'),
-  writingBasics: require('../assets/images/learn/writing-basics.png'),
+  newWords: require('../assets/images/tinted/learn-new-words.png'),
+  books: require('../assets/images/tinted/learn-books.png'),
+  writingBasics: require('../assets/images/tinted/learn-writing-basics.png'),
+  characters: require('../assets/images/tinted/basics-characters.png'),
+  writingGuide: require('../assets/images/tinted/learn-writing-basics.png'),
 } as const
 /** Each asset's own pixel size, as width / height. */
 const HERO_RATIO = 467 / 559
@@ -72,16 +75,17 @@ const TYPE_SCALE_MIN = 0.84
 const BUBBLE_OVERLAP = 12
 
 /** The designed card, and the range it may grow or shrink to fill the screen. */
-const CARD_MIN = 112
-const CARD_MAX = 150
+const CARD_COUNT = 4
+const CARD_MIN = 98
+const CARD_MAX = 132
 /** Last resort before the page scrolls, reached only on a very short screen. */
-const CARD_FLOOR = 98
+const CARD_FLOOR = 84
 /** Least space kept under the last card, above the tab bar. */
 const COLUMN_BOTTOM = 12
 /** Viewport heights below this drop the speech bubble. */
-const COMPACT_BELOW = 590
+const COMPACT_BELOW = 640
 
-const SHIFU_LINE = 'Every character you learn brings you one step closer. Take it at your own pace!'
+const SHIFU_LINE = "Every character opens a new world. Let's learn together!"
 
 interface LearnCardDef {
   key: string
@@ -90,6 +94,7 @@ interface LearnCardDef {
   title: string
   description: string
   art: ImageSourcePropType
+  tint: PlayTint
   onPress: () => void
 }
 
@@ -105,6 +110,7 @@ function LearnCard({
   title,
   description,
   art,
+  tint,
   onPress,
   height,
   scale,
@@ -122,9 +128,9 @@ function LearnCard({
       <ShadowSurface shadow={dashShadow}
         style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }, {
           borderRadius: CARD_RADIUS,
-          backgroundColor: c.card,
+          backgroundColor: tint.fill,
           borderWidth: 1,
-          borderColor: c.border,
+          borderColor: tint.border,
           overflow: 'hidden',
         }]}
       >
@@ -138,7 +144,7 @@ function LearnCard({
           <Image source={art} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
           <LinearGradient
             pointerEvents="none"
-            colors={['rgba(255,253,252,0)', c.card]}
+            colors={[`${tint.fill}00`, tint.fill]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '22%' }}
@@ -148,13 +154,13 @@ function LearnCard({
         <View className="flex-1" style={{ paddingLeft: 10, paddingRight: 6 }}>
           <Text
             className="font-lora-bold"
-            style={{ fontSize: 21 * scale, lineHeight: 26 * scale, letterSpacing: -0.2, color: c.navy }}
+            style={{ fontSize: 19.5 * scale, lineHeight: 24 * scale, letterSpacing: -0.2, color: c.navy }}
           >
             {title}
           </Text>
           <Text
             className="font-lora"
-            style={{ marginTop: 3, fontSize: 13.5 * scale, lineHeight: 18.5 * scale, color: c.textSecondary }}
+            style={{ marginTop: 3, fontSize: 13 * scale, lineHeight: 17.5 * scale, color: c.textSecondary }}
           >
             {description}
           </Text>
@@ -162,9 +168,9 @@ function LearnCard({
 
         <View
           className="items-center justify-center rounded-full"
-          style={{ width: chevron, height: chevron, marginRight: Math.round(14 * scale), backgroundColor: c.greenSoft }}
+          style={{ width: chevron, height: chevron, marginRight: Math.round(14 * scale), backgroundColor: tint.soft }}
         >
-          <ChevronRight size={Math.round(20 * scale)} color={c.greenDark} strokeWidth={2.4} />
+          <ChevronRight size={Math.round(20 * scale)} color={tint.ink} strokeWidth={2.4} />
         </View>
       </ShadowSurface>
     </PressableScale>
@@ -235,11 +241,13 @@ export function Learn() {
 
   let cardHeight: number | undefined
   if (viewportHeight !== null && headerHeight !== null) {
-    const room = viewportHeight - headerHeight - CARD_GAP * 2
+    const room = viewportHeight - headerHeight - CARD_GAP * (CARD_COUNT - 1)
     /* Enough under the cards for the foot's pagoda and treeline to show. */
-    const roomy = (room - footHeight * 0.8) / 3
+    const roomy = (room - footHeight * 0.6) / CARD_COUNT
     cardHeight = Math.floor(
-      roomy >= CARD_MIN ? Math.min(roomy, CARD_MAX) : Math.max(CARD_FLOOR, Math.min(CARD_MIN, (room - COLUMN_BOTTOM) / 3)),
+      roomy >= CARD_MIN
+        ? Math.min(roomy, CARD_MAX)
+        : Math.max(CARD_FLOOR, Math.min(CARD_MIN, (room - COLUMN_BOTTOM) / CARD_COUNT)),
     )
   }
 
@@ -264,6 +272,7 @@ export function Learn() {
      shadows settle in behind them on this value (`ShadowSurface`) instead of
      showing at full strength before the cards do, as Android drew them. */
   const shadowArrival = useShadowReveal({ at: 0, duration: 420, run })
+  const [showGuide, setShowGuide] = useState(false)
 
   const cards: LearnCardDef[] = [
     {
@@ -272,6 +281,7 @@ export function Learn() {
       title: 'New Words',
       description: 'Learn useful Chinese words with clear examples and audio.',
       art: ART.newWords,
+      tint: playTints.jade,
       onPress: () => router.push('/new-words'),
     },
     {
@@ -280,6 +290,7 @@ export function Learn() {
       title: 'Books',
       description: 'Read Chinese stories, articles and classics to build your skills.',
       art: ART.books,
+      tint: playTints.blossom,
       onPress: () => router.push('/books'),
     },
     FEATURES.lessons
@@ -289,16 +300,27 @@ export function Learn() {
           title: 'Lessons Path',
           description: 'Follow a structured path from beginner to advanced.',
           art: ART.writingBasics,
+          tint: playTints.sky,
           onPress: () => router.push('/lessons'),
         }
       : {
           key: 'chinese-basics',
           tourId: 'learn-third',
           title: 'Chinese Basics',
-          description: 'Sounds, characters and first sentences, from zero.',
-          art: ART.writingBasics,
+          description: 'Start from zero and build a strong foundation.',
+          art: ART.characters,
+          tint: playTints.sky,
           onPress: () => router.push('/basics'),
         },
+    {
+      key: 'writing-guide',
+      tourId: 'learn-writing',
+      title: 'Writing Guide',
+      description: 'Learn strokes, stroke order and practise your handwriting.',
+      art: ART.writingGuide,
+      tint: playTints.honey,
+      onPress: () => setShowGuide(true),
+    },
   ]
 
   return (
@@ -359,16 +381,25 @@ export function Learn() {
           </View>
 
           <Animated.View style={[{ gap: CARD_GAP, paddingBottom: COLUMN_BOTTOM }, page]} needsOffscreenAlphaCompositing>
-            {cards.map(({ key, tourId, ...card }) => (
-              <TourTarget key={key} id={tourId} radius={CARD_RADIUS}>
-                <LearnCard {...card} height={cardHeight} scale={typeScale} />
-              </TourTarget>
+            {cards.map(({ key, tourId, ...card }, i) => (
+              <CardArrival key={key} index={i} run={run}>
+                <TourTarget id={tourId} radius={CARD_RADIUS}>
+                  <LearnCard {...card} height={cardHeight} scale={typeScale} />
+                </TourTarget>
+              </CardArrival>
             ))}
           </Animated.View>
         </View>
         </ShadowRevealProvider>
       </ScrollView>
 
+      {showGuide && <WritingGuideModal onClose={() => setShowGuide(false)} />}
     </SafeAreaView>
   )
+}
+
+/** Each card follows the page up a beat after the one above it. */
+function CardArrival({ index, run, children }: { index: number; run: number; children: ReactNode }) {
+  const style = useReveal({ from: 'bottom', at: 90 + index * 70, duration: 380, run, distance: 16 })
+  return <Animated.View style={style}>{children}</Animated.View>
 }

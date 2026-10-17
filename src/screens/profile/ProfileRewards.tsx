@@ -6,6 +6,8 @@ import { ProfileSubpage, ProgressBar, Tag, PillButton, useProfileCosmetics } fro
 import { REWARD_ART } from '../../components/profile/art'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from '../../components/profile/tokens'
 import { tickHaptic } from '../../lib/haptics'
+import { playTints } from '../../components/dashboard/tokens'
+import { REWARD_HUE } from '../../components/profile/tokens'
 
 /*
  * Profile Rewards — the three cosmetics, what each does, what level unlocks
@@ -24,15 +26,16 @@ export function ProfileRewards() {
           {PROFILE_REWARDS.map((def) => {
             const unlocked = progression.profileRewards.unlocked.includes(def.id)
             const equipped = progression.profileRewards.equipped.includes(def.id)
+            const tint = playTints[REWARD_HUE[def.id] ?? 'honey']
             return (
               <View
                 key={def.id}
                 className="flex-row"
-                style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.md, gap: s.md, ...profShadow }}
+                style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: tint.border, padding: s.md, gap: s.md, ...profShadow }}
               >
                 <View
                   className="items-center justify-center"
-                  style={{ width: 88, height: 88, borderRadius: profRadius.medium, backgroundColor: equipped ? c.earnedTile : c.tile, borderWidth: 1, borderColor: c.border }}
+                  style={{ width: 88, height: 88, borderRadius: profRadius.medium, backgroundColor: equipped ? tint.soft : tint.fill, borderWidth: 1, borderColor: tint.border }}
                 >
                   <Image source={REWARD_ART[def.id]} resizeMode="contain" style={{ width: 74, height: 74, opacity: unlocked ? 1 : 0.4 }} />
                 </View>

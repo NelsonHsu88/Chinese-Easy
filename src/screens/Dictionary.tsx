@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { View, Text, TextInput, ScrollView, Pressable, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
+import { View, Text, TextInput, ScrollView, Pressable, Animated, Easing, Image, Platform, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ChevronLeft, Search, X, Layers } from 'lucide-react-native'
@@ -30,6 +30,7 @@ import {
   FilterRow,
   HskLevelBar,
   RecentList,
+  RecentCards,
   SectionHeading,
   WordToDiscover,
 } from '../components/dictionary/Landing'
@@ -61,6 +62,10 @@ const HAS_HANZI = /[㐀-䶿一-鿿]/
 
 /** Rows shown in the Recent group before "See all". */
 const RECENT_PREVIEW = 2
+/** Small cards in the landing's Recent row (it scrolls sideways past the screen). */
+const RECENT_CARDS = 8
+/** The pagoda and blossom over the title, top right (SS1017). */
+const HEADER_ART = { source: require('../assets/images/library/header-scenery.png'), ratio: 351 / 245 }
 
 /**
  * The shelves the landing opens onto. Each is a titled list with a way back;
@@ -395,6 +400,18 @@ export function Dictionary() {
               is for.
             */}
             <View className="pb-5" style={{ paddingTop: PAGE_TITLE_TOP }}>
+              <View
+                pointerEvents="none"
+                style={{ position: 'absolute', right: -GUTTER, top: 0 }}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              >
+                <Image
+                  source={HEADER_ART.source}
+                  resizeMode="contain"
+                  style={{ width: Math.min(190, columnWidth * 0.46), height: Math.min(190, columnWidth * 0.46) / HEADER_ART.ratio }}
+                />
+              </View>
               <Text className="font-lora-bold text-dict-heading" accessibilityRole="header" style={PAGE_TITLE}>
                 Dictionary
               </Text>
@@ -608,7 +625,7 @@ export function Dictionary() {
                   title="Recent"
                   onSeeAll={recentWords.length > RECENT_PREVIEW ? () => setShelf('recents') : undefined}
                 />
-                <RecentList words={recentWords.slice(0, RECENT_PREVIEW)} settings={settings} onOpen={openWord} />
+                <RecentCards words={recentWords.slice(0, RECENT_CARDS)} settings={settings} onOpen={openWord} />
               </>
             )}
             </FadeSection>

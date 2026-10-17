@@ -49,7 +49,7 @@ export const setColors = {
    * a stand-in for a photograph, and at 56pt the full-strength green reads as a
    * button somebody forgot to label.
    */
-  sage: '#9BB295',
+  sage: '#6FA377',
 } as const
 
 /**

@@ -4,8 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import {
+  Bookmark,
+  BookmarkCheck,
   ChevronLeft,
-  CirclePlus,
   CircleAlert,
   PenLine,
   History,
@@ -24,7 +25,7 @@ import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { FlexGap } from '../components/FlexGap'
 import { revealedShadow, SHADOW_EASING, shadowDuration } from '../components/shadowReveal'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
-import { dashColors as c, dashShadow, dashShadowLifted, DASH_CONTENT_MAX } from '../components/dashboard/tokens'
+import { dashColors as c, dashShadow, dashShadowLifted, DASH_CONTENT_MAX, playTints } from '../components/dashboard/tokens'
 import { PressableScale, LiftedFace, usePressClaim } from '../components/dashboard/parts'
 import { TourTarget } from '../components/tour/targets'
 import { speak } from '../lib/speech'
@@ -75,7 +76,31 @@ import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
 const ART = {
   card: require('../assets/images/new-words/card-scenery.png'),
   foot: require('../assets/images/new-words/foot-scenery.png'),
-} as const
+  /* SS1017: a blossom branch over the card's top left corner, the pagoda range
+     behind the word, and Shifu cheering from the card's foot. */
+  sakura: require('../assets/images/onboarding/sakura-branch.png'),
+  scenery: require('../assets/images/onboarding/pagoda-mountains.png'),
+  shifu: require('../assets/images/tour/shifu-celebrate.png'),
+}
+const SAKURA_RATIO = 560 / 318
+const SCENERY_RATIO = 460 / 277
+const SHIFU_RATIO = 155 / 209
+
+/**
+ * Shifu's lines, one per word dealt — never the same one twice running. They
+ * cheer the learner on for looking, not for a result, so they fit a skip too.
+ */
+const CHEERS = [
+  "Great word! You're doing awesome!",
+  'One more for your collection!',
+  'Say it out loud with me!',
+  'Every word is a step forward.',
+  'Try writing it once!',
+] as const
+
+/** The SS1017 action row: three tall faces, icon over label. */
+const ACTION_HEIGHT = 66
+const ACTION_RADIUS = 18 as const
 const CARD_ART_RATIO = 338 / 412
 const FOOT_ART_RATIO = 941 / 168
 
@@ -97,8 +122,11 @@ const ADD_SHOULDER = '#2B6A3C'
 /** Skip: warm white, a warm grey hairline. */
 const SKIP = { fill: '#FFFDFC', border: '#D8D4CB', shoulder: '#CFC8BA' } as const
 
-/** Practice: the full-width mint pill under the pair. */
-const PRACTICE = { fill: '#EAF4EC', border: '#BFDCC6', shoulder: '#A7CDB1' } as const
+/** Save: the soft jade face between the quiet Skip and the solid Practice. */
+const SAVE = { fill: playTints.jade.soft, border: playTints.jade.border, shoulder: '#A7CDB1' } as const
+/** Practice: the one solid face — writing is the step that makes a word stick. */
+const PRACTICE_GRADIENT = ADD_GRADIENT
+const PRACTICE_SHOULDER = ADD_SHOULDER
 
 /**
  * A button whose look lives on a plain `View`, with the press tracked here
@@ -550,6 +578,11 @@ export function NewWords() {
     }
   }, [showGoalNote, goalNote])
 
+  /* Shifu's line moves on with each word dealt, so it never repeats twice running. */
+  const cheerTurn = useRef({ id: '', n: -1 })
+  if (shown && cheerTurn.current.id !== shown.id) cheerTurn.current = { id: shown.id, n: cheerTurn.current.n + 1 }
+  const cheerIndex = Math.max(0, cheerTurn.current.n) % CHEERS.length
+
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
       {/* The bamboo and mist along the foot — out of flow and behind everything. */}
@@ -574,9 +607,22 @@ export function NewWords() {
               accessibilityRole="button"
               accessibilityLabel="Back"
               hitSlop={10}
-              style={{ width: 40, height: 44, justifyContent: 'center', marginLeft: -6 }}
+              style={{ width: 44, height: 44, justifyContent: 'center' }}
             >
-              <ChevronLeft size={28} color={c.greenDark} strokeWidth={2.4} />
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: playTints.jade.fill,
+                  borderWidth: 1,
+                  borderColor: playTints.jade.border,
+                }}
+              >
+                <ChevronLeft size={24} color={c.greenDark} strokeWidth={2.4} />
+              </View>
             </Pressable>
 
             {/*
@@ -683,7 +729,11 @@ export function NewWords() {
                   `FlexGap`) plus its share of the spare height. Sized by its
                   content, a long example made that card taller and the buttons
                   jumped down for that one word. */}
-              <View style={{ marginTop: 14, flexGrow: 3, flexShrink: 0, flexBasis: CARD_MIN, minHeight: CARD_MIN }}>
+              <View style={{ marginTop: 18, flexGrow: 3, flexShrink: 0, flexBasis: CARD_MIN, minHeight: CARD_MIN }}>
+                {/* The rest of the day's deck, peeking out behind the live
+                    card. Never animated — the top card leaves and arrives,
+                    the pile stays put. */}
+                <DeckBehind />
                 {neighbours.map((w) => {
                   const live = w.id === shown.id
                   return (
@@ -752,16 +802,19 @@ export function NewWords() {
                     </View>
                   )
                 })}
+                <ShifuCheer cue={shown.id} message={CHEERS[cheerIndex]} />
               </View>
+
+              <GoalDots done={wordsLearnedToday} total={limit} />
 
               {/*
                 One set of three, all the same height and fully round: Skip
                 (warm white, grey hairline) beside Add (the one filled green
                 face), then Practice as a full-width mint pill beneath them.
               */}
-              <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
-                {/* The quiet one of the pair: like the Dashboard's Not now, its
-                    shoulder casts no shadow. */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                {/* The quiet one: like the Dashboard's Not now, its shoulder
+                    casts no shadow. */}
                 <PressableScale
                   onPress={() => {
                     tickHaptic()
@@ -771,65 +824,64 @@ export function NewWords() {
                   wrapperStyle={{ flex: 1 }}
                   accessibilityLabel={back > 0 ? 'Next word' : 'Skip this word'}
                 >
-                  <LiftedFace height={BUTTON_HEIGHT} fill={SKIP.fill} shoulder={SKIP.shoulder} border={SKIP.border} shadow={false}>
+                  <LiftedFace height={ACTION_HEIGHT} radius={ACTION_RADIUS} fill={SKIP.fill} shoulder={SKIP.shoulder} border={SKIP.border} shadow={false}>
                     {/* Looking back through words already dealt with, there is
                         nothing to skip — this just moves on. */}
-                    <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: c.textSecondary }}>
-                      {back > 0 ? 'Next' : 'Skip'}
-                    </Text>
+                    <ActionLabel icon={<X size={22} color={c.textSecondary} strokeWidth={2.2} />} label={back > 0 ? 'Next' : 'Skip'} color={c.textSecondary} />
                   </LiftedFace>
                 </PressableScale>
 
                 {/* The tour's "Save what matters" spotlight lands here. The
                     wrapper is the flex child now, so it carries the share. */}
-                <TourTarget id="new-words-add" radius={BUTTON_HEIGHT / 2} style={{ flex: 1.4 }}>
+                {/* The tour's "Save what matters" spotlight lands here. The
+                    wrapper is the flex child, so it carries the share. */}
+                <TourTarget id="new-words-add" radius={ACTION_RADIUS} style={{ flex: 1.15 }}>
                   <PressableScale
                     onPress={() => {
                       tapHaptic()
                       forward('add')
                     }}
                     haptic={false}
-                    accessibilityLabel={shownInDeck ? 'Already in my words — next word' : 'Add to my words'}
+                    accessibilityLabel={shownInDeck ? 'Already in my words — next word' : 'Save to my words'}
                   >
-                    <LiftedFace height={BUTTON_HEIGHT} fill={ADD_GRADIENT[1]} shoulder={ADD_SHOULDER}>
-                      {/* Out of flow, under the label: the face is the solid
-                          colour, and this paints the reference's light over it. */}
-                      <LinearGradient
-                        colors={ADD_GRADIENT}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: BUTTON_HEIGHT / 2 }}
+                    <LiftedFace height={ACTION_HEIGHT} radius={ACTION_RADIUS} fill={SAVE.fill} shoulder={SAVE.shoulder} border={SAVE.border} shadow={false}>
+                      <ActionLabel
+                        icon={
+                          shownInDeck ? (
+                            <BookmarkCheck size={22} color={c.greenDark} fill={playTints.jade.border} strokeWidth={2.2} />
+                          ) : (
+                            <Bookmark size={22} color={c.greenDark} fill={c.greenDark} strokeWidth={2} />
+                          )
+                        }
+                        label={shownInDeck ? 'In my words' : 'Save\nto my words'}
+                        color={c.greenDark}
                       />
-                      {shownInDeck ? (
-                        <Check size={22} color="#ffffff" strokeWidth={2.4} />
-                      ) : (
-                        <CirclePlus size={22} color="#ffffff" strokeWidth={2} />
-                      )}
-                      <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: '#ffffff' }}>
-                        {shownInDeck ? 'In my words' : 'Add to my words'}
-                      </Text>
                     </LiftedFace>
                   </PressableScale>
                 </TourTarget>
-              </View>
 
-              {/* Kept from the old screen: the full-width mint pill under the pair. */}
-              <PressableScale
-                onPress={() => {
-                  tapHaptic()
-                  setShowPractice(true)
-                }}
-                haptic={false}
-                wrapperStyle={{ marginTop: 12 }}
-                accessibilityLabel="Practice writing this word"
-              >
-                <LiftedFace height={BUTTON_HEIGHT} fill={PRACTICE.fill} shoulder={PRACTICE.shoulder} border={PRACTICE.border} shadow={false}>
-                  <PenLine size={20} color={c.greenDark} strokeWidth={2} />
-                  <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: c.greenDark }}>
-                    Practice writing this word
-                  </Text>
-                </LiftedFace>
-              </PressableScale>
+                <PressableScale
+                  onPress={() => {
+                    tapHaptic()
+                    setShowPractice(true)
+                  }}
+                  haptic={false}
+                  wrapperStyle={{ flex: 1.55 }}
+                  accessibilityLabel="Practice writing this word"
+                >
+                  <LiftedFace height={ACTION_HEIGHT} radius={ACTION_RADIUS} fill={PRACTICE_GRADIENT[1]} shoulder={PRACTICE_SHOULDER}>
+                    {/* Out of flow, under the label: the face is the solid
+                        colour, and this paints the reference's light over it. */}
+                    <LinearGradient
+                      colors={PRACTICE_GRADIENT}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: ACTION_RADIUS }}
+                    />
+                    <ActionLabel icon={<PenLine size={22} color="#ffffff" strokeWidth={2} />} label={'Practice\nWriting'} color="#ffffff" />
+                  </LiftedFace>
+                </PressableScale>
+              </View>
 
               {/* The card takes three parts of any spare height and this one,
                   so the buttons ride down the page without landing on the bamboo. */}
@@ -885,8 +937,9 @@ function WordCard({
   const hanzi = displayWord(word, script)
   const example = word.example ? displayExample(word, script) : ''
   const size = hanziSize(hanzi)
-  /* Small, and down in the corner beside the translation — not behind the example. */
-  const artWidth = width * 0.34
+  /* The blossom over the top left corner, and the pagoda range behind the word. */
+  const sakuraWidth = width * 0.5
+  const sceneryWidth = width * 0.62
 
   return (
     /* `flex: 1` fills the fixed-height wrapper exactly, whatever the word. */
@@ -903,9 +956,37 @@ function WordCard({
     >
       <View
         pointerEvents="none"
-        style={{ position: 'absolute', right: 0, bottom: 0, width: artWidth, height: artWidth / CARD_ART_RATIO }}
+        style={{ position: 'absolute', right: -sceneryWidth * 0.08, top: 70, width: sceneryWidth, height: sceneryWidth / SCENERY_RATIO, opacity: 0.85 }}
       >
-        <Image source={ART.card} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+        <Image source={ART.scenery} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+      </View>
+      <View
+        pointerEvents="none"
+        style={{ position: 'absolute', left: -sakuraWidth * 0.12, top: -sakuraWidth * 0.06, width: sakuraWidth, height: sakuraWidth / SAKURA_RATIO }}
+      >
+        <Image source={ART.sakura} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+      </View>
+
+      {/* "New word", over the blossom. */}
+      <View
+        pointerEvents="none"
+        style={{
+          position: 'absolute',
+          top: 16,
+          left: 16,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 5,
+          paddingHorizontal: 11,
+          paddingVertical: 5,
+          borderRadius: 999,
+          backgroundColor: playTints.honey.soft,
+          borderWidth: 1,
+          borderColor: playTints.honey.border,
+        }}
+      >
+        <Star size={13} color={playTints.honey.ink} fill={playTints.honey.ink} strokeWidth={2} />
+        <Text style={{ fontFamily: 'NunitoBold', fontSize: 12.5, lineHeight: 16, color: playTints.honey.text }}>New word</Text>
       </View>
 
       {/* The star, top right as the reference draws it. Claims its press like
@@ -929,7 +1010,7 @@ function WordCard({
         </PressFace>
       </View>
 
-      <FlexGap min={22} />
+      <FlexGap min={46} />
 
       <View style={{ alignItems: 'center', paddingHorizontal: 22 }}>
         <Text
@@ -951,10 +1032,17 @@ function WordCard({
               tapHaptic()
               speak(hanzi)
             }}
-            face={{ padding: 6 }}
+            face={{
+              width: 48,
+              height: 48,
+              borderRadius: 24,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: playTints.jade.soft,
+            }}
             accessibilityLabel={`Play pronunciation of ${hanzi}`}
           >
-            <Volume2 size={26} color={c.green} fill={c.green} strokeWidth={2} />
+            <Volume2 size={24} color={c.greenDark} fill={c.greenDark} strokeWidth={2} />
           </PressFace>
         </View>
 
@@ -966,9 +1054,21 @@ function WordCard({
       <FlexGap min={18} />
 
       {example ? (
-        <View style={{ marginHorizontal: 22, paddingTop: 16, borderTopWidth: 1, borderTopColor: c.border }}>
+        <View
+          style={{
+            marginHorizontal: 12,
+            padding: 14,
+            borderRadius: 20,
+            backgroundColor: '#FFFFFF',
+            borderWidth: 1,
+            borderColor: c.border,
+            ...dashShadow,
+          }}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-            <Text style={{ fontFamily: 'NunitoBold', fontSize: 16, lineHeight: 21, color: c.navy }}>Example</Text>
+            <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: playTints.jade.fill }}>
+              <Text style={{ fontFamily: 'NunitoBold', fontSize: 13.5, lineHeight: 18, color: c.navy }}>Example</Text>
+            </View>
             {/* Reads the sentence aloud. Claims its press like the word's
                 speaker, so it doesn't also open writing practice. */}
             <PressFace
@@ -987,14 +1087,135 @@ function WordCard({
               under each word, in the learner's own phonetic script, with the
               word being learned tinted inside it. */}
           <ReadingSentence text={example} term={hanzi} tone="card" />
-          <Text numberOfLines={3} style={{ marginTop: 8, marginRight: artWidth * 0.55, fontFamily: 'NunitoSemiBold', fontSize: 15.5, lineHeight: 21, color: c.textSecondary }}>
+          <Text numberOfLines={3} style={{ marginTop: 8, marginRight: SHIFU_ROOM, fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 20, color: c.textSecondary }}>
             {word.example?.translation}
           </Text>
         </View>
       ) : null}
 
-      <FlexGap min={22} />
+      <FlexGap min={12} />
     </Animated.View>
+  )
+}
+
+/** Room kept beside the example's translation for Shifu's sticker. */
+const SHIFU_ROOM = 92
+
+/**
+ * Two blank cards under the live one, tilted a little either way, so the
+ * screen reads as a deck being dealt rather than a single page.
+ */
+function DeckBehind() {
+  const sheet = {
+    position: 'absolute' as const,
+    top: 6,
+    bottom: 6,
+    left: 4,
+    right: 4,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: c.border,
+    backgroundColor: c.card,
+  }
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+      <View style={[sheet, { transform: [{ rotate: '2.2deg' }, { translateY: -4 }] }]} />
+      <View style={[sheet, { transform: [{ rotate: '-1.6deg' }, { translateY: -8 }] }]} />
+    </View>
+  )
+}
+
+/**
+ * Shifu in the card's bottom right corner with a line for the learner. He
+ * stays while the cards change under him and pops his bubble once per word —
+ * the one bit of motion that greets each new card.
+ */
+function ShifuCheer({ cue, message }: { cue: string; message: string }) {
+  const pop = useRef(new Animated.Value(0)).current
+  useEffect(() => {
+    pop.setValue(0)
+    const anim = Animated.spring(pop, {
+      toValue: 1,
+      delay: 260,
+      friction: 6,
+      tension: 120,
+      useNativeDriver: USE_NATIVE_DRIVER,
+    })
+    anim.start()
+    const backstop = setTimeout(() => pop.setValue(1), 260 + 700)
+    return () => {
+      anim.stop()
+      clearTimeout(backstop)
+    }
+  }, [cue, pop])
+  const scale = pop.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] })
+  const shifuHeight = 74
+  return (
+    <View
+      pointerEvents="none"
+      style={{ position: 'absolute', right: -10, bottom: -14, zIndex: 3, flexDirection: 'row', alignItems: 'flex-end' }}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <Animated.View
+        style={{
+          maxWidth: 124,
+          marginRight: -12,
+          marginBottom: 14,
+          paddingHorizontal: 11,
+          paddingVertical: 8,
+          borderRadius: 16,
+          backgroundColor: playTints.honey.fill,
+          borderWidth: 1,
+          borderColor: playTints.honey.border,
+          opacity: pop,
+          transform: [{ scale }],
+          ...dashShadow,
+        }}
+      >
+        <Text style={{ fontFamily: 'Lora', fontSize: 12, lineHeight: 16, color: c.navy, textAlign: 'center' }}>{message}</Text>
+      </Animated.View>
+      <Image source={ART.shifu} resizeMode="contain" style={{ width: shifuHeight * SHIFU_RATIO, height: shifuHeight }} />
+    </View>
+  )
+}
+
+/** Today's goal as dots under the card: one per word, filled as each is learned. */
+function GoalDots({ done, total }: { done: number; total: number }) {
+  const count = Math.max(1, Math.min(total, 10))
+  const filled = Math.min(count, Math.round((done / Math.max(1, total)) * count))
+  return (
+    <View
+      style={{ flexDirection: 'row', justifyContent: 'center', gap: 7, marginTop: 20 }}
+      accessibilityLabel={`${done} of ${total} new words today`}
+    >
+      {Array.from({ length: count }, (_, i) => (
+        <View
+          key={i}
+          style={{
+            width: i === filled ? 9 : 7,
+            height: i === filled ? 9 : 7,
+            borderRadius: 5,
+            backgroundColor: i < filled ? c.greenDark : i === filled ? c.green : TRACK,
+          }}
+        />
+      ))}
+    </View>
+  )
+}
+
+/** An action face's content: the icon over a one- or two-line label. */
+function ActionLabel({ icon, label, color }: { icon: ReactNode; label: string; color: string }) {
+  return (
+    <View style={{ alignItems: 'center', gap: 3, paddingHorizontal: 6 }}>
+      {icon}
+      <Text
+        numberOfLines={2}
+        style={{ fontFamily: 'NunitoBold', fontSize: label.includes('\n') ? 13.5 : 15, lineHeight: 17, color, textAlign: 'center' }}
+      >
+        {label}
+      </Text>
+    </View>
   )
 }
 
