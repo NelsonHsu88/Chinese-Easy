@@ -1,6 +1,11 @@
 import '../global.css'
-import { useCallback, useEffect, useState } from 'react'
-import { Stack, Redirect, usePathname } from 'expo-router'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { InteractionManager, StyleSheet, View } from 'react-native'
+import { prewarmDictionary } from '../lib/dictionary'
+import { prefetchArt } from '../lib/prefetchArt'
+import { warmLookup } from '../data/lookupWords'
+import { todayISO } from '../lib/date'
+import { Stack, Redirect, router, usePathname, useRootNavigationState } from 'expo-router'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import * as SplashScreen from 'expo-splash-screen'
@@ -70,6 +75,7 @@ import { ProgressionCelebration } from '../components/profile/Celebration'
 import { useSubscribePrompt } from '../components/subscription/useSubscribePrompt'
 import { configureAudioSession } from '../lib/sound'
 import { LaunchIntro } from '../components/launch/LaunchIntro'
+import { launchColors } from '../components/launch/tokens'
 
 SplashScreen.preventAutoHideAsync().catch(() => {})
 
@@ -137,7 +143,29 @@ const APP_FONTS = {
 }
 
 function RootNavigator() {
-  const { ready, onboardingComplete } = useApp()
+  const { ready, onboardingComplete, wordBank, settings } = useApp()
+
+  /*
+   * Prepares the Dictionary in the background once the app has settled, so the
+   * first tap on its tab is not the moment its search index and lists get
+   * built (that was a visible stall on a phone).
+   */
+  const prewarmed = useRef(false)
+  useEffect(() => {
+    if (!ready || prewarmed.current) return
+    prewarmed.current = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        prefetchArt()
+        prewarmDictionary(wordBank, settings.hskLevel, todayISO(), warmLookup)
+      }, 3500)
+    })
+    return () => {
+      task.cancel()
+      if (timer) clearTimeout(timer)
+    }
+  }, [ready, wordBank, settings.hskLevel])
   /*
    * Held alongside `ready` rather than awaited separately: reading the stored
    * session is an AsyncStorage read, exactly like the rest of hydration, so it
@@ -170,32 +198,66 @@ function RootNavigator() {
     if (appReady) SplashScreen.hideAsync().catch(() => {})
   }, [appReady])
 
-  if (!appReady) return null
+  /*
+   * The navigator mounts once and then stays mounted. It used to be swapped out
+   * for `null` whenever `ready` dropped (signing in switches to the account's
+   * own data) and for a `<Redirect>` whenever onboarding was unfinished. On
+   * Android, Google's redirect also arrives as a deep link to /auth/callback
+   * at that moment, and every remount re-applied it, which re-triggered the
+   * redirect: an endless render loop ("Maximum update depth exceeded"). Now a
+   * plain cover hides the screen during the switch, and the redirect is a
+   * one-off navigation.
+   */
+  const navigatorMounted = useRef(false)
+  const navReady = Boolean(useRootNavigationState()?.key)
 
   /* `/auth/*` is exempt: an emailed confirmation or reset link can arrive
      mid-onboarding, and redirecting it away would drop the code it carries.
      Those screens send the learner on to '/' themselves when they're done. */
-  if (!onboardingComplete && pathname !== '/onboarding' && !pathname.startsWith('/auth/')) {
-    return <Redirect href="/onboarding" />
+  const needsOnboarding =
+    appReady && !onboardingComplete && pathname !== '/onboarding' && !pathname.startsWith('/auth/')
+
+  useEffect(() => {
+    if (needsOnboarding && navReady) router.replace('/onboarding')
+  }, [needsOnboarding, navReady, pathname])
+
+  /* Before the first mount there is nothing to remount, so a fresh install
+     still goes straight to onboarding without drawing Home underneath. */
+  if (!navigatorMounted.current) {
+    if (!appReady) return null
+    if (needsOnboarding) return <Redirect href="/onboarding" />
+    navigatorMounted.current = true
   }
+  const covered = !appReady || needsOnboarding
 
   return (
     <>
       <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false }} />
+      {/* Pages fade up into place (iOS honours the 450ms; Android uses its own
+          fade-up timing). The Ad-free popup rises from the bottom like a sheet. */}
+      <Stack screenOptions={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 450 }}>
+        <Stack.Screen name="subscribe" options={{ animation: 'slide_from_bottom', gestureDirection: 'vertical' }} />
+      </Stack>
       {/*
         Above the navigator, so Shifu stays put across every screen the tour
         walks through instead of being unmounted at each move. It draws nothing
         when no tour is running.
       */}
-      <TourOverlay />
-      {/* The first-visit guides on Learn, Dictionary and Settings. */}
-      <ScreenTourOverlay />
-      {/*
-        Level-ups and achievements, noticed on whichever screen they happen on.
-        It holds its queue while the learner is mid-task — see the component.
-      */}
-      <ProgressionCelebration />
+      {covered ? (
+        /* Account switch or onboarding redirect in progress: show nothing, on the same white as the splash. */
+        <View pointerEvents="auto" style={[StyleSheet.absoluteFill, { backgroundColor: launchColors.page }]} />
+      ) : (
+        <>
+          <TourOverlay />
+          {/* The first-visit guides on Learn, Dictionary and Settings. */}
+          <ScreenTourOverlay />
+          {/*
+            Level-ups and achievements, noticed on whichever screen they happen on.
+            It holds its queue while the learner is mid-task — see the component.
+          */}
+          <ProgressionCelebration />
+        </>
+      )}
     </>
   )
 }

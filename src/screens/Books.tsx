@@ -216,11 +216,8 @@ export function Books() {
               <View key={s.band} style={{ marginBottom: ROW_GAP }}>
                 <View style={{ height: HEADING_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: EDGE }}>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                    {/* English leads: the learners can't read 初級 yet. The Chinese follows as a quiet caption. */}
+                    {/* English only, by request. */}
                     <Text style={{ fontFamily: 'LoraBold', fontSize: 19, lineHeight: 26, color: c.ink }}>{s.label.en}</Text>
-                    <Text className={hanziFont(script, 'regular')} style={{ fontSize: 14, color: c.inkFaint }}>
-                      {forScript(`${s.label.zh}閱讀`, script)}
-                    </Text>
                   </View>
                   {s.stories.length > 0 && (
                     <Text style={{ fontFamily: 'Lora', fontSize: 13.5, color: c.inkSoft }}>
@@ -316,6 +313,17 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
   const coverH = height - CARD_PAD * 2
   // The blurb is what gives way on a short card: two lines, then one, then none.
   const blurbLines = height >= 150 ? 2 : height >= 122 ? 1 : 0
+  /*
+   * Lines the reading and English title will wrap to, estimated from the text
+   * column's width: zhuyin is full-width (~1em a symbol), Lora averages ~0.5em.
+   * An overestimate only costs a blurb line, never a clipped title.
+   */
+  const reading = displayTitleReading(story.titlePinyin, phoneticScript)
+  const textWidth = width - CARD_PAD * 2 - 13 - coverH * COVER_RATIO - 2
+  const readingEm = phoneticScript === 'zhuyin' ? 1.02 : 0.5
+  const readingLines = Math.min(2, Math.ceil((reading.length * readingEm * 12) / textWidth))
+  const englishLines = Math.min(2, Math.ceil((story.titleEnglish.length * 0.52 * 14) / (textWidth - 4)))
+  const blurbRoom = Math.max(0, blurbLines - (readingLines - 1) - (englishLines - 1))
 
   return (
     <Pressable
@@ -360,14 +368,16 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
               <Lock size={14} color={c.inkFaint} style={{ marginTop: 5 }} />
             )}
           </View>
-          <Text numberOfLines={1} style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 17, color: c.inkFaint }}>
-            {displayTitleReading(story.titlePinyin, phoneticScript)}
+          {/* The reading and the English title may each wrap to a second line
+              rather than end in "…"; the blurb gives up a line for each. */}
+          <Text numberOfLines={2} style={{ fontFamily: 'Lora', fontSize: 12, lineHeight: 16, color: c.inkFaint }}>
+            {reading}
           </Text>
-          <Text numberOfLines={1} style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 19, color: c.ink }}>
+          <Text numberOfLines={2} style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 19, color: c.ink }}>
             {story.titleEnglish}
           </Text>
-          {blurbLines > 0 && (
-            <Text numberOfLines={blurbLines} style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 17, color: c.inkSoft, marginTop: 3 }}>
+          {blurbRoom > 0 && (
+            <Text numberOfLines={blurbRoom} style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 17, color: c.inkSoft, marginTop: 3 }}>
               {available ? story.description : 'Coming soon'}
             </Text>
           )}

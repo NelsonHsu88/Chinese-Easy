@@ -60,6 +60,45 @@ export const chalColors = {
   onJade: '#FFFFFF',
 } as const
 
+/**
+ * The refined Challenges palette: fewer colours, used more deliberately. The
+ * cards are near-white with a hairline, so the paintings carry the colour; one
+ * jade drives the tabs, the bars and Claim; one gold drives every reward.
+ *
+ * Kept apart from `chalColors` because Profile spreads that object, and this
+ * refinement is for this screen only. Two values are a step darker than the
+ * brief asked (`jade`, `goldInk`, `slate`) so white-on-jade tab labels, the
+ * "+10" and the small descriptions stay at about 4.5:1 contrast.
+ */
+export const chalPalette = {
+  page: '#FAF9F6',
+  ink: '#1C263D',
+  slate: '#66738A',
+  border: '#E5E4DC',
+
+  /** The selected tab and Claim. Brief: #5D906E. */
+  jade: '#4F8461',
+  /** The selected tab's thin lower edge. */
+  jadeEdge: '#43724F',
+  onJade: '#FFFFFF',
+
+  /** The claimed pill's quiet fill. (Progress bars are the shared `RaisedProgressBar`.) */
+  track: '#E2E8DF',
+
+  /** The reward pill. Brief text: #A77E35. */
+  goldWash: '#FBF3DF',
+  star: '#C49A49',
+  goldInk: '#8F6C2A',
+} as const
+
+/** Each challenge kind's card: a whisper of colour, a hairline, and an accent for its chevron. */
+export const chalSceneTint = {
+  words: { fill: '#FAF9F4', border: '#E6E7E0', accent: '#6F9B78' },
+  writing: { fill: '#FCF9F1', border: '#EBE5D5', accent: '#BE9A5C' },
+  listening: { fill: '#F6F9FA', border: '#DFE7E9', accent: '#7B9CAC' },
+  review: { fill: '#FBF7F5', border: '#EBE1DD', accent: '#BA9287' },
+} as const
+
 export const chalSpacing = {
   xs: 4,
   sm: 8,
@@ -113,7 +152,6 @@ export const chalCard = {
   textOverlap: 0.1,
   paddingY: 12,
   paddingRight: 10,
-  barHeight: 7,
   /** Gap between cards — carried as each row's own margin so a claimed one can collapse it. */
   gap: 10,
 } as const

@@ -1,9 +1,13 @@
 import { useMemo } from 'react'
-import { View, Text } from 'react-native'
-import { Check } from 'lucide-react-native'
+import { View, Text, Image } from 'react-native'
+import { router } from 'expo-router'
+import { Check, ChevronRight } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
 import { HSK_MAX_LEVEL, levelUpTarget, studiedByLevel } from '../../lib/selectors'
 import { SectionCard, ProgressBar, useProfileCosmetics } from './parts'
+import { PressableScale } from '../dashboard/parts'
+import { playTints } from '../dashboard/tokens'
+import { profArt } from './art'
 import { profColors as c, profSpacing as s, profType as t } from './tokens'
 
 /*
@@ -13,6 +17,9 @@ import { profColors as c, profSpacing as s, profType as t } from './tokens'
  * (`earnedHskLevel`, applied in AppContext), so this is a picture of a rule,
  * not a goal the learner sets.
  */
+
+/** The corner painting: 448×152 of the mockup's pixels, 58% of the card. */
+const SCENE_RATIO = 448 / 152
 
 const NODE = 26
 const CURRENT = 34
@@ -32,24 +39,47 @@ export function HskJourney({ width }: { width: number }) {
   const share = atTop ? 1 : Math.min(1, studied / target)
   const remaining = Math.max(0, target - studied)
 
+  const sceneWidth = (width + 26) * 0.6
+
   /* Six equal slots; each stop sits in the middle of its own. */
   const slot = width / HSK_MAX_LEVEL
   const centre = (i: number) => slot * (i + 0.5)
   const lineTop = CURRENT / 2 - LINE / 2
 
   return (
-    <SectionCard title="HSK Journey">
-      <View className="flex-row items-end justify-between" style={{ paddingHorizontal: 4 }}>
-        <View>
-          <Text className="font-lora" style={{ ...t.tag, color: c.slate }}>
-            Current level
-          </Text>
-          <Text className="font-lora-bold" style={{ ...t.name, color: ink.pillInk }}>
-            HSK {level}
-          </Text>
+    <PressableScale onPress={() => router.push('/settings/progress')} scaleTo={0.985} accessibilityLabel={`HSK Journey. Current level HSK ${level}. ${studied} of ${target} words. Open progress`}>
+    <SectionCard
+      title="HSK Journey"
+      scene={
+        <View style={{ width: sceneWidth, height: sceneWidth / SCENE_RATIO }}>
+          <Image source={profArt.hskScene} resizeMode="contain" style={{ width: sceneWidth, height: sceneWidth / SCENE_RATIO }} />
+          {/* On the spot the script cut out of the painting for it. */}
+          <View
+            style={{
+              position: 'absolute',
+              left: sceneWidth * 0.89 - 19,
+              top: (sceneWidth / SCENE_RATIO) * 0.66 - 19,
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: c.card,
+              borderWidth: 1,
+              borderColor: c.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <ChevronRight size={20} color={playTints.sky.ink} strokeWidth={2.4} />
+          </View>
         </View>
-        <Text className="font-lora" style={{ ...t.body, color: c.slate, marginBottom: 4 }}>
-          {atTop ? 'Top level reached' : `${studied.toLocaleString()} / ${target.toLocaleString()} words`}
+      }
+    >
+      <View style={{ paddingHorizontal: 4, marginTop: -6 }}>
+        <Text className="font-lora" style={{ ...t.body, fontSize: 16, color: c.slate }}>
+          Current level
+        </Text>
+        <Text className="font-lora-bold" style={{ fontSize: 34, lineHeight: 40, color: ink.pillInk }}>
+          HSK {level}
         </Text>
       </View>
 
@@ -139,5 +169,6 @@ export function HskJourney({ width }: { width: number }) {
         </Text>
       </View>
     </SectionCard>
+    </PressableScale>
   )
 }

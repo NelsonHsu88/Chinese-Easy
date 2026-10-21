@@ -139,6 +139,11 @@ function readableError(message: string): string {
   if (m.includes('user already registered')) return 'There’s already an account with that email. Try signing in.'
   if (m.includes('password should be at least')) return 'Please choose a password of at least 6 characters.'
   if (m.includes('unable to validate email')) return 'That doesn’t look like a valid email address.'
+  // `email_address_invalid`: Supabase won't mail placeholder or test-looking addresses.
+  if (m.includes('email address') && m.includes('is invalid'))
+    return 'We can’t send email to that address. Please use an inbox you can open.'
+  // `email_address_not_authorized`: the built-in mailer only reaches the project's own team.
+  if (m.includes('not authorized')) return 'We can’t send email to that address right now. Try signing in with Google instead.'
   if (m.includes('network') || m.includes('fetch')) return 'Couldn’t reach the server. Check your connection and try again.'
   if (m.includes('rate limit') || m.includes('too many')) return 'Too many attempts. Please wait a minute and try again.'
   if (m.includes('email not confirmed')) return 'Please confirm your email address first — check your inbox.'

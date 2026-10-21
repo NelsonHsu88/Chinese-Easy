@@ -156,18 +156,21 @@ export const setMotion = {
 export const setTransition = {
   /** Travel distance, in points. Content rises this far into place. */
   rise: 34,
-  /** Departing, in ms. */
-  out: 260,
+  /**
+   * Departing, in ms. The next screen waits for this, so it is short — an
+   * exit should always be quicker than the arrival it hands over to.
+   */
+  out: 220,
   /**
    * Arriving, in ms.
    *
-   * Nearly doubled from 290. At that speed the arrival was over before the eye
+   * 380 with the strong ease-out curve. At 290 with the old, weaker curve the arrival was over before the eye
    * had followed it — it registered as the next screen simply being there, with
    * a flicker, rather than as one surface sliding into place. This is the pace
    * the Dashboard's own scenery arrives at, and these two screens sit behind
    * the same tab bar.
    */
-  in: 560,
+  in: 520,
   /**
    * Extra ms before the hidden-tab backstop force-settles an animation.
    *

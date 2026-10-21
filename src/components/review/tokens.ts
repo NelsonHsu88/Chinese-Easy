@@ -139,18 +139,26 @@ export const revShoulders = {
  * bottom meets the stats panel's top — the panel cuts Shifu at the robe exactly
  * where the reference does.
  */
+/**
+ * The SS1017 hero is one landscape across the whole header (pagoda at the left,
+ * Shifu with his brush and book at the right — `processSS1017Art.mjs`), laid
+ * edge to edge behind the title and anchored to the stats panel.
+ */
 export const revHero = {
-  /** Width at the 430pt design column; narrower phones scale it down with the column. */
-  artWidth: 186,
-  /** The trimmed render is 399×434. */
-  artRatio: 399 / 434,
+  /** "SS1017 New APP DesIGN UI (2)": the render is 782×386 of its pixels. */
+  artRatio: 782 / 386,
   /**
-   * How far the bubble may run under the art's left edge. The render's first
-   * 70px are a feathered fade (`processReviewArt.mjs`), so this reaches the
-   * mist but stops short of Shifu's sleeve.
+   * Where Shifu's line sits, in the mockup's pixels: the patch the art script
+   * cleared runs from x 237 to Shifu's face at about 545, and from y 215 down
+   * to the stats panel. The bubble sits in its lower part, under the title
+   * (which keeps Learn's top spacing) and above the panel. It grows leftwards
+   * from `right`, and is wider than Learn's (`SHIFU_BUBBLE_REF_WIDTH`, 334): at
+   * that width the two-sentence "All caught up!" line wrapped into a tall,
+   * narrow column.
    */
-  bubbleOverlap: 16,
-  bubbleMax: 214,
+  bubble: { left: 237, top: 300, right: 545, width: 420 },
+  /** Where the stats panel starts in the mockup — the hero ends here. */
+  endsAt: 512,
 } as const
 
 /** The foot painting is 941×232 — the full width of the reference. */

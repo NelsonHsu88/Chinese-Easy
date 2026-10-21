@@ -9,8 +9,12 @@ import type { AchievementCategory } from '../../lib/progression/achievements'
  */
 export const profArt = {
   hero: require('../../assets/images/profile/hero.png'),
-  /** SS1017: Shifu cheering in front of the hero scenery. 155×209. */
-  shifu: require('../../assets/images/tour/shifu-celebrate.png'),
+  /** The Profile screen's hero, from processAppDesignArt.mjs. 760×266. */
+  appHero: require('../../assets/images/app/profile-hero.png'),
+  /** The pavilion and blossom in the HSK Journey card's corner. 448×152. */
+  hskScene: require('../../assets/images/app/profile-hsk-scene.png'),
+  /** SS1017: Shifu, hands clasped, beaming, with his sparks (`processSS1017Art.mjs`). 164×116. */
+  shifu: require('../../assets/images/ss1017/profile-hero.png'),
   /** Drawn only while the Misty Mountain Background is equipped. */
   cardMountains: require('../../assets/images/profile/card-mountains.png'),
   /** A full wreath: the Sakura Frame thumbnail *and* the frame around the avatar. */

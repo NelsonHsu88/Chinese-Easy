@@ -36,6 +36,7 @@ import {
 import type { ReviewPreview } from '../lib/srs'
 import type { Grade, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
+import { QuestionContent } from './motion/questionMotion'
 
 const NATIVE = Platform.OS !== 'web'
 
@@ -226,6 +227,9 @@ export function ReviewFlashcard({
             iOS and web group-fade already. Only while turning: compositing
             offscreen every frame costs something, and at rest there is no fade.
           */}
+          {/* Between cards only this part moves, behind a veil in the page colour
+              rather than its own fade, for the same reason as the reveal's veil. */}
+          <QuestionContent style={{ flexGrow: 1 }} veil={{ color: c.background, inset: { top: 6, bottom: 10, side: fcSize.pad } }}>
           <View pointerEvents={turning ? 'none' : 'auto'} style={{ flexGrow: 1 }}>
           <WritingCard
             minHeight={revealed ? fcSize.writingMinRevealed : fcSize.writingMin}
@@ -382,6 +386,7 @@ export function ReviewFlashcard({
             }}
           />
           </View>
+          </QuestionContent>
         </View>
       </ScrollView>
     </SafeAreaView>

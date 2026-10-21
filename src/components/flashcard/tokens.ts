@@ -135,7 +135,7 @@ export const fcReveal = { holdMs: 380, outMs: 150, inMs: 360, rise: 14, backstop
  * The rewrite reps' writing card: it leaves to the left and the next rep's
  * arrives from the right, the way the session itself moves forward.
  */
-export const fcRepSlide = { outMs: 220, inMs: 300, backstop: 160 } as const
+export const fcRepSlide = { outMs: 160, inMs: 300, backstop: 160 } as const
 
 /** Content column cap, like every full-screen layout in the app. */
 export const FC_CONTENT_MAX = 430

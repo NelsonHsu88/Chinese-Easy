@@ -18,6 +18,7 @@ import { playTints, type PlayTint } from '../components/dashboard/tokens'
 import { revColors as c, revSpacing as s, revRadius, revShadow, REV_CONTENT_MAX } from '../components/review/tokens'
 import { PAGE_SUBTITLE, PAGE_TITLE } from '../components/pageHeader'
 import { thunkHaptic } from '../lib/haptics'
+import { PlayWash } from '../components/dashboard/playWash'
 import type { VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 
@@ -40,6 +41,9 @@ const STAGE: Record<string, { label: string; tint: PlayTint }> = {
 }
 
 const EMPTY_ART = { source: require('../assets/images/session-end/empty-hero.png') }
+/** The Flashcards card's 字 stack (SS1017), at the summary banner's right. 176×150. */
+const BANNER_ART = { source: require('../assets/images/ss1017/review-flashcards.png'), ratio: 176 / 150 }
+const STAGE_ORDER = ['new', 'learning', 'review', 'relearning'] as const
 
 export function DueWords() {
   const { deck, settings, getWord } = useApp()
@@ -48,6 +52,12 @@ export function DueWords() {
   const column = Math.min(width, REV_CONTENT_MAX)
 
   const dueCards = useMemo(() => allDueCardsFor(deck, settings), [deck, settings])
+  const stageCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    for (const card of dueCards) counts[card.state] = (counts[card.state] ?? 0) + 1
+    return counts
+  }, [dueCards])
+  const bannerArt = Math.min(150, column * 0.36)
 
   const run = useEntranceRun()
   const head = useReveal({ from: 'bottom', at: 0, duration: 380, run, distance: 16 })
@@ -88,10 +98,47 @@ export function DueWords() {
                 Due today
               </Text>
               <Text className="font-lora" style={{ ...PAGE_SUBTITLE, marginTop: 4, color: c.slate }}>
-                {dueCards.length === 0
-                  ? 'Nothing waiting for you.'
-                  : `${dueCards.length} word${dueCards.length === 1 ? '' : 's'} ready to review.`}
+                {dueCards.length === 0 ? 'Nothing waiting for you.' : 'A little review keeps every word fresh.'}
               </Text>
+
+              {dueCards.length > 0 && (
+                /* The pile at a glance, in the Flashcards card's sky wash. */
+                <ShadowSurface
+                  shadow={revShadow}
+                  style={{
+                    marginTop: s.lg,
+                    borderRadius: revRadius.large,
+                    backgroundColor: playTints.sky.fill,
+                    borderWidth: 1,
+                    borderColor: playTints.sky.border,
+                    minHeight: bannerArt / BANNER_ART.ratio,
+                  }}
+                >
+                  <PlayWash tint={playTints.sky} direction="left" radius={revRadius.large - 1} />
+                  <View pointerEvents="none" style={{ position: 'absolute', right: 0, top: 0, bottom: 0, justifyContent: 'center' }}>
+                    <Image source={BANNER_ART.source} resizeMode="contain" style={{ width: bannerArt, height: bannerArt / BANNER_ART.ratio }} />
+                  </View>
+                  <View style={{ padding: s.lg, paddingRight: bannerArt }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                      <Text className="font-lora-bold" style={{ fontSize: 40, lineHeight: 46, color: playTints.sky.text }}>
+                        {dueCards.length}
+                      </Text>
+                      <Text className="font-lora-bold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
+                        {dueCards.length === 1 ? 'word ready' : 'words ready'}
+                      </Text>
+                    </View>
+                    <View style={{ marginTop: s.sm, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                      {STAGE_ORDER.filter((key) => stageCounts[key]).map((key) => (
+                        <View key={key} style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: STAGE[key].tint.soft }}>
+                          <Text className="font-nunito-bold" style={{ fontSize: 12, lineHeight: 16, color: STAGE[key].tint.text }}>
+                            {stageCounts[key]} {STAGE[key].label}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                </ShadowSurface>
+              )}
             </Animated.View>
 
             {dueCards.length === 0 ? (
@@ -102,7 +149,7 @@ export function DueWords() {
                 </Text>
               </View>
             ) : (
-              <Animated.View style={[{ marginTop: s.xl, gap: s.sm }, list]}>
+              <Animated.View style={[{ marginTop: s.lg, gap: s.sm }, list]}>
                 {dueCards.map((card) => {
                   const word = getWord(card.wordId)
                   if (!word) return null
@@ -124,11 +171,12 @@ export function DueWords() {
                           paddingHorizontal: s.lg,
                           paddingVertical: s.md,
                           borderRadius: revRadius.large,
-                          backgroundColor: c.card,
+                          backgroundColor: stage.tint.fill,
                           borderWidth: 1,
-                          borderColor: c.border,
+                          borderColor: stage.tint.border,
                         }}
                       >
+                        <PlayWash tint={stage.tint} radius={revRadius.large - 1} />
                         <View
                           style={{
                             width: 56,
@@ -136,7 +184,7 @@ export function DueWords() {
                             borderRadius: 16,
                             alignItems: 'center',
                             justifyContent: 'center',
-                            backgroundColor: stage.tint.fill,
+                            backgroundColor: c.card,
                             borderWidth: 1,
                             borderColor: stage.tint.border,
                           }}
@@ -162,7 +210,7 @@ export function DueWords() {
                             {stage.label}
                           </Text>
                         </View>
-                        <ChevronRight size={18} color={c.slate} strokeWidth={2.2} />
+                        <ChevronRight size={18} color={stage.tint.ink} strokeWidth={2.2} />
                       </ShadowSurface>
                     </PressableScale>
                   )
@@ -194,7 +242,9 @@ export function DueWords() {
               tone="primary"
               onPress={() => {
                 thunkHaptic()
-                router.navigate('/review-tab')
+                /* Straight into the session these words are waiting for —
+                   sending the learner back to the hub made them choose twice. */
+                router.push('/review-session?mode=full')
               }}
             />
           </View>

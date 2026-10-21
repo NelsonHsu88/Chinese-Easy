@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Animated,
@@ -264,17 +264,58 @@ export function SubscriptionHero({
  * can offer is a way out of it.
  */
 export function TopBar({ mode, onPress }: { mode: 'back' | 'close'; onPress: () => void }) {
-  const Icon = mode === 'back' ? ArrowLeft : X
+  if (mode === 'back') {
+    return (
+      <View style={{ position: 'absolute', left: s.screen - 10, top: 4 }}>
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={10}
+          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <ArrowLeft size={24} color={c.ink} strokeWidth={2.2} />
+        </Pressable>
+      </View>
+    )
+  }
+  /*
+   * The close sits top left, where the back arrow stands when the screen is
+   * opened from Settings, on a solid ink disc with a white cross: over the
+   * painting it has to read as a button at a glance, not as a stray glyph.
+   * Press dims the disc (tracked on an inner View — a Pressable style function
+   * is dropped on native).
+   */
+  return <CloseDisc onPress={onPress} />
+}
+
+function CloseDisc({ onPress }: { onPress: () => void }) {
+  const [pressed, setPressed] = useState(false)
   return (
-    <View style={{ position: 'absolute', left: s.screen - 10, top: 4 }}>
+    <View style={{ position: 'absolute', left: s.screen - 4, top: 8, zIndex: 5 }}>
       <Pressable
         onPress={onPress}
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
         accessibilityRole="button"
-        accessibilityLabel={mode === 'back' ? 'Go back' : 'Close'}
+        accessibilityLabel="Close"
         hitSlop={10}
-        style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
       >
-        <Icon size={24} color={c.ink} strokeWidth={2.2} />
+        <View
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: 19,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: c.closeFill,
+            transform: [{ scale: pressed ? 0.94 : 1 }],
+            opacity: pressed ? 0.8 : 1,
+            ...subShadow,
+          }}
+        >
+          <X size={19} color={c.closeInk} strokeWidth={2.6} />
+        </View>
       </Pressable>
     </View>
   )

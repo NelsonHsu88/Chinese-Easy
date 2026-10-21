@@ -284,7 +284,7 @@ export const dashEntrance = {
   /** The greeting and the learner's name, in from the left. */
   greeting: { at: 170, for: 460 },
   /** The action cards, up from the bottom, one after another. */
-  cards: { at: 360, for: 440, stagger: 90 },
+  cards: { at: 360, for: 440, stagger: 60 },
   /** Shifu, up out of the cards. */
   shifu: { at: 600, for: 540 },
   /** The speech bubble. */
@@ -333,11 +333,12 @@ export const homeColors = {
   ink: dashColors.navy,
   /** Blue-grey serif body: "Keep your streak alive!", the pinyin, the bubble. */
   subtle: '#5E6C8A',
-  muted: '#8A94A8',
+  /** Small labels: weekday letters, the date range, chart counts. #8A94A8 was ~3:1 on the cards; this is ~4.7:1. */
+  muted: '#687290',
 
   coral: '#E96B59',
   coralShoulder: '#C9533F',
-  /** The REVIEW tag. */
+  /** The Review heading's icon disc. */
   tagFill: '#FDDFD8',
   tagInk: '#B5291D',
 
@@ -362,6 +363,10 @@ export const homeColors = {
   /** The "Earn reward" pill on the gift. */
   goldPill: '#FEE2AE',
   goldPillLine: '#F2C77E',
+  /** The raised "Earn reward" button's shoulder, a step under its face. */
+  goldPillShoulder: '#E9B65C',
+  /** The soft wash under the learner's name on Home. */
+  nameWash: '#F8DE96',
   goldPillInk: '#A2381C',
 
   /** Step rings on the challenge path, and the brush stroke joining them. */
@@ -375,6 +380,26 @@ export const homeColors = {
 
   bubbleBorder: '#E6E8EE',
   white: '#FFFFFF',
+
+  /*
+   * The refined Home: fewer, quieter colours. (Its buttons are back on the
+   * lighter `coral` and `green` above, by request.) `jade` is for icons and
+   * small type on pale fills.
+   */
+  jade: '#4A7F5C',
+  /** Completed challenge steps and the week's active days. */
+  sage: '#6F9B78',
+  sageSoft: '#E9F1EA',
+  /** Secondary buttons and the streak pill. */
+  ivory: '#FAF9F6',
+  hairline: '#E5E4DC',
+  /** A neutral step ring, an idle day, the challenge track. */
+  idle: '#D9D7CF',
+  track: '#E8E7E1',
+  /** The reward row. */
+  gold: '#C49A49',
+  goldInk: '#8F6C2A',
+  goldWash: '#FBF3DF',
 } as const
 
 /**
@@ -384,9 +409,10 @@ export const homeColors = {
  * painting sits on its card with a halo.
  */
 export const homeSurfaces = {
-  review: { fill: '#FDEEE9', border: '#F8D3CC' },
+  /* `wash`: the deeper end of each card's SS1017 gradient (`PlayWash`). */
+  review: { fill: '#FDEEE9', wash: '#FBDCD3', border: '#F8D3CC' },
   word: { fill: '#FEFEFE', border: '#E2E1DE' },
-  challenges: { fill: '#FEF9EE', border: '#F0D8B6' },
+  challenges: { fill: '#FEF9EE', wash: '#FCEFD2', border: '#F0D8B6' },
   week: { fill: '#F6FAF4', border: '#E0EAE1' },
 } as const
 
@@ -397,15 +423,17 @@ export const homeSurfaces = {
  */
 export const homeType = {
   /** Lora Bold. */
-  greeting: { fontSize: 33, lineHeight: 37, letterSpacing: -0.4 },
-  /** Kalam Bold. */
-  name: { fontSize: 31, lineHeight: 42 },
+  greeting: { fontSize: 23, lineHeight: 29, letterSpacing: -0.3 },
+  /** Lora Bold, over the marker stroke (SS1017). A step down from 46, so the name doesn't shout over the greeting. */
+  name: { fontSize: 36, lineHeight: 42, letterSpacing: -0.6 },
+  /** Lora — "Great to see you!" under the name. */
+  welcome: { fontSize: 15.5, lineHeight: 21 },
   /** Lora. */
   bubble: { fontSize: 14.5, lineHeight: 20 },
   /** Lora, uppercase. */
   tag: { fontSize: 11, letterSpacing: 0.8 },
   /** Lora Bold — "2 words due". */
-  due: { fontSize: 25, lineHeight: 30, letterSpacing: -0.2 },
+  due: { fontSize: 22, lineHeight: 27, letterSpacing: -0.2 },
   /** Lora Bold — a full-width card's title. */
   title: { fontSize: 18, lineHeight: 23, letterSpacing: -0.1 },
   /** Lora — the line under a title. */
@@ -423,10 +451,11 @@ export const homeType = {
 export const homeLayout = {
   /** Side margin. The reference's cards sit 17pt in at 390. */
   screen: 16,
-  /** Between two cards, across and down. */
-  gap: 12,
+  /** Between two cards, across and down, and under the greeting. */
+  gap: 16,
   /** Inside every card. */
   cardPad: 14,
+  /** Every Home button: 44pt is the touch-target floor. */
   buttonHeight: 44,
   /** Inside the greeting and bubble, past the card edge, as in the reference. */
   heroInset: 8,
@@ -446,7 +475,9 @@ export const HOME_REF_WIDTH = 863
  * "blossom" card on Review is the same pink as one on Learn.
  *
  * Per hue:
- * - `fill`    the card wash.
+ * - `fill`    the card wash at its text end.
+ * - `wash`    the deeper wash at its painted end (cards run `wash` → `fill`,
+ *             left to right — `PlayWash` in dashboard/playWash.tsx).
  * - `border`  its hairline, one step down — what separates a pale card from the
  *             white page without a heavy shadow.
  * - `soft`    the chevron disc, chip and track fill sitting *on* the wash.
@@ -459,11 +490,11 @@ export const HOME_REF_WIDTH = 863
  * showing as a cream box. Light-only, like the rest of the family.
  */
 export const playTints = {
-  jade: { fill: '#EFF8EE', border: '#D5EAD2', soft: '#DCEFD8', ink: '#3D8A4F', text: '#2E7340', badge: '#4E995E' },
-  blossom: { fill: '#FDF1F0', border: '#F5D9D7', soft: '#FADEDC', ink: '#C4504F', text: '#A9393F', badge: '#CC5A5A' },
-  sky: { fill: '#EDF5FD', border: '#D5E4F6', soft: '#DBE8F8', ink: '#4A7FCB', text: '#2C5C9F', badge: '#5B91DB' },
-  honey: { fill: '#FDF6E6', border: '#F0E2BF', soft: '#F8EACB', ink: '#A47420', text: '#8A6214', badge: '#AD802C' },
-  lilac: { fill: '#F5F1FC', border: '#E3DAF6', soft: '#E7DEF8', ink: '#7C5FD0', text: '#5B40AE', badge: '#9479DB' },
+  jade: { fill: '#EFF8EE', wash: '#DDEFD7', border: '#CFE6CA', soft: '#D6EDD0', ink: '#358A49', text: '#2A6F3B', badge: '#4A9A5B' },
+  blossom: { fill: '#FDF1F0', wash: '#FBE0DC', border: '#F3D2CE', soft: '#F9D8D4', ink: '#C9474A', text: '#A3323A', badge: '#D65A5C' },
+  sky: { fill: '#EDF5FD', wash: '#DCEAFB', border: '#CFE0F5', soft: '#D5E5F9', ink: '#3E78CF', text: '#2A5A9E', badge: '#4F8BE0' },
+  honey: { fill: '#FDF6E6', wash: '#FAEACB', border: '#EEDDB4', soft: '#F7E5BE', ink: '#A6731A', text: '#855C10', badge: '#C08A2A' },
+  lilac: { fill: '#F5F1FC', wash: '#E9E0FA', border: '#DDD2F4', soft: '#E3D8F8', ink: '#7457D2', text: '#563AAD', badge: '#8C6EE0' },
 } as const
 
 export type PlayHue = keyof typeof playTints
@@ -476,3 +507,16 @@ export const PLAY_HUE_ORDER: readonly PlayHue[] = ['jade', 'blossom', 'sky', 'ho
 export function playHueAt(index: number): PlayHue {
   return PLAY_HUE_ORDER[((index % PLAY_HUE_ORDER.length) + PLAY_HUE_ORDER.length) % PLAY_HUE_ORDER.length]
 }
+
+/** Shifu's handwritten speech bubble on the "New App Design" heroes (`refScene.tsx`). */
+export const refBubble = {
+  fill: '#FDF9F1',
+  border: '#EEE4D2',
+  ink: '#3A3A48',
+} as const
+
+/** The new references' neutral card: warm paper with a hairline (Dictionary tiles, Word to Discover). */
+export const refSurface = {
+  cream: '#FDFBF4',
+  creamBorder: '#EDE7D8',
+} as const

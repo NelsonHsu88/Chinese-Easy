@@ -1,3 +1,4 @@
+import { PlayWash } from '../dashboard/playWash'
 import { useMemo, useRef, type ComponentType, type ReactNode } from 'react'
 import {
   View,
@@ -382,11 +383,14 @@ export function Card({ children, style }: { children: ReactNode; style?: StylePr
  * list ends up looking almost right. They start at the rows' text margin and
  * run to the card's edge, as the reference draws them.
  */
-export function GroupCard({ children }: { children: ReactNode }) {
+export function GroupCard({ children, hue }: { children: ReactNode; hue?: PlayHue }) {
   const rows = Array.isArray(children) ? children.filter(Boolean) : [children]
+  /* Optional SS1017 wash, so the hub's groups wear colour as its sub-screens do. */
+  const tint = hue ? playTints[hue] : null
 
   return (
-    <Card>
+    <Card style={tint ? { backgroundColor: tint.fill, borderColor: tint.border } : undefined}>
+      {tint && <PlayWash tint={tint} />}
       {rows.map((row, i) => (
         <View key={i}>
           {i > 0 && (
@@ -570,7 +574,8 @@ export function ControlGroup({ title, children, hue }: { title: string; children
           {title}
         </Text>
       </View>
-      <Card style={{ padding: setRow.padding, gap: s.xl, borderColor: tint.border }}>{children}</Card>
+      {/* Plain white, by request: only the heading's dot and label carry the hue. */}
+      <Card style={{ padding: setRow.padding, gap: s.xl }}>{children}</Card>
     </View>
   )
 }

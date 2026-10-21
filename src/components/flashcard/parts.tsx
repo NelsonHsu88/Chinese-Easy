@@ -3,6 +3,8 @@ import { View, Text, Pressable, Image, useWindowDimensions } from 'react-native'
 import { ChevronLeft, Timer } from 'lucide-react-native'
 import { onbVerdict } from '../onboarding/tokens'
 import type { PlayTint } from '../dashboard/tokens'
+import { RaisedProgressBar } from '../progress/RaisedProgressBar'
+import { useSessionProgressStart } from '../progress/sessionProgress'
 import { fcArt } from './art'
 import {
   fcColors as c,
@@ -90,8 +92,11 @@ export function FlashcardHeader({
   unit?: 'card' | 'rep'
   secondsLeft?: number | null
 }) {
-  const pct = Math.min(100, Math.max(0, (step / Math.max(1, total)) * 100))
+  const safeTotal = Math.max(1, total)
   const left = Math.max(0, total - step)
+  /* Reps count within one word, not the session, so only cards share the session's memory. */
+  const sessionFrom = useSessionProgressStart(unit === 'card' ? step : -1, unit === 'card' ? total : -1)
+  const from = unit === 'card' ? sessionFrom : step - 1
   const urgent = secondsLeft != null && secondsLeft <= 30
   return (
     <>
@@ -99,11 +104,15 @@ export function FlashcardHeader({
         <DiscButton onPress={onClose} label="Close review">
           <ChevronLeft size={24} color={c.greenDark} strokeWidth={2.4} />
         </DiscButton>
-        <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: c.track, overflow: 'hidden' }}>
-          <View style={{ width: `${pct}%`, height: '100%', borderRadius: 4, backgroundColor: c.green }} />
-        </View>
-        <Text
+        {/* The header mounts per card, so the bar opens on the previous card's progress and steps forward. */}
+        <RaisedProgressBar
+          progress={step / safeTotal}
+          initialProgress={from / safeTotal}
           accessibilityLabel={`${unit === 'rep' ? 'Rep' : 'Card'} ${step} of ${total}`}
+        />
+        <Text
+          importantForAccessibility="no"
+          accessibilityElementsHidden
           style={{ fontFamily: 'NunitoBold', ...t.counter, color: c.slate }}
         >
           {step} / {total}

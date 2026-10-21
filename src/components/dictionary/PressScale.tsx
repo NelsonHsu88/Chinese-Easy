@@ -58,8 +58,8 @@ export function PressScale({
   scaleTo?: number
   accessibilityLabel?: string
   accessibilityRole?: 'button' | 'link' | 'none'
-  /** Selection, for a pill that is one of a set. */
-  accessibilityState?: { selected?: boolean }
+  /** Selection, for a pill that is one of a set; expansion, for a disclosure. */
+  accessibilityState?: { selected?: boolean; expanded?: boolean }
 }) {
   const scale = useRef(new Animated.Value(1)).current
 

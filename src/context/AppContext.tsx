@@ -1201,6 +1201,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     void saveStored('subscription', subscription)
   }, [subscription])
 
+  /*
+   * Disarms every first-save guard hydrate did not use up. A guard is consumed
+   * by the save effect that hydrate's own update triggers — but when the loaded
+   * value is the very value already in state (a fresh install's `INITIAL_TOUR`,
+   * an `xp` of 0), React skips the update, no effect runs, and the guard stays
+   * armed until it swallows the learner's first real change. For the tour that
+   * change is "Maybe later", which was never saved, so the offer came back on
+   * every launch. Declared after all the save effects so it runs after them in
+   * the commit that sets `ready`.
+   */
+  useEffect(() => {
+    if (!ready) return
+    for (const key of Object.keys(skipNextSave.current) as (keyof typeof skipNextSave.current)[]) {
+      skipNextSave.current[key] = false
+    }
+  }, [ready])
+
   const wordBank = useMemo(() => [...hskFrequency, ...customWords], [customWords])
 
   const getWord = useCallback(

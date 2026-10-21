@@ -151,6 +151,7 @@ export function BasicsRaised({
   borderWidth = 1.5,
   radius,
   style,
+  underlay,
   children,
 }: {
   fill: string
@@ -158,6 +159,8 @@ export function BasicsRaised({
   border?: string
   borderWidth?: number
   radius: number
+  /** Drawn on the face beneath its contents — an answer's highlight sweep. */
+  underlay?: React.ReactNode
   /** Padding and layout for the face's contents. */
   style?: StyleProp<ViewStyle>
   children: React.ReactNode
@@ -178,6 +181,7 @@ export function BasicsRaised({
           transform: [{ translateY: sink }],
         }}
       >
+        {underlay}
         <View style={style}>{children}</View>
       </Animated.View>
     </View>

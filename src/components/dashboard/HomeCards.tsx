@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react'
-import { View, Text, type ViewStyle } from 'react-native'
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Stop } from 'react-native-svg'
-import { ArrowRight, Check, ChartNoAxesColumn, Volume2, Waypoints } from 'lucide-react-native'
-import { CardArt, DashboardCard, LiftedFace, PressableScale, DASH_LIFT } from './parts'
+import { View, Text, Image } from 'react-native'
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg'
+import { ArrowRight, Check, ChartNoAxesColumn, ChevronRight, Lock, RotateCcw, Volume2, Waypoints } from 'lucide-react-native'
+import { CardArt, DASH_LIFT, DashboardCard, LiftedFace, PressableScale } from './parts'
 import { homeArt, homeRefCards } from './art'
 import { homeColors as c, homeSurfaces, homeType as t, homeLayout as l } from './tokens'
 import type { VocabWord, PhoneticScript, ScriptMode } from '../../types'
@@ -13,54 +13,51 @@ import { speak } from '../../lib/speech'
 import { tapHaptic } from '../../lib/haptics'
 
 /*
- * The four cards of the redesigned Home ("SS1012 Home Page Redesign UI 2"),
- * each across the full column: Review, the word on offer, Daily Challenges and
- * This Week.
+ * The four cards of Home, each across the full column: Review, the word on
+ * offer, Daily Challenges and This Week.
+ *
+ * The refinement pass gave them one hierarchy. The hero carries the big
+ * painting; Review keeps a smaller one; the word card's range is a pale
+ * atmosphere behind the word; Daily Challenges has one gift; This Week has
+ * none. Every button is the same shape (`HomeButton`): one height, one radius,
+ * a thin lower edge instead of a raised shoulder.
  *
  * Each card's watercolour was cut from the mockup (`homeArt`) and is placed by
  * the mockup's own offsets, scaled from that card's reference width
  * (`homeRefCards`) to the real one — so a corner of scenery stays tucked into
- * its corner at any column width.
+ * its corner at any column width. (Review is the exception: its painting is
+ * sized to the card's height — see the Review section.)
  */
 
-type ArtPiece = (typeof homeArt)[keyof typeof homeArt]
-type RefCard = (typeof homeRefCards)[keyof typeof homeRefCards]
-
-/** A piece of card art, anchored to whichever card edges the mockup put it nearest. */
-function PlacedArt({
-  piece,
-  card,
-  k,
-  anchor,
-}: {
-  piece: ArtPiece
-  card: RefCard
-  k: number
-  anchor: { x: 'left' | 'right'; y: 'top' | 'bottom' }
-}) {
-  const { x, y, w, h } = piece.box
-  const style = {
-    [anchor.x]: (anchor.x === 'left' ? x - card.x : card.x + card.w - (x + w)) * k,
-    [anchor.y]: (anchor.y === 'top' ? y - card.y : card.y + card.h - (y + h)) * k,
-  } as ViewStyle
-  return <CardArt source={piece.source} ratio={w / h} width={w * k} style={style} />
-}
-
-/** A raised pill with a Lora label, for the two half-width cards. */
-function HomeButtonFace({
+/**
+ * Home's raised button, back by request: a face standing on a deeper shoulder
+ * that sinks when pressed (`LiftedFace`), in the original lighter coral and
+ * green. Secondary is a white face on a quiet grey shoulder.
+ */
+function HomeButton({
   label,
-  fill,
-  shoulder,
+  variant = 'primary',
+  tone = 'jade',
   icon,
 }: {
   label: string
-  fill: string
-  shoulder: string
+  variant?: 'primary' | 'secondary'
+  tone?: 'jade' | 'coral'
   icon?: ReactNode
 }) {
+  const primary = variant === 'primary'
+  const fill = !primary ? c.white : tone === 'coral' ? c.coral : c.green
+  const shoulder = !primary ? c.quietShoulder : tone === 'coral' ? c.coralShoulder : c.greenShoulder
   return (
-    <LiftedFace height={l.buttonHeight} fill={fill} shoulder={shoulder}>
-      <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.button, color: c.white }}>
+    <LiftedFace height={l.buttonHeight} fill={fill} shoulder={shoulder} border={primary ? undefined : c.quietLine} shadow={primary}>
+      {/* iOS can shrink a label that won't fit; elsewhere the button's width is planned for it. */}
+      <Text
+        className="font-lora-bold"
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
+        style={{ ...t.button, color: primary ? c.white : c.ink, flexShrink: 1 }}
+      >
         {label}
       </Text>
       {icon}
@@ -68,14 +65,14 @@ function HomeButtonFace({
   )
 }
 
-function IconDisc({ size, children }: { size: number; children: ReactNode }) {
+function IconDisc({ size, fill = c.sageSoft, children }: { size: number; fill?: string; children: ReactNode }) {
   return (
     <View
       style={{
         width: size,
         height: size,
         borderRadius: size / 2,
-        backgroundColor: c.greenSoft,
+        backgroundColor: fill,
         alignItems: 'center',
         justifyContent: 'center',
       }}
@@ -87,61 +84,163 @@ function IconDisc({ size, children }: { size: number; children: ReactNode }) {
 
 // --- Review -------------------------------------------------------------------
 
+/*
+ * One card in two states, built from the same parts: surface, padding, the
+ * section heading (icon disc + "Review", the same row as Today's Word's), the
+ * Lora count/title and the line under it, and the 字 cards painted into the
+ * bottom-right corner.
+ *
+ * Due: a coral review disc, "N words due", "Keep your streak alive!", the coral
+ * Start Review button.
+ *
+ * Nothing due: a jade ✓ disc, "All caught up!", "No words due right now." No
+ * button and no chevron. There is no practice-anyway action on
+ * purpose: every review mode draws from due cards, so it would open an empty
+ * session. The card itself still opens the Review tab, as before. This state is
+ * shorter (no button), with its text centred in the height it keeps.
+ *
+ * The painting is as tall as the card. Its height is worked out from the
+ * layout constants below rather than measured (`onLayout` isn't reliable on
+ * web), and the card's `minHeight` is that same number, so the two always
+ * agree; larger system text can still grow the card, and the painting stays
+ * pinned to the bottom. The PNG has almost no transparent margin, so its
+ * sparse left strip (the edges of the back cards, a stone) tucks under the
+ * text side behind a fade in the card's own colour. The 字 card itself never
+ * sits under text: on a narrow phone the painting shrinks instead.
+ */
+
+/** Inside the Review card, both states — the same inset as Today's Word. */
+const REVIEW_PAD = l.cardPad + 2
+/** The heading row's icon disc (Today's Word's size), and the gaps in the text stack. */
+const REVIEW_HEADING_H = 32
+const REVIEW_GAP = { headingToTitle: 14, titleToBody: 4, bodyToButton: 16 } as const
+/** The widest the Start Review button gets; it sits left, as in the reference. */
+const REVIEW_BUTTON_MAX = 190
+/**
+ * The narrowest the text column may get before the painting gives way: room for
+ * "12 words due" and the button, or for "No words due right now." on one line.
+ */
+const REVIEW_COLUMN_MIN = { due: 150, done: 172 } as const
+/** Between the text column and the protected part of the painting. */
+const REVIEW_ART_GAP = 8
+/** How much of the painting's width, from its left, may lie under the faded text side. */
+const REVIEW_ART_TUCK = 0.28
+/** The resting state's painting, a touch quieter than when there is work to do. */
+const REVIEW_DONE_ART_OPACITY = 0.85
+/** The resting state keeps a little more height than its text needs, so it isn't a sliver. */
+const REVIEW_DONE_MIN = 132
+
+const REVIEW_ART_RATIO = homeArt.review.box.w / homeArt.review.box.h
+
+/** The text stack every state shares: heading row, title, the line under it. */
+const REVIEW_TEXT_H = REVIEW_HEADING_H + REVIEW_GAP.headingToTitle + t.due.lineHeight + REVIEW_GAP.titleToBody + t.body.lineHeight
+
+/** The card's planned height in each state, borders included. */
+function reviewCardHeight(due: boolean): number {
+  const text = REVIEW_PAD * 2 + REVIEW_TEXT_H + 2
+  return due ? text + REVIEW_GAP.bodyToButton + l.buttonHeight + DASH_LIFT : Math.max(text, REVIEW_DONE_MIN)
+}
+
+/** The painting's size and the text column it leaves, at this card width. */
+function reviewLayout(width: number, due: boolean) {
+  const height = reviewCardHeight(due)
+  /* Full card height, unless that would push the text column under its floor. */
+  const columnMin = REVIEW_COLUMN_MIN[due ? 'due' : 'done']
+  const roomForArt = (width - REVIEW_PAD - REVIEW_ART_GAP - columnMin) / (1 - REVIEW_ART_TUCK)
+  const artW = Math.max(0, Math.min(height * REVIEW_ART_RATIO, roomForArt))
+  const artLeft = width - artW
+  const column = artLeft + artW * REVIEW_ART_TUCK - REVIEW_ART_GAP - REVIEW_PAD
+  return { height, artW, artH: artW / REVIEW_ART_RATIO, artLeft, column }
+}
+
 export function ReviewCard({ dueCount, width, onPress }: { dueCount: number; width: number; onPress: () => void }) {
-  const card = homeRefCards.review
-  const k = width / card.w
-  /* The text column stops where the 字 cards begin, as in the mockup. */
-  const column = Math.max(150, (homeArt.review.box.x - card.x) * k - l.cardPad)
-  const button = Math.min(column, Math.max(150, 338 * k))
+  const due = dueCount > 0
+  const { height, artW, artH, artLeft, column } = reviewLayout(width, due)
+  const words = `${dueCount} ${dueCount === 1 ? 'word' : 'words'}`
+  /* The fade runs from the text side's solid fill to clear, ending a little past the tuck. */
+  const fadeW = artW * (REVIEW_ART_TUCK + 0.1)
 
   return (
     <DashboardCard
       fill={homeSurfaces.review.fill}
       border={homeSurfaces.review.border}
-      minHeight={card.h * k}
+      minHeight={height}
       onPress={onPress}
-      accessibilityLabel={dueCount > 0 ? `Start review, ${dueCount} words due` : 'Start review, you are all caught up'}
+      accessibilityLabel={
+        due ? `Start review, ${words} due` : 'Review complete. All caught up, no words due right now. Opens Review.'
+      }
     >
-      <PlacedArt piece={homeArt.review} card={card} k={k} anchor={{ x: 'right', y: 'bottom' }} />
+      <CardArt
+        source={homeArt.review.source}
+        ratio={REVIEW_ART_RATIO}
+        width={artW}
+        style={{ right: 0, bottom: 0 }}
+        opacity={due ? 1 : REVIEW_DONE_ART_OPACITY}
+      />
+      <View pointerEvents="none" style={{ position: 'absolute', left: artLeft, bottom: 0, width: fadeW, height: artH }}>
+        <Svg width="100%" height="100%">
+          <Defs>
+            <LinearGradient id="reviewArtFade" x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor={homeSurfaces.review.fill} stopOpacity={1} />
+              <Stop offset="0.55" stopColor={homeSurfaces.review.fill} stopOpacity={0.55} />
+              <Stop offset="1" stopColor={homeSurfaces.review.fill} stopOpacity={0} />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill="url(#reviewArtFade)" />
+        </Svg>
+      </View>
 
-      <View style={{ flex: 1, padding: l.cardPad + 2, width: column + l.cardPad, justifyContent: 'center' }}>
-        <View
-          style={{
-            alignSelf: 'flex-start',
-            height: 22,
-            paddingHorizontal: 9,
-            borderRadius: 11,
-            backgroundColor: c.tagFill,
-            justifyContent: 'center',
-          }}
-        >
-          <Text className="font-lora" style={{ ...t.tag, color: c.tagInk }}>
-            REVIEW
+      <View style={{ flexGrow: 1, justifyContent: 'center', padding: REVIEW_PAD }}>
+        {/* The section heading, built like Today's Word's: disc, 10pt, Lora Bold title. */}
+        <View style={{ width: column, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          {due ? (
+            <IconDisc size={REVIEW_HEADING_H} fill={c.tagFill}>
+              <RotateCcw size={16} color={c.coral} strokeWidth={2.4} />
+            </IconDisc>
+          ) : (
+            <IconDisc size={REVIEW_HEADING_H}>
+              <Check size={16} color={c.jade} strokeWidth={2.6} />
+            </IconDisc>
+          )}
+          <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink, flexShrink: 1 }}>
+            Review
           </Text>
         </View>
 
-        <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.due, color: c.ink, marginTop: 10 }}>
-          {dueCount > 0 ? `${dueCount} ${dueCount === 1 ? 'word' : 'words'} due` : 'All caught up'}
-        </Text>
-        <Text className="font-lora" numberOfLines={2} style={{ ...t.body, color: c.subtle, marginTop: 2 }}>
-          {dueCount > 0 ? 'Keep your streak alive!' : 'Nothing due right now.'}
-        </Text>
-
-        {/* The whole card is the button, so this is a face, not a second target. */}
-        <View style={{ width: button, marginTop: 16 }}>
-          <HomeButtonFace
-            label="Start Review"
-            fill={c.coral}
-            shoulder={c.coralShoulder}
-            icon={<ArrowRight size={17} color={c.white} strokeWidth={2.5} />}
-          />
+        <View style={{ width: column }}>
+          <Text
+            className="font-lora-bold"
+            numberOfLines={2}
+            style={{ ...t.due, color: c.ink, marginTop: REVIEW_GAP.headingToTitle }}
+          >
+            {due ? `${words} due` : 'All caught up!'}
+          </Text>
+          {/* Reviews do count: grading a card registers the day's activity (AppContext `gradeCard`). */}
+          <Text
+            className="font-lora"
+            numberOfLines={2}
+            style={{ ...t.body, color: c.subtle, marginTop: REVIEW_GAP.titleToBody }}
+          >
+            {due ? 'Keep your streak alive!' : 'No words due right now.'}
+          </Text>
         </View>
+
+        {due && (
+          /* The whole card is the button, so this is a face, not a second target. A little
+             short of the column: the painting's lowest blossoms reach in at the bottom. */
+          <View style={{ width: Math.min(column - 8, REVIEW_BUTTON_MAX), marginTop: REVIEW_GAP.bodyToButton }}>
+            <HomeButton label="Start Review" tone="coral" icon={<ArrowRight size={17} color={c.white} strokeWidth={2.5} />} />
+          </View>
+        )}
       </View>
     </DashboardCard>
   )
 }
 
 // --- The word on offer ----------------------------------------------------------
+
+/** The range behind the word: present as atmosphere, well behind the type. */
+const WORD_ART_OPACITY = 0.5
 
 export function WordCard({
   word,
@@ -163,7 +262,7 @@ export function WordCard({
   width: number
   onSeeAll: () => void
   onAdd: () => void
-  /** "Not now" — or, once the word is added, on to the next one. */
+  /** "Skip word" — or, once the word is added, on to the next one. */
   onSkip: () => void
 }) {
   const card = homeRefCards.word
@@ -173,38 +272,51 @@ export function WordCard({
   const wordColumn = (range.x - card.x + 30) * k
 
   const shown = word ? displayWord(word, script) : ''
-  const speaker = 36
+  const speaker = 40
   /* CJK sizes come from width and character count — adjustsFontSizeToFit is iOS-only. */
-  const hanziSize = Math.min(38, (wordColumn - l.cardPad - speaker - 10) / Math.max(1, Array.from(shown).length))
+  const hanziSize = Math.min(42, (wordColumn - l.cardPad - speaker - 10) / Math.max(1, Array.from(shown).length))
 
   return (
     <DashboardCard
       fill={homeSurfaces.word.fill}
       border={homeSurfaces.word.border}
-      minHeight={card.h * k}
       onPress={onSeeAll}
-      accessibilityLabel={word ? `Learn a new word: ${shown}. Open new words.` : 'Open new words'}
+      accessibilityLabel={word ? `Today's word: ${shown}, ${shortGloss(word)}. Open new words.` : 'Open new words'}
       accessibilityRole="none"
     >
-      {/* The range rests on the button row, as in the mockup, whatever height the card grows to. */}
+      {/* The range rests on the button row, faded back so the word reads first. */}
       <CardArt
         source={homeArt.wordRange.source}
         ratio={range.w / range.h}
-        width={range.w * k * 1.12}
-        style={{ right: (card.x + card.w - (range.x + range.w)) * k, bottom: l.cardPad + 2 + l.buttonHeight + DASH_LIFT - 10 }}
+        width={range.w * k}
+        opacity={WORD_ART_OPACITY}
+        style={{ right: (card.x + card.w - (range.x + range.w)) * k, bottom: l.cardPad + 2 + l.buttonHeight }}
       />
 
-      <View style={{ flex: 1, padding: l.cardPad + 2 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <IconDisc size={36}>
-            <Waypoints size={18} color={c.greenInk} strokeWidth={2.2} />
+      <View style={{ padding: l.cardPad + 2 }}>
+        {/* For screen readers this row is the card's own "open New Words" action: the card stops
+            grouping its children (so its buttons are reachable), which leaves the row to carry it. */}
+        <View
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={word ? `Today's word: ${shown}, ${shortGloss(word)}. Open new words.` : "Today's word. Open new words."}
+          accessibilityActions={[{ name: 'activate' }]}
+          onAccessibilityAction={(event) => {
+            if (event.nativeEvent.actionName === 'activate') onSeeAll()
+          }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+        >
+          <IconDisc size={32}>
+            <Waypoints size={16} color={c.jade} strokeWidth={2.2} />
           </IconDisc>
           <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink, flex: 1 }}>
-            Learn a New Word
+            Today’s Word
           </Text>
         </View>
 
-        <View style={{ flex: 1, justifyContent: 'center', paddingVertical: 10, width: wordColumn }}>
+        {/* The finished state has no hanzi to size against, so it takes the card's width: in the word
+            column alone, "Today's words done" broke one word per line. */}
+        <View style={{ justifyContent: 'center', paddingVertical: 12, minHeight: 96, width: word ? wordColumn : undefined }}>
           {word ? (
             <>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -214,30 +326,44 @@ export function WordCard({
                 >
                   {shown}
                 </Text>
+                {/* \`speak\` stops whatever is playing first, so rapid taps never overlap. */}
                 <PressableScale
                   onPress={() => {
                     tapHaptic()
                     speak(word.simplified)
                   }}
-                  accessibilityLabel="Play pronunciation"
-                  scaleTo={0.9}
+                  accessibilityLabel={`Play pronunciation of ${shown}`}
+                  scaleTo={0.88}
+                  hitSlop={6}
                 >
-                  <IconDisc size={speaker}>
-                    <Volume2 size={18} color={c.greenInk} strokeWidth={2.2} />
-                  </IconDisc>
+                  <View
+                    style={{
+                      width: speaker,
+                      height: speaker,
+                      borderRadius: speaker / 2,
+                      backgroundColor: c.sageSoft,
+                      borderWidth: 1,
+                      borderColor: c.greenLine,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Volume2 size={19} color={c.jade} strokeWidth={2.3} />
+                  </View>
                 </PressableScale>
               </View>
-              <Text className="font-lora" style={{ ...t.pinyin, color: c.subtle, marginTop: 2 }}>
+              {/* Pinyin or zhuyin, by the learner's setting. */}
+              <Text className="font-lora" style={{ ...t.pinyin, color: c.subtle, marginTop: 4 }}>
                 {displayPinyin(word, phoneticScript)}
               </Text>
-              <Text className="font-lora" numberOfLines={1} style={{ ...t.gloss, color: c.ink, marginTop: 1 }}>
+              <Text className="font-lora-bold" numberOfLines={2} style={{ ...t.gloss, color: c.ink, marginTop: 2 }}>
                 {shortGloss(word)}
               </Text>
             </>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <IconDisc size={44}>
-                <Check size={22} color={c.greenInk} strokeWidth={2.6} />
+                <Check size={22} color={c.jade} strokeWidth={2.6} />
               </IconDisc>
               <View style={{ flex: 1 }}>
                 <Text className="font-lora-bold" style={{ ...t.pinyin, color: c.ink }}>
@@ -252,38 +378,24 @@ export function WordCard({
         </View>
 
         {word ? (
-          <View style={{ flexDirection: 'row', gap: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
             <PressableScale
               onPress={() => {
                 tapHaptic()
                 onSkip()
               }}
-              accessibilityLabel={added ? 'Next word' : `Not now, skip ${shown}`}
-              wrapperStyle={{ flex: 0.8 }}
+              accessibilityLabel={added ? 'Next word' : `Skip ${shown}. It won't be offered again.`}
+              wrapperStyle={{ flex: 0.72 }}
             >
-              <LiftedFace
-                height={l.buttonHeight}
-                fill={c.white}
-                shoulder={c.quietShoulder}
-                border={c.quietLine}
-                shadow={false}
-              >
-                <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.button, color: c.subtle }}>
-                  {added ? 'Next word' : 'Not now'}
-                </Text>
-              </LiftedFace>
+              <HomeButton label={added ? 'Next word' : 'Skip word'} variant="secondary" />
             </PressableScale>
-            <PressableScale onPress={onAdd} accessibilityLabel={`Add ${shown} to my deck`} wrapperStyle={{ flex: 1 }}>
-              <HomeButtonFace
-                label={added ? 'Added ✓' : 'Add this word'}
-                fill={added ? c.greenDeep : c.green}
-                shoulder={added ? c.greenDeepShoulder : c.greenShoulder}
-              />
+            <PressableScale onPress={onAdd} accessibilityLabel={added ? `${shown} added to your words` : `Learn ${shown}: add it to your review deck`} wrapperStyle={{ flex: 1 }}>
+              <HomeButton label={added ? 'Added ✓' : 'Learn this word'} />
             </PressableScale>
           </View>
         ) : (
           <PressableScale onPress={onSeeAll} accessibilityLabel="See new words">
-            <HomeButtonFace label="See new words" fill={c.green} shoulder={c.greenShoulder} />
+            <HomeButton label="See new words" />
           </PressableScale>
         )}
       </View>
@@ -297,191 +409,199 @@ export interface ChallengeStep {
   id: string
   /** First line under the ring: "Learn". */
   verb: string
-  /** Second line: "3 words". */
+  /** Second line: "5 words". */
   detail: string
   done: boolean
 }
 
 export type RewardState = 'locked' | 'ready' | 'claimed'
 
-const STEP_RING = 30
-const CHECK = 20
+const STEP_RING = 28
+const TRACK = 3
+const GIFT_WIDTH = 34
 
+/**
+ * Four rings on one straight track, each a number until its challenge is done
+ * and a check after; a "1 of 4 completed" line says the same in words. Under
+ * them, the reward: the gift, what it is, and whether it's locked, waiting to
+ * be claimed or collected. The card opens Challenges, where claiming happens,
+ * so the reward chip is a status, not a second button.
+ */
 export function ChallengesCard({
   steps,
   reward,
+  xpReward,
   width,
   onPress,
 }: {
   steps: ChallengeStep[]
   reward: RewardState
+  /** The completion reward's XP. */
+  xpReward: number
   width: number
   onPress: () => void
 }) {
-  const card = homeRefCards.challenges
-  const k = width / card.w
-  const lantern = homeArt.lantern.box
-
-  /* The "Earn reward" pill sits on the patch the script in-painted out of the gift corner. */
-  const pillWidth = Math.max(92, 165 * k)
-  const pillHeight = 28
-  const pillCentreX = (715 - card.x) * k
-  const pillCentreFromBottom = (card.y + card.h - 1446) * k
-
-  /*
-   * Step centres. Three steps take the mockup's own positions; more share the
-   * room left of the gift evenly, so "5 characters" never runs into its
-   * neighbour on a narrow phone.
-   */
-  const mockupSpan = steps.length <= 3
-  /* The labels may sit over the corner trees: they're pale, and "5 characters" needs the room. */
-  const span = { from: l.cardPad - 4, to: pillCentreX - pillWidth / 2 - 2 }
-  const slot = mockupSpan ? (360 * k) / 2 : (span.to - span.from) / steps.length
-  const first = mockupSpan ? 135 * k : span.from + slot / 2
-  const last = mockupSpan ? 495 * k : span.to - slot / 2
-  const pitch = steps.length > 1 ? (last - first) / (steps.length - 1) : 0
-  const centre = (i: number) => (steps.length > 1 ? first + i * pitch : (first + last) / 2)
-  /* "5 characters" is the widest label, about 5.6 em-ish characters of Lora. */
-  const labelSize = Math.max(10, Math.min(t.label.fontSize, slot / 6))
-
+  const pad = l.cardPad + 2
   const doneCount = steps.filter((s) => s.done).length
+  /* The steps reach halfway into the card's padding: "5 characters" needs every point on a narrow phone. */
+  const stepsInset = pad / 2
+  const slot = (width - 2 - stepsInset * 2) / Math.max(1, steps.length)
+  const centre = (i: number) => slot * (i + 0.5)
+  const gift = homeArt.challengeGift.box
+  const rewardLine =
+    reward === 'claimed'
+      ? `+${xpReward} XP collected today`
+      : reward === 'ready'
+        ? `+${xpReward} XP is waiting for you`
+        : `+${xpReward} XP when all ${steps.length} are done`
 
   return (
     <DashboardCard
       fill={homeSurfaces.challenges.fill}
       border={homeSurfaces.challenges.border}
-      minHeight={card.h * k}
       onPress={onPress}
-      accessibilityRole="none"
-      accessibilityLabel={`Daily challenges, ${doneCount} of ${steps.length} complete`}
+      accessibilityRole="button"
+      accessibilityLabel={`Daily challenges, ${doneCount} of ${steps.length} completed. Daily reward ${
+        reward === 'claimed' ? 'claimed' : reward === 'ready' ? 'ready to claim' : 'locked'
+      }. Open challenges.`}
     >
-      <PlacedArt piece={homeArt.challengeTrees} card={card} k={k} anchor={{ x: 'left', y: 'bottom' }} />
-      <PlacedArt piece={homeArt.challengeRocks} card={card} k={k} anchor={{ x: 'left', y: 'bottom' }} />
-      <PlacedArt piece={homeArt.challengeGift} card={card} k={k} anchor={{ x: 'right', y: 'bottom' }} />
-      <PlacedArt piece={homeArt.lantern} card={card} k={k} anchor={{ x: 'left', y: 'top' }} />
-
-      <View
-        style={{
-          paddingTop: l.cardPad,
-          paddingLeft: (lantern.x - card.x + lantern.w) * k + 14,
-          paddingRight: l.cardPad,
-        }}
-      >
-        <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
-          Daily Challenges
-        </Text>
-        <Text className="font-lora" numberOfLines={2} style={{ ...t.body, color: c.subtle, marginTop: 2 }}>
-          {reward === 'claimed'
-            ? 'All done for today — reward collected!'
-            : `Complete ${steps.length} challenges to earn a reward!`}
-        </Text>
-      </View>
-
-      {/* The path: a soft brush stroke joining the rings, then the steps on it. */}
-      <View style={{ height: STEP_RING + 6 + labelSize * 2.7 + 8 + CHECK + l.cardPad, marginTop: 8 }}>
-        <Svg
-          pointerEvents="none"
-          width={width}
-          height={STEP_RING}
-          style={{ position: 'absolute', top: 0, left: 0 }}
-        >
-          <Path
-            d={`M ${30 * k} ${STEP_RING / 2 + 2} C ${first + pitch * 0.5} ${STEP_RING / 2 - 7}, ${
-              first + pitch * 1.2
-            } ${STEP_RING / 2 + 9}, ${(first + last) / 2} ${STEP_RING / 2} S ${last + 30 * k} ${STEP_RING / 2 - 6}, ${
-              550 * k
-            } ${STEP_RING / 2 + 1}`}
-            stroke={c.stepTrack}
-            strokeOpacity={0.55}
-            strokeWidth={11}
-            strokeLinecap="round"
-            fill="none"
-          />
-        </Svg>
-
-        {steps.map((step, i) => (
-          <View
-            key={step.id}
-            pointerEvents="none"
-            style={{ position: 'absolute', top: 0, left: centre(i) - slot / 2, width: slot, alignItems: 'center' }}
-          >
-            <View
-              style={{
-                width: STEP_RING,
-                height: STEP_RING,
-                borderRadius: STEP_RING / 2,
-                borderWidth: 2,
-                borderColor: step.done ? c.greenRing : c.stepRing,
-                backgroundColor: step.done ? c.greenSoft : c.white,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text className="font-lora-bold" style={{ fontSize: 15, color: step.done ? c.greenInk : c.ink }}>
-                {i + 1}
-              </Text>
-            </View>
-            <Text
-              className="font-lora"
-              numberOfLines={1}
-              style={{ fontSize: labelSize, lineHeight: labelSize * 1.35, color: c.ink, marginTop: 6, textAlign: 'center' }}
-            >
-              {step.verb}
+      <View style={{ padding: pad }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
+              Daily Challenges
             </Text>
-            <Text
-              className="font-lora"
-              numberOfLines={1}
-              style={{ fontSize: labelSize, lineHeight: labelSize * 1.35, color: c.ink, textAlign: 'center' }}
-            >
-              {step.detail}
+            <Text className="font-lora" numberOfLines={1} style={{ ...t.body, color: c.subtle, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+              {doneCount} of {steps.length} completed
             </Text>
-            <View
-              style={{
-                marginTop: 8,
-                width: CHECK,
-                height: CHECK,
-                borderRadius: CHECK / 2,
-                borderWidth: step.done ? 0 : 1.5,
-                borderColor: c.checkRing,
-                backgroundColor: step.done ? c.green : c.white,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {step.done && <Check size={13} color={c.white} strokeWidth={3} />}
-            </View>
           </View>
-        ))}
-      </View>
+          <ChevronRight size={20} color={c.muted} strokeWidth={2} />
+        </View>
 
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          left: pillCentreX - pillWidth / 2,
-          bottom: pillCentreFromBottom - pillHeight / 2,
-          width: pillWidth,
-          height: pillHeight,
-          borderRadius: pillHeight / 2,
-          backgroundColor: c.goldPill,
-          borderWidth: 1,
-          borderColor: c.goldPillLine,
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: reward === 'claimed' ? 0.75 : 1,
-        }}
-      >
-        <Text className={reward === 'ready' ? 'font-lora-bold' : 'font-lora'} style={{ fontSize: 12.5, color: c.goldPillInk }}>
-          {reward === 'ready' ? 'Claim reward' : reward === 'claimed' ? 'Claimed ✓' : 'Earn reward'}
-        </Text>
+        {/* The steps: a straight track behind the rings, sage between two finished neighbours. */}
+        <View pointerEvents="none" style={{ marginTop: 16, marginHorizontal: stepsInset - pad }}>
+          <View style={{ position: 'absolute', top: STEP_RING / 2 - TRACK / 2, left: 0, right: 0, height: TRACK }}>
+            {steps.slice(0, -1).map((step, i) => (
+              <View
+                key={step.id}
+                style={{
+                  position: 'absolute',
+                  left: centre(i),
+                  width: slot,
+                  height: TRACK,
+                  backgroundColor: step.done && steps[i + 1].done ? c.sage : c.track,
+                }}
+              />
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row' }}>
+            {steps.map((step, i) => (
+              <View key={step.id} style={{ width: slot, alignItems: 'center' }}>
+                <View
+                  style={{
+                    width: STEP_RING,
+                    height: STEP_RING,
+                    borderRadius: STEP_RING / 2,
+                    borderWidth: step.done ? 0 : 1.5,
+                    borderColor: c.idle,
+                    backgroundColor: step.done ? c.sage : c.white,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {step.done ? (
+                    <Check size={15} color={c.white} strokeWidth={3} />
+                  ) : (
+                    <Text className="font-lora-bold" style={{ fontSize: 13, color: c.subtle }}>
+                      {i + 1}
+                    </Text>
+                  )}
+                </View>
+                <Text
+                  className="font-lora-bold"
+                  numberOfLines={2}
+                  style={{ ...t.label, color: step.done ? c.jade : c.ink, marginTop: 6, textAlign: 'center' }}
+                >
+                  {step.verb}
+                </Text>
+                <Text className="font-lora" numberOfLines={2} style={{ ...t.label, color: c.subtle, textAlign: 'center', paddingHorizontal: 2 }}>
+                  {step.detail}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* The reward, under a hairline: the one illustration on this card. */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginTop: 14,
+            paddingTop: 12,
+            borderTopWidth: 1,
+            borderTopColor: homeSurfaces.challenges.border,
+          }}
+        >
+          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Image
+              source={homeArt.challengeGift.source}
+              style={{ width: GIFT_WIDTH, height: GIFT_WIDTH / (gift.w / gift.h), opacity: reward === 'claimed' ? 0.6 : 1 }}
+              resizeMode="contain"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text className="font-lora-bold" numberOfLines={1} style={{ fontSize: 14.5, lineHeight: 19, color: c.ink }}>
+              Daily reward
+            </Text>
+            <Text className="font-lora" numberOfLines={2} style={{ ...t.label, fontSize: 12.5, color: c.subtle }}>
+              {rewardLine}
+            </Text>
+          </View>
+          <RewardChip state={reward} />
+        </View>
       </View>
     </DashboardCard>
   )
 }
 
+/** Locked (neutral, a padlock), ready (gold — the one warm call on the card), claimed (sage, a check). */
+function RewardChip({ state }: { state: RewardState }) {
+  const look =
+    state === 'ready'
+      ? { fill: c.goldWash, border: c.gold, ink: c.goldInk, label: 'Claim reward' }
+      : state === 'claimed'
+        ? { fill: c.sageSoft, border: c.greenLine, ink: c.jade, label: 'Claimed' }
+        : { fill: c.ivory, border: c.hairline, ink: c.subtle, label: 'Locked' }
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        minHeight: 30,
+        paddingVertical: 4,
+        paddingHorizontal: 11,
+        borderRadius: 15,
+        backgroundColor: look.fill,
+        borderWidth: 1,
+        borderColor: look.border,
+      }}
+    >
+      {state === 'locked' && <Lock size={13} color={look.ink} strokeWidth={2.2} />}
+      {state === 'claimed' && <Check size={14} color={look.ink} strokeWidth={2.6} />}
+      <Text className="font-lora-bold" style={{ fontSize: 13, color: look.ink }}>
+        {look.label}
+      </Text>
+      {state === 'ready' && <ChevronRight size={14} color={look.ink} strokeWidth={2.4} />}
+    </View>
+  )
+}
+
 // --- This week ------------------------------------------------------------------
 
-const DAY = 24
+const DAY = 26
 /** Left gutter carrying the chart's word counts; the day strip is inset by it too, so columns line up. */
 const GUTTER = 22
 /** The plot box, and where its top gridline and zero baseline sit inside it. */
@@ -517,9 +637,24 @@ function smoothPath(points: { x: number; y: number }[]): string {
   return d
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** "Oct 13 – 19", or "Sep 29 – Oct 5" across a month boundary. From the week's own ISO dates — no clock or timezone of its own. */
+function weekRange(week: WeekDay[]): string {
+  if (week.length === 0) return ''
+  const parse = (iso: string) => {
+    const [, m, d] = iso.split('-').map(Number)
+    return { m: m - 1, d }
+  }
+  const a = parse(week[0].date)
+  const b = parse(week[week.length - 1].date)
+  return a.m === b.m ? `${MONTHS[a.m]} ${a.d} – ${b.d}` : `${MONTHS[a.m]} ${a.d} – ${MONTHS[b.m]} ${b.d}`
+}
+
 export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: number; onPress: () => void }) {
   const activeDays = week.filter((d) => d.active).length
   const words = week.reduce((sum, d) => sum + d.wordsLearned, 0)
+  const range = weekRange(week)
 
   const pad = l.cardPad + 2
   /* Seven columns shared by the day strip and the chart under it. */
@@ -545,31 +680,38 @@ export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: num
       fill={homeSurfaces.week.fill}
       border={homeSurfaces.week.border}
       onPress={onPress}
-      accessibilityRole="none"
-      accessibilityLabel={`This week: ${activeDays} active ${activeDays === 1 ? 'day' : 'days'}, ${words} words learned.`}
+      accessibilityRole="button"
+      accessibilityLabel={`This week, ${range}: ${activeDays} active ${activeDays === 1 ? 'day' : 'days'}, ${words} ${
+        words === 1 ? 'word' : 'words'
+      } learned. Open progress.`}
     >
       <View style={{ padding: pad }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <IconDisc size={40}>
-            <ChartNoAxesColumn size={20} color={c.greenInk} strokeWidth={2.6} />
+          <IconDisc size={36}>
+            <ChartNoAxesColumn size={18} color={c.jade} strokeWidth={2.6} />
           </IconDisc>
           <View style={{ flex: 1 }}>
-            <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
-              This Week
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
+                This Week
+              </Text>
+              <Text className="font-lora" numberOfLines={1} style={{ ...t.label, color: c.muted, flexShrink: 1 }}>
+                {range}
+              </Text>
+            </View>
             <Text className="font-lora" numberOfLines={1} style={{ ...t.body, color: c.subtle, marginTop: 2 }}>
-              {activeDays} active {activeDays === 1 ? 'day' : 'days'} • {words} {words === 1 ? 'word' : 'words'} learned
+              {activeDays} active {activeDays === 1 ? 'day' : 'days'} · {words} {words === 1 ? 'word' : 'words'} learned
             </Text>
           </View>
         </View>
 
-        {/* The days: a letter over a ring, filled for a day with any study. */}
+        {/* The days: studied is a filled check, today an outline in jade, the rest a quiet ring. */}
         <View pointerEvents="none" style={{ flexDirection: 'row', marginLeft: GUTTER, marginTop: 14 }}>
           {week.map((day) => (
             <View key={day.date} style={{ width: pitch, alignItems: 'center' }}>
               <Text
                 className={day.isToday ? 'font-lora-bold' : 'font-lora'}
-                style={{ ...t.label, color: day.isToday || day.active ? c.greenInk : c.muted }}
+                style={{ ...t.label, color: day.isToday ? c.jade : c.muted }}
               >
                 {day.letter}
               </Text>
@@ -579,9 +721,9 @@ export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: num
                   width: DAY,
                   height: DAY,
                   borderRadius: DAY / 2,
-                  backgroundColor: day.active ? c.green : 'transparent',
+                  backgroundColor: day.active ? c.sage : c.white,
                   borderWidth: day.active ? 0 : day.isToday ? 2 : 1.3,
-                  borderColor: day.isToday ? c.green : c.greenRing,
+                  borderColor: day.isToday ? c.jade : c.idle,
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -592,74 +734,90 @@ export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: num
           ))}
         </View>
 
-        {/* Words learned per day, as a line under the same seven columns. */}
-        <View
-          style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 14, marginBottom: 4 }}
-        >
-          <Text className="font-lora" style={{ ...t.label, color: c.muted }}>
-            Words learned per day
-          </Text>
-          <Text className="font-lora-bold" style={{ ...t.label, color: c.subtle }}>
-            {words} this week
-          </Text>
-        </View>
-        <View pointerEvents="none" style={{ height: PLOT_H }}>
-          {/* The counts are RN text over the gutter, not SVG text, so they share the card's font. */}
-          {ticks.map((value) => (
-            <Text
-              key={value}
-              className="font-lora"
-              style={{
-                position: 'absolute',
-                left: 0,
-                width: GUTTER - 6,
-                top: yFor(value) - 7,
-                textAlign: 'right',
-                fontSize: 10,
-                lineHeight: 14,
-                color: c.muted,
-              }}
-            >
-              {value}
+        {words === 0 ? (
+          /* No chart of zeros: a line saying what will appear here, and how to start it. */
+          <View
+            style={{
+              marginTop: 14,
+              paddingHorizontal: 14,
+              paddingVertical: 12,
+              borderRadius: 12,
+              backgroundColor: c.white,
+              borderWidth: 1,
+              borderColor: homeSurfaces.week.border,
+            }}
+          >
+            <Text className="font-lora-bold" style={{ ...t.body, color: c.ink }}>
+              No new words yet this week
             </Text>
-          ))}
-          <Svg width={plotWidth} height={PLOT_H} style={{ marginLeft: GUTTER }}>
-            <Defs>
-              <LinearGradient id="homeWeekFill" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={c.green} stopOpacity={0.28} />
-                <Stop offset="1" stopColor={c.green} stopOpacity={0.02} />
-              </LinearGradient>
-            </Defs>
-            {/* Dashed reference lines above, a solid baseline at zero. */}
-            {ticks.map((value) => (
-              <Line
-                key={value}
-                x1={0}
-                x2={plotWidth}
-                y1={yFor(value)}
-                y2={yFor(value)}
-                stroke={value === 0 ? c.greenRing : c.greenTrack}
-                strokeWidth={1}
-                strokeDasharray={value === 0 ? undefined : '2 4'}
-              />
-            ))}
-            {area ? <Path d={area} fill="url(#homeWeekFill)" /> : null}
-            {line ? (
-              <Path d={line} stroke={c.green} strokeWidth={2.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            ) : null}
-            {points.map((p) => (
-              <Circle
-                key={p.x}
-                cx={p.x}
-                cy={p.y}
-                r={p.isToday ? 4 : 2.6}
-                fill={c.green}
-                stroke={c.white}
-                strokeWidth={p.isToday ? 2 : 1.4}
-              />
-            ))}
-          </Svg>
-        </View>
+            <Text className="font-lora" style={{ ...t.label, fontSize: 12.5, lineHeight: 17, color: c.subtle, marginTop: 2 }}>
+              Learn one today and your words-per-day chart starts here.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <Text className="font-lora" style={{ ...t.label, color: c.muted, marginTop: 14, marginBottom: 4 }}>
+              Words learned per day
+            </Text>
+            <View pointerEvents="none" style={{ height: PLOT_H }}>
+              {/* The counts are RN text over the gutter, not SVG text, so they share the card's font. */}
+              {ticks.map((value) => (
+                <Text
+                  key={value}
+                  className="font-lora"
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    width: GUTTER - 6,
+                    top: yFor(value) - 7,
+                    textAlign: 'right',
+                    fontSize: 10,
+                    lineHeight: 14,
+                    color: c.muted,
+                  }}
+                >
+                  {value}
+                </Text>
+              ))}
+              <Svg width={plotWidth} height={PLOT_H} style={{ marginLeft: GUTTER }}>
+                <Defs>
+                  <LinearGradient id="homeWeekFill" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={c.sage} stopOpacity={0.26} />
+                    <Stop offset="1" stopColor={c.sage} stopOpacity={0.02} />
+                  </LinearGradient>
+                </Defs>
+                {/* Dashed reference lines above, a solid baseline at zero. */}
+                {ticks.map((value) => (
+                  <Line
+                    key={value}
+                    x1={0}
+                    x2={plotWidth}
+                    y1={yFor(value)}
+                    y2={yFor(value)}
+                    stroke={value === 0 ? c.idle : c.track}
+                    strokeWidth={1}
+                    strokeDasharray={value === 0 ? undefined : '2 4'}
+                  />
+                ))}
+                {area ? <Path d={area} fill="url(#homeWeekFill)" /> : null}
+                {line ? (
+                  <Path d={line} stroke={c.sage} strokeWidth={2.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                ) : null}
+                {points.map((p) => (
+                  <Circle
+                    key={p.x}
+                    cx={p.x}
+                    cy={p.y}
+                    r={p.isToday ? 4 : 2.6}
+                    fill={c.sage}
+                    stroke={c.white}
+                    strokeWidth={p.isToday ? 2 : 1.4}
+                  />
+                ))}
+              </Svg>
+            </View>
+          </>
+        )}
       </View>
     </DashboardCard>
   )

@@ -10,6 +10,7 @@ import { playTints } from '../components/dashboard/tokens'
 import { BasicsButton, BasicsPill, BasicsProgressBar, BasicsRaised } from '../components/basics/parts'
 import { PressableScale } from '../components/dashboard/parts'
 import { AnswerSheet } from '../components/drills/parts'
+import { QuestionContent, QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
 import { Card, LessonTintContext, makeCtx, type Gate } from '../components/basics/lessonParts'
 import { initialGate, StepView } from '../components/basics/steps'
 import { AudioNotice, stopAudio, useStopAudioOnUnmount } from '../components/basics/audio'
@@ -42,9 +43,10 @@ import type { BasicsLesson } from '../data/basics'
  * Nothing locks: the step-back arrow revisits, and every lesson can be
  * replayed.
  *
- * A question answered right raises the app's correct-answer sheet (confetti,
- * praise, the step's explanation) — the same one New Words and the drills
- * use — and its Continue moves the lesson on.
+ * A question answered right raises the app's correct-answer sheet (the step's
+ * explanation and Continue) — the same one New Words and the drills use — and
+ * its Continue moves the lesson on. Steps change with the app's question
+ * transition: the step drifts left and fades, the next rises into place.
  */
 
 export function ChineseBasicsLesson() {
@@ -92,6 +94,13 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
     setGateState(initialGate(steps[next]))
   }
 
+  /* Between steps: only the step itself moves (see `QuestionContent` below). */
+  const questionMotion = useQuestionTransition()
+  const moveTo = (next: number) => {
+    stopAudio()
+    questionMotion.advance(() => goTo(next))
+  }
+
   const leave = () => {
     stopAudio()
     if (router.canGoBack()) router.back()
@@ -101,13 +110,15 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
   const isLast = index === steps.length - 1
 
   const primary = () => {
+    // The step on screen is leaving; it mustn't take a second press.
+    if (questionMotion.busy.current) return
     if (gate.onPress) {
       gate.onPress()
       return
     }
     playTapSound()
     if (!isLast) {
-      goTo(index + 1)
+      moveTo(index + 1)
       return
     }
     stopAudio()
@@ -152,6 +163,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
 
   return (
     <LessonTintContext.Provider value={tint}>
+    <QuestionMotionProvider motion={questionMotion.motion}>
     <SafeAreaView edges={['top', 'bottom']} className="flex-1" style={{ backgroundColor: c.background }}>
       {/* The Basics foot painting, out of flow behind everything, so a short
           step sits over scenery rather than an empty page. */}
@@ -208,7 +220,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
         {/* Step back, progress. */}
         <View style={{ height: 36, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <Pressable
-            onPress={index > 0 ? () => goTo(index - 1) : undefined}
+            onPress={index > 0 ? () => moveTo(index - 1) : undefined}
             accessibilityRole="button"
             accessibilityLabel="Previous step"
             accessibilityState={{ disabled: index === 0 }}
@@ -228,8 +240,8 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
           </Text>
         </View>
 
+        <QuestionContent key={index} style={{ flex: 1 }}>
         <ScrollView
-          key={index}
           style={{ flex: 1 }}
           contentContainerStyle={{ paddingTop: sp.md, paddingBottom: gate.correct !== undefined ? SHEET_ROOM : sp.xxl }}
           showsVerticalScrollIndicator={false}
@@ -249,18 +261,17 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
               {groupById(lesson.group)?.title ?? 'Chinese Basics'}
             </Text>
           </View>
-          <Reveal from="right" at={0} duration={280} run={0} distance={20}>
-            <StepView
-              step={step}
-              ctx={ctx}
-              column={column}
-              stepId={`${lesson.id}-${index}`}
-              setGate={setGate}
-              onGraded={onGraded}
-            />
-          </Reveal>
+          <StepView
+            step={step}
+            ctx={ctx}
+            column={column}
+            stepId={`${lesson.id}-${index}`}
+            setGate={setGate}
+            onGraded={onGraded}
+          />
           <AudioNotice />
         </ScrollView>
+        </QuestionContent>
 
         {/* The one action, always in the same place — held invisible under the
             answer sheet, so nothing shifts while it is up. */}
@@ -296,6 +307,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
         />
       )}
     </SafeAreaView>
+    </QuestionMotionProvider>
     </LessonTintContext.Provider>
   )
 }

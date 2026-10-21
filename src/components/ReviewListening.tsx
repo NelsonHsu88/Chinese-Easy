@@ -16,9 +16,11 @@ import { useApp, type WordListened } from '../context/AppContext'
 import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
 import { speak, SLOW_SPEECH_RATE } from '../lib/speech'
 import { playCorrectSound, playRetryTone } from '../lib/sound'
-import { correctHaptic, tickHaptic, tapHaptic } from '../lib/haptics'
+import { carefulHaptic, correctHaptic, tickHaptic, tapHaptic } from '../lib/haptics'
 import { shortGloss } from '../lib/definitions'
-import { DrillShell, AnswerButtons, DRILL_PAD } from './drills/parts'
+import { DrillShell, AnswerButtons, DRILL_PAD, verdictDetailLabel } from './drills/parts'
+import { useAnswerReaction } from './motion/questionMotion'
+import { AnswerShimmer, AnswerSparks } from './motion/answerFeedback'
 /* The verdict palette is the placement test's, imported rather than re-picked:
    the same judgement should be the same colour wherever the learner meets it. */
 import { onbVerdict, type VerdictKind } from './onboarding/tokens'
@@ -116,6 +118,7 @@ export function ReviewListening({
       correctHaptic()
     } else {
       playRetryTone()
+      carefulHaptic()
     }
   }
 
@@ -149,6 +152,7 @@ export function ReviewListening({
             ? {
                 kind: verdict,
                 onContinue: handleContinue,
+                detailLabel: verdictDetailLabel(verdict),
                 detail: (
                   <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 20, color: c.slate }}>
                     <Text className={hanziFont(settings.script, 'medium')} style={{ fontSize: 18, color: c.ink }}>
@@ -509,6 +513,9 @@ function OptionRow({
     state === 'selected' ? c.green : state === 'right' ? onbVerdict.correct.accent : state === 'wrong' ? onbVerdict.incorrect.accent : c.border
   const ring =
     state === 'selected' ? c.green : state === 'right' ? onbVerdict.correct.accent : state === 'wrong' ? onbVerdict.incorrect.accent : c.radio
+  /* Only the picked option reacts; the right one shown after a miss just turns green. */
+  const picked = answered && selected ? (isAnswer ? 'pop' : 'shake') : null
+  const reaction = useAnswerReaction(picked)
 
   return (
     <Pressable
@@ -516,11 +523,14 @@ function OptionRow({
       style={{ flex: 1, minHeight: listenSize.optionMinHeight, maxHeight: listenSize.optionMaxHeight }}
       accessibilityRole="radio"
       accessibilityState={{ selected, disabled: answered }}
-      accessibilityLabel={`${shortGloss(option)}, ${displayWord(option, script)}`}
+      accessibilityLabel={`${shortGloss(option)}, ${displayWord(option, script)}${
+        answered ? (isAnswer ? ', correct' : selected ? ', not correct' : '') : ''
+      }`}
     >
-      <View
+      <Animated.View
         style={{
           flex: 1,
+          transform: reaction.transform,
           flexDirection: 'row',
           alignItems: 'center',
           gap: 14,
@@ -533,6 +543,7 @@ function OptionRow({
           opacity: state === 'dim' ? 0.55 : 1,
         }}
       >
+        <AnswerShimmer play={picked === 'pop'} radius={listenSize.radius.option} />
         <View
           style={{
             width: listenSize.radio,
@@ -568,7 +579,8 @@ function OptionRow({
             )}
           </View>
         </View>
-      </View>
+        <AnswerSparks play={picked === 'pop'} />
+      </Animated.View>
     </Pressable>
   )
 }

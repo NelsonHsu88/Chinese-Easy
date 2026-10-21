@@ -8,9 +8,11 @@ import { shortGloss } from '../../lib/definitions'
 import { blankTranslation, clozeFor } from '../../lib/mixedDrills'
 import { speak } from '../../lib/speech'
 import { playCorrectSound, playRetryTone } from '../../lib/sound'
-import { correctHaptic, tapHaptic, tickHaptic } from '../../lib/haptics'
+import { carefulHaptic, correctHaptic, tapHaptic, tickHaptic } from '../../lib/haptics'
 import { onbVerdict, type VerdictKind } from '../onboarding/tokens'
-import { DrillShell, AnswerButtons, DRILL_PAD, useDrillColumn } from './parts'
+import { DrillShell, AnswerButtons, DRILL_PAD, useDrillColumn, verdictDetailLabel } from './parts'
+import { useAnswerReaction } from '../motion/questionMotion'
+import { AnswerShimmer, AnswerSparks } from '../motion/answerFeedback'
 import { useReadingFade } from '../readingFade'
 import { drillColors as c, drillType as t, drillSize, drillShadow } from './tokens'
 import type { VocabWord } from '../../types'
@@ -104,6 +106,7 @@ export function ReviewFillGap({
       correctHaptic()
     } else {
       playRetryTone()
+      carefulHaptic()
     }
   }
 
@@ -132,6 +135,7 @@ export function ReviewFillGap({
           ? {
               kind: verdict,
               onContinue: handleContinue,
+              detailLabel: verdictDetailLabel(verdict),
               detail: (
                 <>
                   {/* Word and reading are one unit that never wraps apart. Zhuyin
@@ -352,6 +356,9 @@ function GapOption({
   const readingRoom = inner * 0.48 - 24
   const perChar = settings.phoneticScript === 'zhuyin' ? 1 : 0.56
   const readingSize = Math.max(10, Math.min(14, readingRoom / Math.max(1, [...reading].length * perChar)))
+  /* Only the picked tile reacts; the right one shown after a miss just turns green. */
+  const picked = answered && selected ? (isAnswer ? 'pop' : 'shake') : null
+  const reaction = useAnswerReaction(picked)
 
   return (
     <Pressable
@@ -359,10 +366,11 @@ function GapOption({
       style={{ width: '48%' }}
       accessibilityRole="radio"
       accessibilityState={{ selected, disabled: answered }}
-      accessibilityLabel={form}
+      accessibilityLabel={`${form}${answered ? (isAnswer ? ', correct' : selected ? ', not correct' : '') : ''}`}
     >
-      <View
+      <Animated.View
         style={{
+          transform: reaction.transform,
           height: drillSize.optionHeight,
           borderRadius: drillSize.radius.tile,
           borderWidth: state === 'idle' || state === 'dim' ? 1 : 1.75,
@@ -373,6 +381,7 @@ function GapOption({
           justifyContent: 'center',
         }}
       >
+        <AnswerShimmer play={picked === 'pop'} radius={drillSize.radius.tile} />
         <Text
           className={hanziFont(settings.script, 'semibold')}
           numberOfLines={1}
@@ -422,7 +431,8 @@ function GapOption({
             {state === 'right' ? <Check size={13} color="#FFFFFF" strokeWidth={3.2} /> : <X size={13} color="#FFFFFF" strokeWidth={3.2} />}
           </View>
         )}
-      </View>
+        <AnswerSparks play={picked === 'pop'} />
+      </Animated.View>
     </Pressable>
   )
 }

@@ -101,6 +101,23 @@ export const basicsColors = {
   },
   /** The pitch grid behind a contour. */
   toneGrid: '#ECE9E2',
+
+  /*
+   * The hub screens (Chinese Basics and its four groups): one neutral surface
+   * for every group, jade as the only interaction colour. Each group's
+   * identity rides on its painting, never on its card.
+   */
+  /** Hairline around a hub card and between lesson rows. */
+  hairline: '#E5E9E2',
+  /** The Start card: the faintest jade, so the one call to action stands apart from the white tiles. */
+  startFill: '#F3F8F1',
+  startBorder: '#DCE8D7',
+  /** A section's header band: barely-there jade over the white rows. */
+  sectionHead: '#F7FAF6',
+  /** A lesson's glyph tile — the same pale sage in every group. */
+  glyphTile: '#F0F5EE',
+  /** A section's number disc: muted jade. */
+  sectionDisc: '#5E8A6B',
 } as const
 
 /** Cap on every full-screen column, as everywhere in the app. */
@@ -141,7 +158,7 @@ export const basicsType = {
   /** Lora Bold, the Continue card's lesson. */
   cardTitle: { fontSize: 21, lineHeight: 26 },
   /** Lora Bold, a group tile. */
-  tileTitle: { fontSize: 18, lineHeight: 23, letterSpacing: -0.2 },
+  tileTitle: { fontSize: 16, lineHeight: 21, letterSpacing: -0.4 },
   /** Lora Bold, a lesson row. */
   rowTitle: { fontSize: 17, lineHeight: 22 },
   /** Lora Bold, the lesson player's header. */

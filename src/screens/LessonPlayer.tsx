@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { View, Text, Pressable } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
-import { X } from 'lucide-react-native'
+import { X, Sparkles, Layers } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { lessonById } from '../data/lessons'
 import { speak } from '../lib/speech'
-import { playPositiveChime, playRetryTone, playFanfare } from '../lib/sound'
+import { playPositiveChime, playRetryTone } from '../lib/sound'
 import { celebrateHaptic, thunkHaptic } from '../lib/haptics'
-import { Celebration } from '../components/Celebration'
+import { LessonCompletionCelebration } from '../components/celebration/LessonCompletionCelebration'
 import { SpeakButton } from '../components/SpeakButton'
 import { XP_PER_LESSON } from '../lib/townEconomy'
 import type { FillBlankExercise, MatchExercise, ScrambleExercise } from '../types'
@@ -259,7 +259,6 @@ export function LessonPlayer() {
   const { completeLesson } = useApp()
   const lesson = lessonById(lessonId)
   const [index, setIndex] = useState(0)
-  const [celebrateKey, setCelebrateKey] = useState(0)
   const [done, setDone] = useState(false)
 
   if (!lesson) {
@@ -276,9 +275,7 @@ export function LessonPlayer() {
   const handleExerciseComplete = () => {
     if (index + 1 >= total) {
       completeLesson(lesson.id)
-      celebrateHaptic()
-      playFanfare()
-      setCelebrateKey((k) => k + 1)
+      // The celebration screen brings its own fanfare and haptic on the landing.
       setDone(true)
     } else {
       setIndex((i) => i + 1)
@@ -287,18 +284,13 @@ export function LessonPlayer() {
 
   if (done) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center gap-6 bg-slate-50 px-6 dark:bg-slate-950">
-        <Celebration trigger={celebrateKey} />
-        <Text className="text-6xl">{'\u{1F389}'}</Text>
-        <Text className="text-2xl font-bold text-slate-900 dark:text-white">Lesson complete!</Text>
-        <Text className="text-center text-slate-500 dark:text-slate-400">+{XP_PER_LESSON} XP earned</Text>
-        <Pressable
-          onPress={() => router.replace('/lessons')}
-          className="mt-2 w-full max-w-xs items-center rounded-2xl bg-brand-500 px-6 py-4 shadow-card"
-        >
-          <Text className="text-lg font-bold text-white">Back to Lessons</Text>
-        </Pressable>
-      </SafeAreaView>
+      <LessonCompletionCelebration
+        stats={[
+          { icon: Sparkles, tone: 'xp', value: `+${XP_PER_LESSON}`, label: 'XP earned' },
+          { icon: Layers, tone: 'words', value: String(total), label: 'Exercises' },
+        ]}
+        onContinue={() => router.replace('/lessons')}
+      />
     )
   }
 

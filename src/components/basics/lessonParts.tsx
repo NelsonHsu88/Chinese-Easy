@@ -1,5 +1,6 @@
-import { createContext, useContext, useState } from 'react'
-import { View, Text, Pressable } from 'react-native'
+import { PlayWash } from '../dashboard/playWash'
+import { createContext, useContext, useRef, useState } from 'react'
+import { View, Text, Pressable, Animated } from 'react-native'
 import { Check, ChevronDown, ChevronUp, Info, RotateCcw } from 'lucide-react-native'
 import { ShadowSurface } from '../shadowReveal'
 import { dashShadow, type PlayTint } from '../dashboard/tokens'
@@ -12,6 +13,8 @@ import type { CheckStatus } from '../../lib/basicsEngine'
 import { AudioButton, AudioIndicator, playZh } from './audio'
 import { PressableScale } from '../dashboard/parts'
 import { BasicsRaised } from './parts'
+import { useAnswerReaction } from '../motion/questionMotion'
+import { AnswerShimmer, AnswerSparks } from '../motion/answerFeedback'
 import { basicsColors as c, basicsRadius as radius, basicsSpacing as sp, basicsType as t } from './tokens'
 
 /*
@@ -49,7 +52,7 @@ export interface Gate {
   /**
    * Set when a question was just answered right: the lesson raises the app's
    * correct-answer sheet (`AnswerSheet`, as in New Words and the drills) with
-   * this said under the praise, and its Continue takes over from the button.
+   * this said under the judgement, and its Continue takes over from the button.
    */
   correct?: string
 }
@@ -195,6 +198,9 @@ export function ItemRow({
 }) {
   const spoken = ctx.zh(item.zh)
   const shown = bothScripts && typeof item.zh !== 'string' ? `${item.zh.t} → ${item.zh.s}` : spoken
+  /* Rows take the lesson's group hue, like its cards, so a list of words reads
+     as part of the lesson rather than as white form fields. */
+  const tint = useContext(LessonTintContext)
   return (
     <Pressable
       onPress={() => playZh(spoken, audioId)}
@@ -208,13 +214,15 @@ export function ItemRow({
           gap: 14,
           borderRadius: radius.inner,
           borderWidth: 1,
-          borderColor: c.border,
-          backgroundColor: c.card,
+          borderColor: tint?.border ?? c.border,
+          backgroundColor: tint?.fill ?? c.card,
           paddingVertical: 10,
           paddingHorizontal: 14,
           minHeight: 64,
+          overflow: 'hidden',
         }}
       >
+        {tint && <PlayWash tint={tint} />}
         <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 30, lineHeight: 40, color: c.navy }}>
           {shown}
         </Text>
@@ -330,6 +338,16 @@ export function OptionFrame({
           ? c.shoulder.selected
           : c.shoulder.quiet
   const disabled = state === 'ruledOut' || !onPress
+  /*
+   * Only an option the learner picked reacts to being checked: a spring when it
+   * was right, a shake when it wasn't. The answer revealed after a second miss
+   * goes from idle to right and just changes colour.
+   */
+  const wasPicked = useRef(false)
+  if (state === 'selected') wasPicked.current = true
+  else if (state === 'idle' || state === 'ruledOut') wasPicked.current = false
+  const picked = wasPicked.current ? (state === 'right' ? 'pop' : state === 'wrong' ? 'shake' : null) : null
+  const reaction = useAnswerReaction(picked)
   return (
     <PressableScale
       onPress={disabled ? undefined : onPress}
@@ -341,13 +359,14 @@ export function OptionFrame({
         (state === 'right' ? ', correct' : state === 'wrong' || state === 'ruledOut' ? ', not correct' : '')
       }
     >
-      <View style={{ opacity: state === 'ruledOut' ? 0.45 : state === 'faded' ? 0.6 : 1 }}>
+      <Animated.View style={{ opacity: state === 'ruledOut' ? 0.45 : state === 'faded' ? 0.6 : 1, transform: reaction.transform }}>
         <BasicsRaised
           fill={fill}
           shoulder={shoulder}
           border={border}
           borderWidth={state === 'idle' || state === 'faded' || state === 'ruledOut' ? 1.5 : 2}
           radius={18}
+          underlay={<AnswerShimmer play={picked === 'pop'} radius={18} />}
           style={{
             minHeight,
             paddingHorizontal: 14,
@@ -366,7 +385,8 @@ export function OptionFrame({
             </Text>
           )}
         </BasicsRaised>
-      </View>
+        <AnswerSparks play={picked === 'pop'} />
+      </Animated.View>
     </PressableScale>
   )
 }

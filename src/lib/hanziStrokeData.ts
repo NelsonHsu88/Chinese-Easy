@@ -103,6 +103,20 @@ export function prefetchStrokeData(text: string): void {
   for (const index of shards) loadShard(index).catch(() => {})
 }
 
+/**
+ * Reads the shards a piece of text needs and resolves once they are parsed —
+ * the awaitable twin of `prefetchStrokeData`, for a screen that must not
+ * appear until its writing pads can draw at once. Rejects if a shard can't be
+ * read, so the caller can offer a retry instead of a dead pad.
+ */
+export async function loadStrokeData(text: string): Promise<void> {
+  const shards = new Set<number>()
+  for (const ch of text) {
+    if (/\p{Script=Han}/u.test(ch)) shards.add(shardFor(ch))
+  }
+  await Promise.all([...shards].map(loadShard))
+}
+
 export async function bundledCharacterData(character: string): Promise<CharacterJson | null> {
   const shard = await loadShard(shardFor(character))
   return shard[character] ?? null

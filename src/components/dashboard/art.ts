@@ -14,12 +14,21 @@ export const FIRE_ICON = require('../../assets/images/icons/fire.png')
  * the art lands where the mockup painted it at any column size.
  */
 export const homeArt = {
-  hero: { source: require('../../assets/images/home/hero.png'), box: { x: 375, y: 70, w: 488, h: 436 } },
+  /* SS1017: Shifu with his scroll, the pagoda and the blossom — "SS1017 New Home
+     Redesign UI (6)", cut by `processSS1017Art.mjs` and placed in this 863px frame. */
+  /* The hero is now drawn full width by `RefHero` ("SS1017 New APP DesIGN UI (5)"); `box` is unused. */
+  /* SS1020: Shifu correctly proportioned, with the mockup's type and streak pill painted out
+     (`scripts/processSS1020HeroArt.mjs`). Laid full width at its own ratio (`HOME_HERO_SIZE`). */
+  hero: { source: require('../../assets/images/app/home-hero-ss1020.png'), box: { x: 0, y: 0, w: 1170, h: 780 } },
   /** The word card's range, mirrored and sunless; Home lays it across the whole hero, under Shifu. */
   heroBackdrop: { source: require('../../assets/images/home/hero-backdrop.png'), box: { x: 385, y: 902, w: 431, h: 194 } },
+  /* The next four are from "SS1017 New APP DesIGN UI (5)", their boxes converted
+     into this 863px frame against each card's edges (that mockup's cards are 740px wide). */
+  /* The Review card keeps its SS1012 painting (`processHomeArt.mjs`). */
   review: { source: require('../../assets/images/home/review.png'), box: { x: 455, y: 524, w: 361, h: 278 } },
-  wordRange: { source: require('../../assets/images/home/word-range.png'), box: { x: 385, y: 902, w: 431, h: 194 } },
-  lantern: { source: require('../../assets/images/home/lantern.png'), box: { x: 66, y: 1212, w: 94, h: 132 } },
+  wordRange: { source: require('../../assets/images/app/home-word.png'), box: { x: 295, y: 860, w: 521, h: 302 } },
+  /** The gift on its gold disc, beside "Daily Challenges". */
+  lantern: { source: require('../../assets/images/app/home-challenge-icon.png'), box: { x: 64, y: 1231, w: 92, h: 92 } },
   challengeTrees: {
     source: require('../../assets/images/home/challenge-trees.png'),
     box: { x: 45, y: 1318, w: 82, h: 178 },
@@ -29,12 +38,15 @@ export const homeArt = {
     box: { x: 238, y: 1452, w: 240, h: 44 },
   },
   challengeGift: {
-    source: require('../../assets/images/home/challenge-gift.png'),
-    box: { x: 605, y: 1280, w: 212, h: 216 },
+    source: require('../../assets/images/app/home-gift.png'),
+    box: { x: 630, y: 1215, w: 190, h: 278 },
   },
 } as const
 
-/** Shifu's mouth and the left edge of his face, in `hero`'s own pixels — where the bubble's tail points. */
+/** The header painting's pixel size; the screen lays it at this ratio, never stretched. */
+export const HOME_HERO_SIZE = { width: 1170, height: 780 } as const
+
+/** Shifu's mouth and the left edge of his face, in the old `hero`'s own pixels — where the bubble's tail pointed. */
 export const HERO_SHIFU = { mouthY: 267, faceX: 140 } as const
 
 /**

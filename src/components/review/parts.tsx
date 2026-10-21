@@ -2,6 +2,10 @@ import type { ComponentType, ReactNode } from 'react'
 import { View, Text, Image, Pressable, Animated } from 'react-native'
 import { ArrowRight, BookOpen, ChartNoAxesColumnIncreasing, ChevronRight } from 'lucide-react-native'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
+import { PlayWash } from '../dashboard/playWash'
+import { LinearGradient } from 'expo-linear-gradient'
+import { RefHero, ShifuBubble, refScale, refY, shifuBubbleFontSize } from '../refScene'
+import { PAGE_TITLE_TOP } from '../pageHeader'
 /* The entrance machinery is shared with the Dashboard rather than reimplemented
    — same `Animated`-not-Reanimated constraint, same hidden-tab backstop. Only
    the timings differ, and those live in `revEntrance`. */
@@ -90,13 +94,9 @@ export function ReviewHero({
   /** Ticks on focus; restarts the entrance. */
   run: number
 }) {
-  const artWidth = revHero.artWidth * (column / REV_CONTENT_MAX)
-  const artHeight = artWidth / revHero.artRatio
-
-  /* In the padded column's coordinates: the art's right edge is the screen's. */
-  const artLeft = column - s.screen - artWidth
-  const bubbleLeft = s.sm
-  const bubbleMax = Math.min(revHero.bubbleMax, artLeft + revHero.bubbleOverlap - bubbleLeft)
+  /* The mockup's landscape across the column; the bubble on the patch the
+     script masked out of it, and the stats panel where the painting ends. */
+  const k = refScale(column)
 
   const art = useReveal({
     from: 'right',
@@ -114,13 +114,8 @@ export function ReviewHero({
   })
 
   return (
-    <View>
-      <Animated.View
-        pointerEvents="none"
-        style={[{ position: 'absolute', right: -s.screen, bottom: 0 }, art]}
-      >
-        <Image source={revArt.hero} style={{ width: artWidth, height: artHeight }} resizeMode="contain" />
-      </Animated.View>
+    <View style={{ minHeight: refY(revHero.endsAt, column) }}>
+      <RefHero source={revArt.hero} ratio={revHero.artRatio} column={column} left={-s.screen} animatedStyle={art} />
 
       {/* The bubble inside is a raised card: its shadow settles in behind it
           (`ShadowReveal`) rather than arriving first, and the subtree fades as
@@ -130,75 +125,35 @@ export function ReviewHero({
         <Text
           className="font-lora-bold"
           accessibilityRole="header"
-          style={{ ...t.title, color: c.navy, marginTop: s.xs }}
+          style={{ ...t.title, color: c.navy, marginTop: PAGE_TITLE_TOP + 10 }}
         >
           Review
         </Text>
-        <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: s.xs }}>
-          Strengthen what you’ve learned.{'\n'}Make it stick.
-        </Text>
-
-        <View
-          style={{
-            marginLeft: bubbleLeft,
-            marginTop: s.lg,
-            marginBottom: s.lg,
-            maxWidth: bubbleMax,
-            alignSelf: 'flex-start',
-          }}
-        >
-          <SpeechBubble message={message} />
-        </View>
         </ShadowReveal>
       </Animated.View>
-    </View>
-  )
-}
-
-/**
- * Shifu's line. Soft and editorial rather than a chat bubble: a warm fill, a
- * drawn hairline, a shadow you have to look for, and a small tail pointing
- * right at him.
- */
-function SpeechBubble({ message }: { message: string }) {
-  return (
-    <View>
-      <ShadowSurface shadow={revShadow}
-        style={{
-          backgroundColor: c.card,
-          borderRadius: revRadius.medium,
-          borderWidth: 1,
-          borderColor: c.border,
-          paddingHorizontal: s.xl,
-          paddingVertical: s.md + 2,
-        }}
-      >
-        <Text className="font-lora" style={{ ...t.bubble, color: c.navy }}>
-          {message}
-        </Text>
-      </ShadowSurface>
 
       {/*
-        The tail: a rotated square carrying the bubble's fill, with the border
-        drawn on only the two edges that form the point. Drawn after the body so
-        it covers the body's border where the two meet, which is what makes it
-        read as one outline rather than a triangle stuck to a box.
+        Shifu's line, on the patch the art script cleared for the mockup's own
+        bubble (`revHero.bubble`). With nothing drawn there, the cleared patch
+        and the stub of the mockup's tail read as an empty speech bubble.
+        Measured from the column's left edge, so the gutter comes off.
       */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          right: -6,
-          top: 26,
-          width: 12,
-          height: 12,
-          backgroundColor: c.card,
-          borderTopWidth: 1,
-          borderRightWidth: 1,
-          borderColor: c.border,
-          transform: [{ rotate: '45deg' }],
-        }}
-      />
+      <Animated.View
+        style={[
+          {
+            position: 'absolute',
+            left: (revHero.bubble.right - revHero.bubble.width) * k - s.screen,
+            top: refY(revHero.bubble.top, column),
+            width: revHero.bubble.width * k,
+          },
+          text,
+        ]}
+        needsOffscreenAlphaCompositing
+      >
+        <ShadowReveal at={revEntrance.at} duration={revEntrance.for} run={run}>
+          <ShifuBubble message={message} width={revHero.bubble.width * k} fontSize={shifuBubbleFontSize(column)} />
+        </ShadowReveal>
+      </Animated.View>
     </View>
   )
 }
@@ -340,6 +295,7 @@ export function ReviewModeCard({
   count,
   width,
   tint,
+  plain = false,
   countLabel = 'due',
   onPress,
 }: {
@@ -347,8 +303,10 @@ export function ReviewModeCard({
   description: string
   art: number
   count: number
-  /** The card's SS1017 wash; its pill takes `pillTint`'s hue. */
+  /** The card's hue: its chevron disc, and its wash unless `plain`. Its pill takes another hue (`PILL_FOR`). */
   tint: PlayTint
+  /** A white card with a hairline — no wash behind the painting. */
+  plain?: boolean
   /** "due", or "items" for the mistakes pile. */
   countLabel?: string
   /** The card's own width. The painting's share, and the title size, are measured off it. */
@@ -378,9 +336,9 @@ export function ReviewModeCard({
       <ShadowSurface shadow={revShadow}
         style={{
           borderRadius: revRadius.large,
-          backgroundColor: tint.fill,
+          backgroundColor: plain ? c.card : tint.fill,
           borderWidth: 1,
-          borderColor: tint.border,
+          borderColor: plain ? c.border : tint.border,
         }}
       >
         <View
@@ -390,8 +348,18 @@ export function ReviewModeCard({
           {/* A sized box with the image filling it, rather than an absolutely
               positioned Image stretched by top/bottom: react-native-web does not
               apply `cover` to the latter, and drew the scene zoomed into a corner. */}
+          {!plain && <PlayWash tint={tint} />}
           <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: artWidth }}>
             <Image source={art} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
+            {/* `cover` can crop the painting's own soft edge off; this fades its
+                right side into the card so it never ends in a hard cut. */}
+            <LinearGradient
+              pointerEvents="none"
+              colors={[`${plain ? c.card : tint.fill}00`, plain ? c.card : tint.fill]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={{ position: 'absolute', top: 0, bottom: 0, right: -1, width: '38%' }}
+            />
           </View>
 
           <View
@@ -413,12 +381,12 @@ export function ReviewModeCard({
             </Text>
           </View>
 
-          <View
-            className="flex-row items-center"
-            style={{ gap: s.sm, marginLeft: s.sm, paddingRight: revCard.paddingRight }}
-          >
+          {/* The reference's right column: the count on top, a round chevron under it. */}
+          <View style={{ alignItems: 'flex-end', gap: s.sm, marginLeft: s.sm, paddingRight: revCard.paddingRight }}>
             <DuePill count={count} label={countLabel} tint={tint} />
-            <ChevronRight size={20} color={tint.text} strokeWidth={2.2} />
+            <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: tint.soft, marginRight: 6 }}>
+              <ChevronRight size={20} color={tint.ink} strokeWidth={2.4} />
+            </View>
           </View>
         </View>
       </ShadowSurface>

@@ -21,11 +21,13 @@ export const chalArt = {
 } as const
 
 /** `streak` has no painting: the card draws the flame on a disc instead. */
+/* The `tinted/` copies (`processTintedArt.mjs`): each card wears its scene's
+   SS1017 wash (`SCENE_HUE`), and their paper takes it. */
 export const SCENE_ART: Record<Exclude<ChallengeScene, 'streak'>, number> = {
-  words: require('../../assets/images/challenges/card-words.png'),
-  writing: require('../../assets/images/challenges/card-writing.png'),
-  listening: require('../../assets/images/challenges/card-listening.png'),
-  review: require('../../assets/images/challenges/card-review.png'),
+  words: require('../../assets/images/tinted/challenges-card-words.png'),
+  writing: require('../../assets/images/tinted/challenges-card-writing.png'),
+  listening: require('../../assets/images/tinted/challenges-card-listening.png'),
+  review: require('../../assets/images/tinted/challenges-card-review.png'),
   gift: require('../../assets/images/challenges/gift.png'),
 }
 

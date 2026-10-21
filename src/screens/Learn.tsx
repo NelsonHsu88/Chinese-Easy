@@ -4,8 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { ChevronRight } from 'lucide-react-native'
-import { dashColors as c, dashShadow, DASH_CONTENT_MAX, playTints, type PlayTint } from '../components/dashboard/tokens'
-import { WritingGuideModal } from '../components/WritingGuideModal'
+import { dashColors as c, DASH_CONTENT_MAX, playTints, type PlayTint } from '../components/dashboard/tokens'
+/* The card surface is Review's own, imported rather than copied, so the two
+   tabs' cards can never drift apart: ivory, a hairline, the same corner, the
+   same barely-there shadow, the same type. */
+import { revColors, revRadius, revShadow, revType } from '../components/review/tokens'
+import { RefHero, SHIFU_BUBBLE_REF_WIDTH, ShifuBubble, refScale, refY, shifuBubbleFontSize } from '../components/refScene'
+import { CLOUDS_MANY } from '../components/AmbientClouds'
 import { PressableScale } from '../components/dashboard/parts'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { FEATURES } from '../lib/features'
@@ -17,9 +22,11 @@ import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHea
 /**
  * The Learn tab: a header with Shifu and his line, over four cards (New Words,
  * Books, Chinese Basics, Writing Guide), built to "SS1017 Learn and Chinese
- * Basic redesign.png" — each card in its own `playTints` wash (jade, blossom,
- * sky, honey) with a chevron disc in the same hue. The reference's back arrow is left out — this is tab
- * content, with nothing behind it to go back to.
+ * Basic redesign.png", restyled as the Review tab's sibling: every card is
+ * Review's plain ivory card (`revColors.card`, hairline, `revRadius.large`),
+ * and each card's own colour is only its painting and the soft chevron disc in
+ * its hue (sage, blossom, sky). The reference's back arrow is left out — this
+ * is tab content, with nothing behind it to go back to.
  *
  * **The whole page fits one screen and never scrolls.** Each card is an
  * explicit third of whatever the viewport leaves under the header (measured,
@@ -38,31 +45,33 @@ import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHea
  * flag brings the Lessons Path card back.
  */
 
+/* "SS1017 New APP DesIGN UI (4)", cut by `processAppDesignArt.mjs`. */
 const ART = {
-  hero: require('../assets/images/learn/hero.png'),
+  hero: require('../assets/images/app/learn-hero.png'),
   foot: require('../assets/images/learn/foot.png'),
-  newWords: require('../assets/images/tinted/learn-new-words.png'),
-  books: require('../assets/images/tinted/learn-books.png'),
-  writingBasics: require('../assets/images/tinted/learn-writing-basics.png'),
-  characters: require('../assets/images/tinted/basics-characters.png'),
-  writingGuide: require('../assets/images/tinted/learn-writing-basics.png'),
+  newWords: require('../assets/images/app/learn-new-words.png'),
+  books: require('../assets/images/app/learn-books.png'),
+  basics: require('../assets/images/app/learn-basics.png'),
 } as const
 /** Each asset's own pixel size, as width / height. */
-const HERO_RATIO = 467 / 559
+const HERO_RATIO = 783 / 518
 const FOOT_RATIO = 995 / 150
-/** Hero width as a share of the column: 467 of the mockup's 995. */
-const HERO_SHARE = 467 / 995
+/** The mockup's bubble: left edge, top, width (its pixels). */
+const BUBBLE_REF = { left: 86, top: 392, width: SHIFU_BUBBLE_REF_WIDTH } as const
+/** Where the mockup's first card starts (its pixels). */
+const CARDS_TOP_REF = 646
 
 /** Measured off the reference (995px wide, a 430pt column). */
 const GUTTER = 22
 const CARD_GAP = 12
-const CARD_RADIUS = 24
+const CARD_RADIUS = revRadius.large
 /**
  * Share of the card the illustration takes. The mockup's is 45% (400 of 887),
  * but that leaves a 360pt phone's text column too narrow for "Chinese Basics"
  * on one line; 40% keeps the scene the dominant half and the copy at three lines.
  */
-const ART_SHARE = '40%'
+const ART_SHARE = '42%'
+/** Review's chevron disc. */
 const CHEVRON = 38
 /**
  * Card type is designed for a 430pt column and scales down with it (to at
@@ -71,19 +80,21 @@ const CHEVRON = 38
  */
 const DESIGN_COLUMN = 430
 const TYPE_SCALE_MIN = 0.84
-/** How far the bubble may run behind the painting's feathered left edge. */
-const BUBBLE_OVERLAP = 12
-
 /** The designed card, and the range it may grow or shrink to fill the screen. */
-const CARD_COUNT = 4
-const CARD_MIN = 98
-const CARD_MAX = 132
+const CARD_COUNT = 3
+const CARD_MIN = 100
+const CARD_MAX = 148
 /** Last resort before the page scrolls, reached only on a very short screen. */
 const CARD_FLOOR = 84
 /** Least space kept under the last card, above the tab bar. */
 const COLUMN_BOTTOM = 12
 /** Viewport heights below this drop the speech bubble. */
 const COMPACT_BELOW = 640
+
+/** The title and two-line subtitle's height at the top of the header, as laid out below. */
+const TITLE_BLOCK = PAGE_TITLE_TOP + 10 + PAGE_TITLE.lineHeight + 4 + PAGE_SUBTITLE.lineHeight * 2
+/** Least space between the subtitle and the bubble. */
+const BUBBLE_MIN_GAP = 8
 
 const SHIFU_LINE = "Every character opens a new world. Let's learn together!"
 
@@ -125,12 +136,12 @@ function LearnCard({
       wrapperStyle={{ height: height ?? CARD_MIN }}
       style={{ flex: 1 }}
     >
-      <ShadowSurface shadow={dashShadow}
+      <ShadowSurface shadow={revShadow}
         style={[{ flex: 1, flexDirection: 'row', alignItems: 'center' }, {
           borderRadius: CARD_RADIUS,
-          backgroundColor: tint.fill,
+          backgroundColor: revColors.card,
           borderWidth: 1,
-          borderColor: tint.border,
+          borderColor: revColors.border,
           overflow: 'hidden',
         }]}
       >
@@ -142,25 +153,34 @@ function LearnCard({
         */}
         <View style={{ width: ART_SHARE, alignSelf: 'stretch' }}>
           <Image source={art} resizeMode="cover" style={{ width: '100%', height: '100%' }} />
+          {/* `cover` crops the painting's own soft edge; this fades its right
+              side into the ivory card, so it never ends in a hard cut. */}
           <LinearGradient
             pointerEvents="none"
-            colors={[`${tint.fill}00`, tint.fill]}
+            colors={[`${revColors.card}00`, revColors.card]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: '22%' }}
+            style={{ position: 'absolute', top: 0, bottom: 0, right: -1, width: '40%' }}
           />
         </View>
 
-        <View className="flex-1" style={{ paddingLeft: 10, paddingRight: 6 }}>
+        <View className="flex-1" style={{ paddingLeft: 8, paddingRight: 8 }}>
+          {/* Sized so "Chinese Basics" fits one line at 360pt; never truncated. */}
           <Text
             className="font-lora-bold"
-            style={{ fontSize: 19.5 * scale, lineHeight: 24 * scale, letterSpacing: -0.2, color: c.navy }}
+            style={{ fontSize: 19.5 * scale, lineHeight: 24 * scale, letterSpacing: revType.cardTitle.letterSpacing, color: revColors.navy }}
           >
             {title}
           </Text>
+          {/* Review's description: Nunito SemiBold in slate. */}
           <Text
-            className="font-lora"
-            style={{ marginTop: 3, fontSize: 13 * scale, lineHeight: 17.5 * scale, color: c.textSecondary }}
+            className="font-nunito-semibold"
+            style={{
+              marginTop: 3,
+              fontSize: revType.cardBody.fontSize * scale,
+              lineHeight: revType.cardBody.lineHeight * scale,
+              color: revColors.slate,
+            }}
           >
             {description}
           </Text>
@@ -168,53 +188,12 @@ function LearnCard({
 
         <View
           className="items-center justify-center rounded-full"
-          style={{ width: chevron, height: chevron, marginRight: Math.round(14 * scale), backgroundColor: tint.soft }}
+          style={{ width: chevron, height: chevron, marginRight: Math.round(20 * scale), backgroundColor: tint.soft }}
         >
           <ChevronRight size={Math.round(20 * scale)} color={tint.ink} strokeWidth={2.4} />
         </View>
       </ShadowSurface>
     </PressableScale>
-  )
-}
-
-/**
- * Shifu's line, the same soft editorial bubble as the Review hub's: a warm
- * fill, a drawn hairline, a faint shadow and a small tail pointing at him.
- */
-function SpeechBubble({ message }: { message: string }) {
-  return (
-    <View>
-      <ShadowSurface shadow={dashShadow}
-        style={{
-          backgroundColor: c.card,
-          borderRadius: 22,
-          borderWidth: 1,
-          borderColor: c.border,
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-        }}
-      >
-        <Text className="font-lora" style={{ fontSize: 14, lineHeight: 19.5, color: c.navy }}>
-          {message}
-        </Text>
-      </ShadowSurface>
-      {/* Drawn after the body so it covers the body's border where the two meet. */}
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          right: -6,
-          top: 24,
-          width: 12,
-          height: 12,
-          backgroundColor: c.card,
-          borderTopWidth: 1,
-          borderRightWidth: 1,
-          borderColor: c.border,
-          transform: [{ rotate: '45deg' }],
-        }}
-      />
-    </View>
   )
 }
 
@@ -252,16 +231,22 @@ export function Learn() {
   }
 
   /*
-   * The painting is anchored to the header's bottom right, so Shifu's robe
-   * meets the first card wherever the text above wraps. Its height is capped by
-   * the header's so a compact header shrinks him rather than pushing his head
-   * up under the status bar.
+   * The hero is the mockup's whole landscape, laid across the column. The
+   * header is as tall as the mockup's, so the first card starts where it does
+   * there, and the bubble sits exactly on the patch the script masked out.
    */
-  const heroHeight = Math.min((columnWidth * HERO_SHARE) / HERO_RATIO, (headerHeight ?? Infinity) + 24)
-  const heroWidth = heroHeight * HERO_RATIO
-  /* In the padded column's coordinates: the painting's right edge is the column's. */
-  const heroLeft = columnWidth - GUTTER - heroWidth
-  const bubbleMax = heroLeft + BUBBLE_OVERLAP
+  const k = refScale(columnWidth)
+  const headerMin = refY(CARDS_TOP_REF, columnWidth)
+  /*
+   * The bubble follows the subtitle in flow, nudged down to where the mockup
+   * has it. In flow, not absolute: the painting shrinks with the column but the
+   * type doesn't, so on a 320pt phone an absolute bubble landed on the subtitle.
+   */
+  const bubble = {
+    left: (BUBBLE_REF.left - 40) * k - GUTTER,
+    gap: Math.max(BUBBLE_MIN_GAP, refY(BUBBLE_REF.top, columnWidth) - TITLE_BLOCK),
+    width: BUBBLE_REF.width * k,
+  }
 
   /* One calm arrival, replayed on every return to the tab — the page rises,
      the painting drifts in from the right, both at once as on Review. */
@@ -272,7 +257,6 @@ export function Learn() {
      shadows settle in behind them on this value (`ShadowSurface`) instead of
      showing at full strength before the cards do, as Android drew them. */
   const shadowArrival = useShadowReveal({ at: 0, duration: 420, run })
-  const [showGuide, setShowGuide] = useState(false)
 
   const cards: LearnCardDef[] = [
     {
@@ -299,7 +283,7 @@ export function Learn() {
           tourId: 'learn-third',
           title: 'Lessons Path',
           description: 'Follow a structured path from beginner to advanced.',
-          art: ART.writingBasics,
+          art: ART.basics,
           tint: playTints.sky,
           onPress: () => router.push('/lessons'),
         }
@@ -308,19 +292,10 @@ export function Learn() {
           tourId: 'learn-third',
           title: 'Chinese Basics',
           description: 'Start from zero and build a strong foundation.',
-          art: ART.characters,
+          art: ART.basics,
           tint: playTints.sky,
           onPress: () => router.push('/basics'),
         },
-    {
-      key: 'writing-guide',
-      tourId: 'learn-writing',
-      title: 'Writing Guide',
-      description: 'Learn strokes, stroke order and practise your handwriting.',
-      art: ART.writingGuide,
-      tint: playTints.honey,
-      onPress: () => setShowGuide(true),
-    },
   ]
 
   return (
@@ -355,29 +330,27 @@ export function Learn() {
       >
         <ShadowRevealProvider value={shadowArrival}>
         <View style={{ width: columnWidth, flexGrow: 1, paddingHorizontal: GUTTER }}>
-          <View onLayout={(e) => settle(setHeaderHeight)(e.nativeEvent.layout.height)}>
-            <Animated.View
-              pointerEvents="none"
-              style={[{ position: 'absolute', right: -GUTTER, bottom: 0 }, hero]}
-            >
-              <Image source={ART.hero} resizeMode="contain" style={{ width: heroWidth, height: heroHeight }} />
-            </Animated.View>
+          <View
+            style={{ minHeight: compact ? undefined : headerMin }}
+            onLayout={(e) => settle(setHeaderHeight)(e.nativeEvent.layout.height)}
+          >
+            <RefHero source={ART.hero} ratio={HERO_RATIO} column={columnWidth} left={-GUTTER} animatedStyle={hero} clouds={CLOUDS_MANY} />
 
-            <Animated.View style={[{ paddingTop: compact ? 12 : PAGE_TITLE_TOP, paddingBottom: compact ? 16 : 18 }, page]} needsOffscreenAlphaCompositing>
+            <Animated.View style={[{ paddingTop: compact ? 12 : PAGE_TITLE_TOP + 10, paddingBottom: compact ? 16 : 0 }, page]} needsOffscreenAlphaCompositing>
               {/* Lora Bold in navy, matching the Review, Challenges, My Words and Dictionary headings. */}
               <Text className="font-lora-bold" accessibilityRole="header" style={{ ...PAGE_TITLE, color: c.navy }}>
                 Learn
               </Text>
               <Text className="font-lora" style={{ ...PAGE_SUBTITLE, marginTop: 4, color: c.textSecondary }}>
-                Choose what you want{'\n'}to study today.
+                Choose your path and{'\n'}make progress today.
               </Text>
 
-              {!compact && (
-                <View style={{ marginTop: 16, maxWidth: bubbleMax, alignSelf: 'flex-start' }}>
-                  <SpeechBubble message={SHIFU_LINE} />
-                </View>
-              )}
             </Animated.View>
+            {!compact && (
+              <Animated.View style={[{ marginLeft: bubble.left, marginTop: bubble.gap, marginBottom: 8, alignSelf: 'flex-start' }, page]}>
+                <ShifuBubble message={SHIFU_LINE} width={bubble.width} fontSize={shifuBubbleFontSize(columnWidth)} />
+              </Animated.View>
+            )}
           </View>
 
           <Animated.View style={[{ gap: CARD_GAP, paddingBottom: COLUMN_BOTTOM }, page]} needsOffscreenAlphaCompositing>
@@ -393,7 +366,6 @@ export function Learn() {
         </ShadowRevealProvider>
       </ScrollView>
 
-      {showGuide && <WritingGuideModal onClose={() => setShowGuide(false)} />}
     </SafeAreaView>
   )
 }

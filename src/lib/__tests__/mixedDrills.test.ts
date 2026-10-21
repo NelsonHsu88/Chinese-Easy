@@ -9,12 +9,16 @@ import {
   pickMatchWords,
   isListeningPaused,
   withoutListening,
+  requeueMissed,
+  sessionProgress,
+  RETRY_MIN_GAP,
   MATCH_MIN_DECK,
   MATCH_PAIRS,
 } from '../mixedDrills'
 import { displayWord } from '../hanzi'
 import { shortGloss } from '../definitions'
 import type { ScriptMode, VocabWord } from '../../types'
+import type { DrillStep } from '../mixedDrills'
 
 /*
  * Mixed Drills' rules that nobody would see break by looking at one screen:
@@ -161,5 +165,53 @@ describe("can't listen now", () => {
     assert.equal(isListeningPaused(in30, now + 30 * 60_000), false)
     assert.equal(isListeningPaused(null, now), false)
     assert.equal(isListeningPaused('garbage', now), false)
+  })
+})
+
+describe('missed questions', () => {
+  const q = (id: string): DrillStep => ({ kind: 'listening', wordId: id, optionIds: [id, 'x', 'y', 'z'] })
+
+  test('a miss comes back later with the same options, never straight after', () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const steps = ['a', 'b', 'c', 'd', 'e', 'f'].map(q)
+      const next = requeueMissed(steps, 1, seeded(seed))
+      assert.equal(next.length, steps.length + 1)
+      const at = next.findIndex((s, i) => i > 1 && s.kind === 'listening' && s.wordId === 'b')
+      assert.ok(at >= 1 + 1 + RETRY_MIN_GAP, `retry at ${at}`)
+      const retry = next[at] as { optionIds: string[] }
+      assert.deepEqual([...retry.optionIds].sort(), ['b', 'x', 'y', 'z'])
+      assert.deepEqual(next.filter((_, i) => i !== at), steps)
+    }
+  })
+
+  test('near the end, the miss goes last', () => {
+    const steps = ['a', 'b', 'c'].map(q)
+    assert.equal((requeueMissed(steps, 2).at(-1) as { wordId: string }).wordId, 'c')
+    assert.equal((requeueMissed(steps, 1).at(-1) as { wordId: string }).wordId, 'b')
+  })
+
+  test('a match board is never re-queued', () => {
+    const steps: DrillStep[] = [{ kind: 'match', wordIds: ['a', 'b'] }]
+    assert.equal(requeueMissed(steps, 0), steps)
+  })
+
+  test('the count moves only on a right answer', () => {
+    let steps = ['a', 'b', 'c'].map(q)
+    assert.deepEqual(sessionProgress(steps, 0), { step: 1, total: 3 })
+    // Miss "a": it's re-queued and the next question arrives on the same count.
+    steps = requeueMissed(steps, 0)
+    assert.deepEqual(sessionProgress(steps, 1), { step: 1, total: 3 })
+    // "b" right, then "c" right: the count steps on each time.
+    assert.deepEqual(sessionProgress(steps, 2), { step: 2, total: 3 })
+    assert.deepEqual(sessionProgress(steps, 3), { step: 3, total: 3 })
+    // Missing the retry again keeps it where it is.
+    steps = requeueMissed(steps, 3)
+    assert.deepEqual(sessionProgress(steps, 4), { step: 3, total: 3 })
+  })
+
+  test('a dropped retry counts its question as done', () => {
+    const steps: DrillStep[] = [q('a'), q('b'), { ...q('a'), retry: true }]
+    assert.deepEqual(sessionProgress(steps, 1), { step: 1, total: 2 })
+    assert.deepEqual(sessionProgress(steps.slice(0, 2), 1), { step: 2, total: 2 })
   })
 })

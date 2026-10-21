@@ -10,6 +10,8 @@ import { correctHaptic, tapHaptic, tickHaptic } from '../../lib/haptics'
 import { PressableScale, LiftedFace, usePressProgress, DASH_LIFT } from '../dashboard/parts'
 import { onbVerdict } from '../onboarding/tokens'
 import { DrillShell, VerdictCard, DRILL_PAD } from './parts'
+import { useAnswerReaction } from '../motion/questionMotion'
+import { AnswerShimmer } from '../motion/answerFeedback'
 import { drillColors as c, drillShoulders, drillType as t, drillSize, drillShadow } from './tokens'
 import type { VocabWord } from '../../types'
 
@@ -21,11 +23,12 @@ type Side = 'hanzi' | 'gloss'
  * down the right.
  *
  * Every tile is a raised button, like the rest of the app's: tap one and it
- * turns green and stays up, picked. Tap one of each, in either order. A right
- * pair presses down into place, ticks, and recedes to half strength so what is
- * left to do stands out. Finishing every pair raises an "All correct!" toast.
- * A wrong pair washes red and **fades back** — the inputs are held for exactly
- * as long as the fade, then the learner chooses again. There's no Check: a
+ * turns pale blue and stays up, picked. Tap one of each, in either order. A
+ * right pair turns jade, springs, a highlight crosses it, then it presses down
+ * into place, ticks, and recedes to half strength so what is left to do stands
+ * out. Finishing every pair raises the answer sheet. A wrong pair washes coral,
+ * both tiles shake together, and it **fades back** — the inputs are held for
+ * exactly as long as the fade, then the learner chooses again. There's no Check: a
  * match is judged the moment it's made, which is the whole feel of the game.
  *
  * "I don't know" lines the meanings up against their words, in gold, so a word
@@ -77,18 +80,16 @@ export function ReviewMatchPairs({
     if (hanziId === glossId) {
       const next = new Set(matched).add(hanziId)
       setMatched(next)
-      if (next.size === words.length) {
-        playCorrectSound()
-        correctHaptic()
-      } else {
-        tapHaptic()
-      }
+      /* Every pair rings, so each match feels earned; the last one lands harder in the hand. */
+      playCorrectSound()
+      if (next.size === words.length) correctHaptic()
+      else tapHaptic()
       return
     }
 
     missed.current.add(hanziId)
     missed.current.add(glossId)
-    tickHaptic()
+    tapHaptic()
     setWrong({ hanzi: hanziId, gloss: glossId })
     flash.setValue(1)
     Animated.timing(flash, {
@@ -265,8 +266,9 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web'
  * two layers are drawn here against the tile's own bounds.
  *
  * - **idle** — white face, warm-grey shoulder, raised.
- * - **selected** — the face turns green and stays raised: picked up, waiting for its pair.
- * - **matched** — pressed down into place, pale green with a tick, then fades to
+ * - **selected** — the face turns pale blue and stays raised: picked up, waiting for its pair.
+ * - **matched** — pressed down into place, pale green with a tick and one
+ *   highlight sweep, then fades to
  *   `matchedOpacity` so the tiles still in play are the ones that stand out.
  * - **wrong** — a coral wash over the tile that fades out (its own layer, so the
  *   fade can run on the native driver while the tile underneath is unchanged).
@@ -286,7 +288,7 @@ function Tile({
   flash: Animated.Value
   onPress: () => void
   label: string
-  /** Given the ink colour for the tile's state — white on the green face, navy elsewhere. */
+  /** Given the ink colour for the tile's state. */
   children: (ink: string) => ReactNode
 }) {
   const finished = state === 'matched' || state === 'revealed'
@@ -314,9 +316,12 @@ function Tile({
     }
   }, [state, fade])
 
+  /* A match settles with a small spring; a wrong pair gives a short shake under its coral wash. */
+  const reaction = useAnswerReaction(state === 'matched' ? 'pop' : state === 'wrong' ? 'shake' : null)
+
   return (
     <Animated.View
-      style={{ flex: 1, opacity: fade }}
+      style={{ flex: 1, opacity: fade, transform: reaction.transform }}
       /* Android fades each layer separately, which would show the shoulder through the face. */
       needsOffscreenAlphaCompositing={state === 'matched'}
       accessibilityState={{ selected: state === 'selected', disabled: finished }}
@@ -354,18 +359,18 @@ function TileFace({
   const sink = sunk ? DASH_LIFT : press.interpolate({ inputRange: [0, 1], outputRange: [0, DASH_LIFT] })
 
   const face =
-    state === 'selected' ? c.green : state === 'matched' ? c.matched : state === 'revealed' ? onbVerdict.unsure.fill : c.tileFace
+    state === 'selected' ? c.pickedFace : state === 'matched' ? c.matched : state === 'revealed' ? onbVerdict.unsure.fill : c.tileFace
   const border =
-    state === 'selected' ? c.green : state === 'matched' ? c.matchedBorder : state === 'revealed' ? onbVerdict.unsure.border : c.border
+    state === 'selected' ? c.pickedBorder : state === 'matched' ? c.matchedBorder : state === 'revealed' ? onbVerdict.unsure.border : c.border
   const shoulder =
     state === 'selected'
-      ? drillShoulders.primary
+      ? c.pickedShoulder
       : state === 'matched'
         ? c.matchedBorder
         : state === 'revealed'
           ? c.revealedShoulder
           : c.tileShoulder
-  const ink = state === 'selected' ? '#FFFFFF' : c.ink
+  const ink = c.ink
 
   return (
     <View style={{ flex: 1, minHeight: drillSize.tileMin + DASH_LIFT }}>
@@ -389,7 +394,7 @@ function TileFace({
           right: 0,
           bottom: DASH_LIFT,
           borderRadius: drillSize.radius.tile,
-          borderWidth: 1,
+          borderWidth: state === 'selected' ? 1.75 : 1,
           borderColor: border,
           backgroundColor: face,
           alignItems: 'center',
@@ -401,6 +406,7 @@ function TileFace({
           transform: [{ translateY: sink }],
         }}
       >
+        <AnswerShimmer play={state === 'matched'} radius={drillSize.radius.tile} />
         {children(ink)}
         {state === 'matched' && (
           <View

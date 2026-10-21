@@ -1,3 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Web only (native has no html/body). Screens slide in from the right and their
+ * paintings drift in sideways; mid-entrance the content reached past the
+ * viewport (the document grew to 739px), so the page could be scrolled
+ * sideways. `clip` rather than `hidden` so <body> does not become a scroll
+ * container; `hidden` first as the fallback.
+ */
+html,
+body {
+  overflow-x: hidden;
+  overflow-x: clip;
+}

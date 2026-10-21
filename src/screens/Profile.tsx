@@ -5,6 +5,7 @@ import { router, useLocalSearchParams, type Href } from 'expo-router'
 import { ArrowLeft, Gift, Lock, MoreHorizontal, Star } from 'lucide-react-native'
 import { Pressable } from 'react-native'
 import { useApp } from '../context/AppContext'
+import { dueCountFor, weakCardsFor } from '../lib/selectors'
 import { getLevelFromXp, getXpIntoCurrentLevel, getXpRequiredForNextLevel, levelTitle } from '../lib/progression/levels'
 import { PROFILE_REWARDS, type ProfileRewardDef } from '../lib/progression/profileRewards'
 import { ACHIEVEMENTS, MAX_PINNED, achievementById, achievementProgress, achievementTier } from '../lib/progression/achievements'
@@ -50,7 +51,8 @@ import { playTapSound } from '../lib/sound'
 const GARDEN_PREVIEW = 5
 
 export function Profile() {
-  const { settings, xp, streak, progression, achievementStats } = useApp()
+  const { settings, xp, streak, progression, achievementStats, deck } = useApp()
+  const stats = useMemo(() => ({ due: dueCountFor(deck), weak: weakCardsFor(deck).length }), [deck])
   const { ink } = useProfileCosmetics()
 
   const { width } = useWindowDimensions()
@@ -139,6 +141,7 @@ export function Profile() {
               xpInto={getXpIntoCurrentLevel(xp)}
               xpNeeded={getXpRequiredForNextLevel(xp)}
               streak={streak}
+              stats={stats}
               badges={progression.achievements.pinned
                 .map((id) => achievementById(id))
                 .filter((d): d is NonNullable<typeof d> => !!d)}

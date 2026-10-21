@@ -24,11 +24,11 @@ import { SHADOW_EASING, shadowDuration } from '../shadowReveal'
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
-/** Accelerating away. The screen is being left, so it need not be followed. */
-const DEPART = Easing.in(Easing.cubic)
-
-/** Decelerating into place. The screen is arriving, so the eye has to land on it. */
-const ARRIVE = Easing.out(Easing.cubic)
+/* Both directions use a strong ease-out (cubic-bezier(0.23, 1, 0.32, 1)): the
+   exit plays *before* navigating, so one that starts slow (ease-in) reads as
+   the tap being ignored. */
+const DEPART = Easing.bezier(0.23, 1, 0.32, 1)
+const ARRIVE = Easing.bezier(0.23, 1, 0.32, 1)
 
 /**
  * Drives one screen's half of the transition.

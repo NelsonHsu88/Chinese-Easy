@@ -74,11 +74,13 @@ import { todayISO } from '../lib/date'
 import { playCorrectSound, playPositiveChime, playRetryTone, playFanfare, playTapSound } from '../lib/sound'
 import { shortGloss } from '../lib/definitions'
 import { tapHaptic, tickHaptic, successHaptic, carefulHaptic, correctHaptic } from '../lib/haptics'
-import { AnswerSheet } from '../components/drills/parts'
+import { AnswerSheet, verdictDetailLabel } from '../components/drills/parts'
 import { listenColors } from '../components/listening/tokens'
 import type { LearningGoal, PlacementAnswer, ScriptMode } from '../types'
 import { ShadowSurface } from '../components/shadowReveal'
 import { FlexGap } from '../components/FlexGap'
+import { AnswerShimmer, AnswerSparks } from '../components/motion/answerFeedback'
+import { AnswerReactionView, QuestionContent, QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
 
 /*
  * The six-screen onboarding flow, built to the reference mockups.
@@ -183,8 +185,16 @@ const REMINDER_SLOTS: { id: ReminderSlot; label: string; time: string; display: 
 ]
 
 export function Onboarding() {
-  const { completeOnboarding, updateSettings, settings, onboardingComplete, placementResult, loadedUserId, offerTour } =
-    useApp()
+  const {
+    ready,
+    completeOnboarding,
+    updateSettings,
+    settings,
+    onboardingComplete,
+    placementResult,
+    loadedUserId,
+    offerTour,
+  } = useApp()
   const { retake } = useLocalSearchParams<{ retake?: string }>()
 
   /*
@@ -376,7 +386,8 @@ export function Onboarding() {
   const sentHome = useRef(false)
   useEffect(() => {
     if (isRetake || alreadyOnboarded || sentHome.current || !session) return
-    if (loadedUserId !== session.user.id || !isReturningAccount(session.user)) return
+    /* `loadedUserId` is set just before the account's data loads; `ready` says it has. */
+    if (!ready || loadedUserId !== session.user.id || !isReturningAccount(session.user)) return
     sentHome.current = true
     const account = accountFor(session.user)
     updateSettings({
@@ -385,7 +396,7 @@ export function Onboarding() {
     })
     completeOnboarding({ estimatedHsk: settings.hskLevel, completedAt: todayISO() })
     router.replace('/')
-  }, [session, loadedUserId, isRetake, alreadyOnboarded])
+  }, [session, loadedUserId, ready, isRetake, alreadyOnboarded])
 
   const continueWithApple = async () => {
     if (googleBusy) return
@@ -546,6 +557,8 @@ export function Onboarding() {
    */
   const [verdict, setVerdict] = useState<VerdictKind | null>(null)
   const [answers, setAnswers] = useState<PlacementAnswer[]>([])
+  /** Question to question: the card drifts left and fades, the next rises in (see `QuestionContent`). */
+  const questionMotion = useQuestionTransition()
 
   const estimatedHsk = useMemo(() => computeEstimatedHsk(placementItems, answers), [answers])
 
@@ -632,6 +645,8 @@ export function Onboarding() {
   }
 
   const nextQuestion = () => {
+    // The question is already on its way out; a second press must not record it twice.
+    if (questionMotion.busy.current) return
     /*
      * The scorer still speaks in self-ratings, so a right answer is recorded as
      * "know" and everything else as "unknown". "I don't know" and a wrong guess
@@ -641,14 +656,19 @@ export function Onboarding() {
      */
     const rating: PlacementAnswer['rating'] = verdict === 'correct' ? 'know' : 'unknown'
     setAnswers((a) => [...a, { wordId: question.word.id, rating }])
-    setPicked(null)
-    setVerdict(null)
 
     if (questionIndex + 1 >= questions.length) {
+      setPicked(null)
+      setVerdict(null)
       setStep('ready')
-    } else {
-      setQuestionIndex((i) => i + 1)
+      return
     }
+    /* The answer is recorded above, at once; only the swap to the next question waits for the card to leave. */
+    questionMotion.advance(() => {
+      setPicked(null)
+      setVerdict(null)
+      setQuestionIndex((i) => i + 1)
+    })
   }
 
   const testBack = () => {
@@ -1471,6 +1491,7 @@ export function Onboarding() {
 
         <View className="flex-1 justify-center" style={{ paddingVertical: s.xl }}>
           <OnbRise index={1}>
+          <QuestionContent key={questionIndex}>
           <View
             style={{
               backgroundColor: c.page,
@@ -1566,8 +1587,9 @@ export function Onboarding() {
                 const showRight = settled && isAnswer
                 const showWrong = settled && chosen && !isAnswer
                 return (
+                  /* Only the picked option reacts to Confirm: a spring if right, a shake if not. */
+                  <AnswerReactionView key={option} reaction={settled && chosen ? (isAnswer ? 'pop' : 'shake') : null}>
                   <Pressable
-                    key={option}
                     onPress={() => pick(index)}
                     accessibilityRole="radio"
                     accessibilityState={{ selected: chosen, disabled: settled }}
@@ -1595,7 +1617,8 @@ export function Onboarding() {
                       gap: s.md,
                     }}
                   >
-                    <Radio selected={chosen || showRight} size={20} />
+                    <AnswerShimmer play={settled && chosen && isAnswer} radius={onbRadius.card} />
+                    <Radio selected={chosen || showRight} size={20} color={showWrong ? c.coral : c.green} />
                     <Text
                       className={listening ? 'flex-1 font-hanzi-sans-bold' : 'flex-1 font-nunito-bold'}
                       style={{
@@ -1607,7 +1630,9 @@ export function Onboarding() {
                     >
                       {option}
                     </Text>
+                    <AnswerSparks play={settled && chosen && isAnswer} />
                   </Pressable>
+                  </AnswerReactionView>
                 )
               })}
             </View>
@@ -1622,6 +1647,7 @@ export function Onboarding() {
               </View>
             )}
           </View>
+          </QuestionContent>
           </OnbRise>
         </View>
       </OnbShell>
@@ -1703,21 +1729,22 @@ export function Onboarding() {
   if (alreadyOnboarded) return <Redirect href="/" />
 
   return (
-    <>
+    <QuestionMotionProvider motion={questionMotion.motion}>
       <OnbPageTransition pageKey={step} direction={direction}>
         {renderPage()}
       </OnbPageTransition>
 
       {/*
         A confirmed placement answer rises as the review drills' answer sheet —
-        same clouds, confetti and sounds, so the test feels like the app it
-        places you into. Outside the transition so it lies over the whole
+        same look and sounds, so the test feels like the app it places you
+        into. Outside the transition so it lies over the whole
         screen, footer included, and keyed per answer so each one rises afresh.
       */}
       {step === 'test' && verdict && question ? (
         <AnswerSheet
           key={`${questionIndex}-${verdict}`}
           kind={verdict}
+          detailLabel={verdictDetailLabel(verdict)}
           onContinue={nextQuestion}
           continueLabel={questionIndex + 1 >= questions.length ? 'See my level' : 'Continue'}
           detail={
@@ -1737,7 +1764,7 @@ export function Onboarding() {
         slid away — which is the very transition choosing an account triggers,
         so the sheet would vanish mid-dismissal.
       */}
-    </>
+    </QuestionMotionProvider>
   )
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { View, Text, TextInput, ScrollView, Pressable, Animated, Easing, Image, Platform, useWindowDimensions } from 'react-native'
+import { View, Text, TextInput, ScrollView, Pressable, Animated, Easing, Image, Platform, InteractionManager, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ChevronLeft, Search, X, Layers } from 'lucide-react-native'
@@ -30,7 +30,6 @@ import {
   FilterRow,
   HskLevelBar,
   RecentList,
-  RecentCards,
   SectionHeading,
   WordToDiscover,
 } from '../components/dictionary/Landing'
@@ -45,6 +44,7 @@ import type { VocabWord } from '../types'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
 import { TourScrollContext, TourTarget } from '../components/tour/targets'
 import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHeader'
+import { RefHero, refY } from '../components/refScene'
 
 /**
  * The design viewport, matching `DASH_CONTENT_MAX` / `REV_CONTENT_MAX` /
@@ -62,10 +62,11 @@ const HAS_HANZI = /[㐀-䶿一-鿿]/
 
 /** Rows shown in the Recent group before "See all". */
 const RECENT_PREVIEW = 2
-/** Small cards in the landing's Recent row (it scrolls sideways past the screen). */
-const RECENT_CARDS = 8
 /** The pagoda and blossom over the title, top right (SS1017). */
-const HEADER_ART = { source: require('../assets/images/library/header-scenery.png'), ratio: 351 / 245 }
+/* "SS1017 New APP DesIGN UI (6)": bamboo, birds, sun and the bridge pavilion, full width. */
+const HEADER_ART = { source: require('../assets/images/app/dict-header.png'), ratio: 778 / 232 }
+/** Where the search field starts in that reference (its pixels): the header ends here. */
+const SEARCH_TOP_REF = 352
 
 /**
  * The shelves the landing opens onto. Each is a titled list with a way back;
@@ -216,8 +217,17 @@ export function Dictionary() {
    * feature exists to serve. Deferred a beat so it can't delay the first paint.
    */
   useEffect(() => {
-    const timer = setTimeout(warmLookup, 0)
-    return () => clearTimeout(timer)
+    /* After the entrance has played, not during it: on a phone this is a few
+       hundred milliseconds on the same thread the animation needs. Usually
+       already done by `prewarmDictionary` at launch, when it costs nothing. */
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const task = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(warmLookup, 700)
+    })
+    return () => {
+      task.cancel()
+      if (timer) clearTimeout(timer)
+    }
   }, [])
 
   const searching = query.trim().length > 0
@@ -399,24 +409,10 @@ export function Dictionary() {
               it; both were left out on purpose, so the page opens on what it
               is for.
             */}
-            <View className="pb-5" style={{ paddingTop: PAGE_TITLE_TOP }}>
-              <View
-                pointerEvents="none"
-                style={{ position: 'absolute', right: -GUTTER, top: 0 }}
-                accessibilityElementsHidden
-                importantForAccessibility="no-hide-descendants"
-              >
-                <Image
-                  source={HEADER_ART.source}
-                  resizeMode="contain"
-                  style={{ width: Math.min(190, columnWidth * 0.46), height: Math.min(190, columnWidth * 0.46) / HEADER_ART.ratio }}
-                />
-              </View>
-              <Text className="font-lora-bold text-dict-heading" accessibilityRole="header" style={PAGE_TITLE}>
+            <View className="pb-4" style={{ paddingTop: PAGE_TITLE_TOP + 10, minHeight: refY(SEARCH_TOP_REF, columnWidth) }}>
+              <RefHero source={HEADER_ART.source} ratio={HEADER_ART.ratio} column={columnWidth} left={-GUTTER} />
+              <Text className="font-lora-bold text-dict-heading" accessibilityRole="header" style={{ ...PAGE_TITLE, fontSize: 40, lineHeight: 46 }}>
                 Dictionary
-              </Text>
-              <Text className="font-lora text-dict-soft" style={{ ...PAGE_SUBTITLE, marginTop: 4 }}>
-                Find meaning. Discover more.
               </Text>
             </View>
 
@@ -531,17 +527,16 @@ export function Dictionary() {
               level also switches the row to it — choosing HSK 4 and then still
               searching every level would be the panel ignoring its own answer.
             */}
-            {panelOpen && (
-              <FilterPanel
-                hskLevel={hskLevel}
-                field={field}
-                onLevel={(level) => {
-                  setHskLevel(level)
-                  setLevelOnly(true)
-                }}
-                onField={setField}
-              />
-            )}
+            <FilterPanel
+              open={panelOpen}
+              hskLevel={hskLevel}
+              field={field}
+              onLevel={(level) => {
+                setHskLevel(level)
+                setLevelOnly(true)
+              }}
+              onField={setField}
+            />
 
             {searching ? (
               <>
@@ -592,8 +587,7 @@ export function Dictionary() {
             ) : (
               <>
                 {/* Explore opens the landing, then Word to discover; Recent closes it. */}
-                <FlexGap min={30} max={40} />
-                <SectionHeading title="Explore" />
+                <FlexGap min={18} max={28} />
                 <TourTarget id="dictionary-explore" radius={18}>
                   <ExploreGrid
                     script={settings.script}
@@ -625,7 +619,7 @@ export function Dictionary() {
                   title="Recent"
                   onSeeAll={recentWords.length > RECENT_PREVIEW ? () => setShelf('recents') : undefined}
                 />
-                <RecentCards words={recentWords.slice(0, RECENT_CARDS)} settings={settings} onOpen={openWord} />
+                <RecentList words={recentWords.slice(0, RECENT_PREVIEW)} settings={settings} onOpen={openWord} />
               </>
             )}
             </FadeSection>

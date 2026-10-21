@@ -17,6 +17,8 @@ import { ACHIEVEMENT_ART } from '../../components/profile/art'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from '../../components/profile/tokens'
 import { tickHaptic } from '../../lib/haptics'
 import { ShadowSurface } from '../../components/shadowReveal'
+import { playTints, type PlayHue } from '../../components/dashboard/tokens'
+import { PlayWash } from '../../components/dashboard/playWash'
 
 /*
  * Every achievement, earned or not, grouped by what it measures — and the
@@ -39,6 +41,17 @@ const CATEGORY_TITLES: Record<AchievementCategory, string> = {
 }
 
 const CATEGORY_ORDER: AchievementCategory[] = ['vocabulary', 'review', 'writing', 'listening', 'reading', 'streak', 'challenges']
+
+/** Each category's banner wash (SS1017) — the medals below keep their own colours. */
+const CATEGORY_HUE: Record<AchievementCategory, PlayHue> = {
+  vocabulary: 'jade',
+  review: 'sky',
+  writing: 'honey',
+  listening: 'lilac',
+  reading: 'blossom',
+  streak: 'honey',
+  challenges: 'jade',
+}
 
 export function Achievements() {
   const { progression, achievementStats, pinAchievement, unpinAchievement, replacePinnedAchievement } = useApp()
@@ -219,14 +232,15 @@ function CategoryBanner({ category, earned, total, bar }: { category: Achievemen
      scenes are capped so none takes more than ~40% of the card. */
   const artWidth = Math.min(BANNER_ART_HEIGHT * art.ratio, 136)
   const complete = earned === total
+  const tint = playTints[CATEGORY_HUE[category]]
   return (
     <ShadowSurface shadow={profShadow}
       style={[{ flexDirection: 'row', alignItems: 'center' }, {
         marginBottom: s.sm,
-        backgroundColor: c.card,
+        backgroundColor: tint.fill,
         borderRadius: profRadius.large,
         borderWidth: 1,
-        borderColor: complete ? c.jade : c.border,
+        borderColor: complete ? c.jade : tint.border,
         paddingLeft: s.lg,
         paddingRight: s.sm,
         paddingVertical: s.sm,
@@ -236,6 +250,7 @@ function CategoryBanner({ category, earned, total, bar }: { category: Achievemen
       accessibilityRole="header"
       accessibilityLabel={`${CATEGORY_TITLES[category]}. ${earned} of ${total} earned.`}
     >
+      <PlayWash tint={tint} direction="left" />
       <View style={{ flex: 1, paddingRight: s.sm }}>
         <Text className="font-lora-bold" style={{ ...t.section, fontSize: 20, lineHeight: 25, color: c.navy }}>
           {CATEGORY_TITLES[category]}

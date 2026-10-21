@@ -24,5 +24,5 @@ export default function DictionaryStackLayout() {
    * corners still give these screens a card-like feel; they just arrive with
    * a plain push transition rather than a native sheet.
    */
-  return <Stack screenOptions={{ headerShown: false }} />
+  return <Stack screenOptions={{ headerShown: false, animation: 'fade_from_bottom', animationDuration: 450 }} />
 }

@@ -41,7 +41,9 @@ import {
   MW_BAMBOO_RATIO,
   MW_BLOSSOM_RATIO,
   MW_CONTENT_MAX,
+  mwRowTint,
 } from '../components/myWords/tokens'
+import { PlayWash } from '../components/dashboard/playWash'
 
 /*
  * My Words, built to the Beta 2.1 reference (`SS928 Mywords Redesigned
@@ -219,7 +221,7 @@ export function MyWords() {
           >
             My Words
           </Text>
-          <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: 4 }}>
+          <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: 4, maxWidth: '64%' }}>
             Review and organize your saved vocabulary.
           </Text>
 
@@ -700,14 +702,16 @@ function WordRow({
           minHeight: mwCard.minHeight,
           borderRadius: mwRadius.card,
           borderWidth: 1,
-          borderColor: c.wordCardBorder,
-          backgroundColor: c.wordCard,
+          borderColor: mwRowTint[entry.level].border,
+          backgroundColor: mwRowTint[entry.level].fill,
+          overflow: 'hidden',
           paddingLeft: sp.lg,
           paddingRight: sp.sm,
           paddingVertical: sp.md,
           gap: 10,
         }}
       >
+        <PlayWash tint={mwRowTint[entry.level]} />
         <View style={{ width: mwCard.hanziWidth }}>
           <Text
             className={hanziClass}

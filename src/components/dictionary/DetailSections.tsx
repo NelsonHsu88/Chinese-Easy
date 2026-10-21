@@ -1,6 +1,5 @@
 import { Fragment } from 'react'
-import { View, Text, Image } from 'react-native'
-import { playTints, type PlayTint } from '../dashboard/tokens'
+import { View, Text } from 'react-native'
 import { PlayCircle, PencilLine, ChevronRight, BookOpen, FileText } from 'lucide-react-native'
 import { PressScale } from './PressScale'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
@@ -18,10 +17,6 @@ import type { KangxiRadical, VocabWord } from '../../types'
 /** The hero card's two action buttons' face height — see the comment above their row for why nothing there is a class. */
 const HERO_BUTTON_HEIGHT = 50
 const HERO_LABEL = { fontFamily: 'NunitoSansBold', fontSize: 15 } as const
-/** The fact strip's cells, each in its own wash, in order. */
-const STAT_TINTS: readonly PlayTint[] = [playTints.jade, playTints.sky, playTints.honey, playTints.blossom]
-/** A blossom sprig over the hero card's top left corner. 320×151. */
-const HERO_SPRIG = { source: require('../../assets/images/onboarding/sakura-sprig.png'), ratio: 320 / 151 }
 
 /** One cell of the hero card's fact strip. `hanzi` renders its value in the serif face. */
 export interface HeroStat {
@@ -63,14 +58,6 @@ export function HeroCard({
 
   return (
     <DetailCard>
-      <View
-        pointerEvents="none"
-        style={{ position: 'absolute', top: -2, left: -8, opacity: 0.95 }}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-      >
-        <Image source={HERO_SPRIG.source} resizeMode="contain" style={{ width: 120, height: 120 / HERO_SPRIG.ratio, transform: [{ rotate: '-8deg' }] }} />
-      </View>
       <View className="items-center pb-2 pt-3">
         <Text
           style={{ fontSize: size, lineHeight: size * 1.18 }}
@@ -85,34 +72,22 @@ export function HeroCard({
       </View>
 
       {stats.length > 0 && (
-        <View style={{ marginTop: 16, flexDirection: 'row', gap: 8 }}>
-          {stats.map((stat, i) => {
-            const tint = STAT_TINTS[i % STAT_TINTS.length]
-            return (
-              <View
-                key={stat.label}
-                style={{
-                  flex: 1,
-                  alignItems: 'center',
-                  paddingHorizontal: 8,
-                  paddingVertical: 10,
-                  borderRadius: 14,
-                  backgroundColor: tint.fill,
-                  borderWidth: 1,
-                  borderColor: tint.border,
-                }}
-              >
-                <Text className="font-inter" style={{ fontSize: 12, lineHeight: 16, color: tint.text }}>
-                  {stat.label}
-                </Text>
+        <View className="mt-4 flex-row items-stretch rounded-dict-sm border border-dict-line">
+          {stats.map((stat, i) => (
+            <Fragment key={stat.label}>
+              {i > 0 && <View className="w-px bg-dict-line" />}
+              <View className="flex-1 items-center px-2 py-3">
+                <Text className="font-inter text-[12px] leading-[16px] text-dict-muted">{stat.label}</Text>
                 <Text
-                  className={`mt-0.5 text-[17px] leading-[23px] ${stat.hanzi ? face : 'font-dict-semibold'} text-dict-heading`}
+                  className={`mt-0.5 text-[17px] leading-[23px] ${
+                    stat.hanzi ? face : 'font-dict-semibold'
+                  } ${stat.green ? 'text-dict-green-dark' : 'text-dict-heading'}`}
                 >
                   {stat.value}
                 </Text>
               </View>
-            )
-          })}
+            </Fragment>
+          ))}
         </View>
       )}
 
@@ -194,7 +169,7 @@ export function MeaningCard({ word }: { word: VocabWord }) {
   const [gloss, ...others] = allSenses(word)
 
   return (
-    <DetailCard hue="sky">
+    <DetailCard>
       <CardTitle>Meaning</CardTitle>
       <Text className="mt-2 font-dict-sans text-[17px] leading-[24px] text-dict-body">{gloss ?? word.definition}</Text>
 
@@ -245,7 +220,7 @@ export function WordsContainingCard({
   const script = useApp().settings.script
   const face = hanziFont(script)
   return (
-    <DetailCard hue="jade">
+    <DetailCard>
       <View className="flex-row items-center gap-1.5">
         <CardTitle>Words containing</CardTitle>
         <Text className={`${face} text-[19px] leading-[25px] text-dict-green`}>{character}</Text>
@@ -326,7 +301,7 @@ export function ExampleCard({
   onOpenWord: (word: VocabWord) => void
 }) {
   return (
-    <DetailCard hue="honey">
+    <DetailCard>
       <View className="flex-row items-center justify-between gap-3">
         <CardTitle>Example</CardTitle>
         <Text className="font-inter text-[12px] leading-[16px] text-dict-muted">Tap a word to look it up</Text>
@@ -379,7 +354,7 @@ export function RadicalCard({
 }) {
   if (!info) {
     return (
-      <DetailCard hue="lilac">
+      <DetailCard>
         <CardTitle>Radical</CardTitle>
         <Text className="mt-2 font-dict-sans text-[15px] leading-[21px] text-dict-body">
           {character} sits outside the bundled dictionary, so we can't say which radical it's filed under.
@@ -392,7 +367,7 @@ export function RadicalCard({
   const face = hanziFont(useApp().settings.script)
 
   return (
-    <DetailCard hue="lilac">
+    <DetailCard>
       <CardTitle>Radical</CardTitle>
 
       <View className="mt-3 flex-row items-center gap-4">
@@ -472,7 +447,7 @@ export function WordRadicalsCard({
 }) {
   const face = hanziFont(useApp().settings.script)
   return (
-    <DetailCard hue="lilac">
+    <DetailCard>
       <CardTitle>Characters and radicals</CardTitle>
 
       <View className="mt-1">
@@ -543,14 +518,16 @@ function AppearsInButton({
       }}
       disabled={empty}
       outerClassName="flex-1"
-      className="flex-row items-center gap-3 rounded-dict-sm bg-dict-page px-3 py-3"
+      className="flex-row items-center gap-2.5 rounded-dict-sm bg-dict-page px-3 py-3"
       accessibilityLabel={empty ? `${label}: none` : `See all ${count} ${label.toLowerCase()}`}
     >
-      <View className="h-11 w-11 items-center justify-center rounded-full bg-dict-green-pale">
-        <Icon size={20} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
+      <View className="h-9 w-9 items-center justify-center rounded-full bg-dict-green-pale">
+        <Icon size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
       </View>
+      {/* Two lines allowed: at 390pt "Example sentences" does not fit one, and it
+          must never end in "…". */}
       <View className="flex-1">
-        <Text numberOfLines={1} className="font-dict-sans text-[14px] leading-[18px] text-dict-body">
+        <Text numberOfLines={2} className="font-dict-sans text-[14px] leading-[18px] text-dict-body">
           {label}
         </Text>
         <View className="flex-row items-center gap-1">
@@ -581,7 +558,7 @@ export function AppearsInCard({
   onOpenSentences: () => void
 }) {
   return (
-    <DetailCard hue="blossom">
+    <DetailCard>
       <CardTitle>Appears in</CardTitle>
       <View className="mt-3 flex-row items-stretch gap-2">
         <AppearsInButton icon={BookOpen} label="Common words" count={words} onPress={onOpenWords} />

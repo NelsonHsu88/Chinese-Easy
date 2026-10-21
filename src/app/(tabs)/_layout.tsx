@@ -11,12 +11,11 @@ import { tickHaptic } from '../../lib/haptics'
 import { TAB_BAR_BODY, tabBarInset } from '../../lib/tabBar'
 
 /**
- * One tab: icon over label, both inside the pale-green pill when active.
+ * One tab: icon over label, as SS1017 draws it — the active tab in jade with a
+ * small jade dot under its label, the rest in slate; no pill.
  *
- * The pill has to wrap *both*, which is why `tabBarShowLabel` is off and the
- * label is drawn here instead. React Navigation renders its own icon and label
- * as separate siblings, so a background behind the pair is not something
- * `tabBarIcon` alone can produce.
+ * `tabBarShowLabel` is off and the label is drawn here, so the icon, label and
+ * dot stay one centred group.
  */
 function TabItem({
   icon: Icon,
@@ -40,9 +39,7 @@ function TabItem({
       className="items-center justify-center"
       style={{
         width: 64,
-        paddingVertical: 5,
-        borderRadius: 16,
-        backgroundColor: focused ? tabColors.greenSoft : 'transparent',
+        paddingTop: 4,
       }}
     >
       <View>
@@ -68,12 +65,13 @@ function TabItem({
         )}
       </View>
       <Text
-        className="font-nunito-semibold"
+        className={focused ? 'font-nunito-bold' : 'font-nunito-semibold'}
         numberOfLines={1}
         style={{ fontSize: 11.5, lineHeight: 15, color, marginTop: 3 }}
       >
         {label}
       </Text>
+
     </View>
   )
 }

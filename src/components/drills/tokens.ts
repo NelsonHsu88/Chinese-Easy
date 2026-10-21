@@ -29,44 +29,50 @@ export const drillColors = {
   /** A Match the Pairs tile at rest: a white face standing on a warm-grey shoulder, like the app's other raised buttons. */
   tileFace: '#FFFFFF',
   tileShoulder: '#DDD8CD',
+  /**
+   * A picked tile, waiting for its pair: a pale blue face with a firmer edge,
+   * so being picked never reads as being right (jade) or wrong (coral).
+   */
+  pickedFace: '#E4F0FA',
+  pickedBorder: '#5E9CCF',
+  pickedShoulder: '#9DC2E2',
   /** A revealed tile ("I don't know") sits down on a gold shoulder. */
   revealedShoulder: '#E2C77E',
 } as const
 
 /**
- * The answer sheet that rises from the bottom once an answer is checked
- * (SS1012 Correct UI): a wash in the verdict's colour under a cloud-edged top,
- * the judgement, and a Continue in the same hue. One tone per verdict — the
- * fill a step stronger than `onbVerdict`'s so the sheet reads as a surface over
- * the page rather than a tint on it, and the cloud's outline a step stronger again.
+ * The answer sheet that rises from the bottom once an answer is checked: a
+ * wash in the verdict's colour with a rounded top and a hairline edge, the
+ * judgement, and a Continue in the same hue. One tone per verdict — the fill a
+ * step stronger than `onbVerdict`'s so the sheet reads as a surface over the
+ * page rather than a tint on it, and its edge (`line`) a step stronger again.
  */
 export const drillSheet = {
   correct: {
     fill: '#E6F6E0',
-    cloudLine: '#B6E0AF',
+    line: '#B6E0AF',
     text: onbVerdict.correct.text,
     accent: onbVerdict.correct.accent,
     button: '#4FAE62',
     shoulder: '#3A8A4B',
+    /** Thrown up off the correct sheet's cloud edge. */
     confetti: ['#46A85B', '#7CC97F', '#A8DE8F', '#5DBB8A', '#C6EBB0'],
   },
   incorrect: {
     fill: '#FCE2DC',
-    cloudLine: '#F1B2A5',
+    line: '#F1B2A5',
     text: onbVerdict.incorrect.text,
     accent: onbVerdict.incorrect.accent,
     button: '#EE6E5D',
     shoulder: '#C9503F',
-    confetti: [] as string[],
   },
   unsure: {
     fill: '#FFF0CB',
-    cloudLine: '#EDD08A',
+    line: '#EDD08A',
     text: onbVerdict.unsure.text,
     accent: onbVerdict.unsure.accent,
     button: '#E9AE3A',
     shoulder: '#BF8A22',
-    confetti: [] as string[],
   },
 } as const
 
@@ -99,13 +105,13 @@ export const drillSize = {
   tileMin: 58,
   tileMax: 92,
   radius: { card: 24, tile: 14 },
-  /** How long a wrong pair stays tinted before it has faded and can be tried again. */
-  wrongFadeMs: 750,
+  /** How long a wrong pair stays tinted (its shake inside the first ~210ms) before it has faded and can be tried again. */
+  wrongFadeMs: 520,
   /** A matched tile settles to this opacity — still readable, plainly finished — over `matchedFadeMs`. */
   matchedOpacity: 0.5,
   matchedFadeMs: 420,
-  /** How long a matched tile holds full strength first, so the green lands before it recedes. */
-  matchedFadeDelayMs: 220,
+  /** How long a matched tile holds full strength first, so the green and its highlight land before it recedes. */
+  matchedFadeDelayMs: 320,
 } as const
 
 /** The sakura corner is the onboarding branch, 560×318, mirrored into the top right. */

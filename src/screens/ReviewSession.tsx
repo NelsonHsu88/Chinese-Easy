@@ -1,21 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import {
-  View,
-  Text,
-  Pressable,
-  Animated,
-  Easing,
-  Platform,
-  useWindowDimensions,
-  type StyleProp,
-  type ViewStyle,
-} from 'react-native'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { View, Text, Pressable } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
-import { X, Timer } from 'lucide-react-native'
+import { X, Timer, Sparkles, Layers, Target } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { previewReview } from '../lib/srs'
-import { prefetchStrokeData } from '../lib/hanziStrokeData'
+import { loadStrokeData, prefetchStrokeData } from '../lib/hanziStrokeData'
+import { LearningLoader, afterFrames, useLearningLoader } from '../components/loading/LearningLoader'
 import { dueCardsFor, listeningCardsFor, mistakeCardsFor } from '../lib/selectors'
 import { Celebration } from '../components/Celebration'
 import { ReviewFlashcard, directionFor } from '../components/ReviewFlashcard'
@@ -26,13 +17,18 @@ import { ReviewMatchPairs } from '../components/drills/ReviewMatchPairs'
 import {
   buildMixedSteps,
   isListeningPaused,
+  requeueMissed,
+  sessionProgress,
   withoutListening,
   LISTENING_PAUSE_MINUTES,
   type DrillStep,
 } from '../lib/mixedDrills'
 import { DrillToast } from '../components/drills/parts'
 import { SessionEnd } from '../components/sessionEnd/SessionEnd'
+import { LessonCompletionCelebration } from '../components/celebration/LessonCompletionCelebration'
 import { PronunciationCheck } from '../components/PronunciationCheck'
+import { RaisedProgressBar } from '../components/progress/RaisedProgressBar'
+import { QuestionContent, QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
 import { isSpeechRecognitionAvailable } from '../lib/speechRecognition'
 import { playCorrectSound, playRetryTone } from '../lib/sound'
 import { correctHaptic } from '../lib/haptics'
@@ -40,20 +36,20 @@ import type { Grade, SrsCard, VocabWord } from '../types'
 import { useAds } from '../context/AdsContext'
 
 /**
- * The sliding frame every phase of a session is rendered inside.
+ * The frame every phase of a session is rendered inside. It doesn't move:
+ * between questions only each screen's question content does (its
+ * `QuestionContent`), driven by the transition this provides.
  *
  * Module-level rather than defined in the screen: a component declared during
  * render is a new type on every pass, which would unmount and remount the card
  * underneath it — losing the flashcard's revealed state and restarting the
  * stroke writer mid-session.
- *
- * The page colour sits on the outer, unmoving view so that nothing shows through
- * behind the screen while it's off to one side.
  */
-function SessionStage({ style, children }: { style: StyleProp<ViewStyle>; children: ReactNode }) {
+function SessionStage({ motion, children }: { motion: ReturnType<typeof useQuestionTransition>['motion']; children: ReactNode }) {
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <Animated.View style={[{ flex: 1 }, style]}>{children}</Animated.View>
+    // Light-only like every session screen: a dark-mode stage showed black wherever a card hadn't drawn yet.
+    <View className="flex-1 bg-slate-50">
+      <QuestionMotionProvider motion={motion}>{children}</QuestionMotionProvider>
     </View>
   )
 }
@@ -69,20 +65,6 @@ export type ReviewMode = 'flashcards' | 'mixed' | 'mistakes' | 'full' | 'quick'
 const MODES: readonly ReviewMode[] = ['flashcards', 'mixed', 'mistakes', 'full', 'quick']
 
 const QUICK_SESSION_SECONDS = 5 * 60
-
-/*
- * Leaving the speaking check.
- *
- * The card you just spoke slides off to the left and the next one comes in from
- * the right, so finishing a word reads as moving forward through a session
- * rather than the screen being replaced under you. Transform and opacity only,
- * so it can run on the native driver.
- */
-const SLIDE_OUT_MS = 240
-const SLIDE_IN_MS = 280
-/** Grace before the backstop in `slideForward` force-finishes a stalled slide. */
-const SLIDE_BACKSTOP_MS = 120
-const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
 const MODE_TITLES: Record<ReviewMode, string> = {
   flashcards: 'Flashcards',
@@ -122,7 +104,9 @@ function closeSession() {
  */
 export function ReviewSession() {
   const [toastKey, setToastKey] = useState(0)
-  return (
+  const params = useLocalSearchParams<{ mode?: string }>()
+  const loading = LOADER_MESSAGES[modeFrom(params.mode)]
+  const body = (
     <View style={{ flex: 1 }}>
       <ReviewSessionBody onListeningPaused={() => setToastKey((k) => k + 1)} />
       {toastKey > 0 && (
@@ -130,6 +114,25 @@ export function ReviewSession() {
       )}
     </View>
   )
+  // Flashcards, Mixed Drills and Mistakes open on Shifu writing while they prepare.
+  return loading ? (
+    <LearningLoader message={loading} onBack={closeSession}>
+      {body}
+    </LearningLoader>
+  ) : (
+    body
+  )
+}
+
+/** The modes that open behind the learning loader, and what it says for each. */
+const LOADER_MESSAGES: Partial<Record<ReviewMode, string>> = {
+  flashcards: 'Gathering your flashcards…',
+  mixed: 'Preparing your practice…',
+  mistakes: 'Finding your tricky words…',
+}
+
+function modeFrom(param: string | undefined): ReviewMode {
+  return param === 'listening' ? 'mixed' : MODES.includes(param as ReviewMode) ? (param as ReviewMode) : 'flashcards'
 }
 
 function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => void }) {
@@ -141,15 +144,17 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     gradeCard,
     completePracticeRep,
     trackLearningEvent,
-    streak,
     matchHistory,
     noteWordsMatched,
     listeningPausedUntil,
     pauseListening,
+    xp,
   } = useApp()
+  /* XP at the start, so the celebration can show what this session earned
+     (grading awards it as it goes — see AppContext's gradeCard). */
+  const xpAtStart = useRef(xp).current
   const params = useLocalSearchParams<{ mode?: string }>()
-  const mode: ReviewMode =
-    params.mode === 'listening' ? 'mixed' : MODES.includes(params.mode as ReviewMode) ? (params.mode as ReviewMode) : 'flashcards'
+  const mode = modeFrom(params.mode)
 
   // The plan is fixed at mount: grading a card mutates the deck, so recomputing
   // the queue from it mid-session would reshuffle the ground under the learner.
@@ -182,6 +187,33 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
     return [...flashcardSteps, ...drillSteps]
   })
+
+  /*
+   * Tells the learning loader (if this session sits behind one) when the first
+   * card can appear complete: the plan above is built by now; a writing card
+   * also needs its stroke data read and parsed, so its pad draws at once; and
+   * two frames let that first layout commit before the loader fades off it.
+   */
+  const loader = useLearningLoader()
+  useEffect(() => {
+    let alive = true
+    const first = steps[0]
+    const firstWord = first && first.kind === 'flashcards' ? getWord(first.wordId) : undefined
+    const assets = firstWord ? loadStrokeData(firstWord.traditional + firstWord.simplified) : Promise.resolve()
+    let cancelFrames = () => {}
+    assets.then(
+      () => {
+        if (alive) cancelFrames = afterFrames(() => alive && loader.ready())
+      },
+      (error) => alive && loader.fail(error),
+    )
+    return () => {
+      alive = false
+      cancelFrames()
+    }
+    // Once, at mount: the plan is fixed for the session (see above).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [index, setIndex] = useState(0)
   const [practice, setPractice] = useState<PracticeState | null>(null)
@@ -231,6 +263,9 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   const total = steps.length
   const step = steps[index]
+  /* What the header shows: retries don't count, so a miss or "I don't know"
+     leaves the count and bar where they were (see `sessionProgress`). */
+  const shown = sessionProgress(steps, index)
   /* A match board is several words at once and has no single one. */
   const word = step && step.kind !== 'match' ? getWord(step.wordId) : undefined
   /* Identity of the card on screen. Index as well as word id, exactly like the
@@ -289,29 +324,21 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     shownAt.current = Date.now()
   }, [stepKey])
 
-  const { width: screenWidth } = useWindowDimensions()
-  /** -1 fully off to the left, 0 settled, 1 waiting off to the right. */
-  const slide = useRef(new Animated.Value(0)).current
-
-  const stageStyle = {
-    transform: [
-      {
-        translateX: slide.interpolate({
-          inputRange: [-1, 0, 1],
-          outputRange: [-screenWidth, 0, screenWidth],
-        }),
-      },
-    ],
-    // Fades out towards the edges so the two screens don't read as one long
-    // filmstrip being dragged past. Not on Android: there a parent's opacity
-    // isn't applied to its children's elevation shadows, so every card's
-    // shadow and outline showed at full strength while the card itself was
-    // still half-faded — the shadow arriving before the card. The slide alone
-    // already carries each screen fully off and on.
-    ...(Platform.OS === 'android'
-      ? null
-      : { opacity: slide.interpolate({ inputRange: [-1, -0.6, 0, 0.6, 1], outputRange: [0, 0.5, 1, 0.5, 0] }) }),
-  }
+  /*
+   * Moving between questions (see `useQuestionTransition`): the question on
+   * screen drifts left and fades, `commit` swaps in the next, and that one
+   * rises into place. Only each screen's question content moves; the header,
+   * progress and buttons stay put. Grading always happens before this, at the
+   * moment of the answer, so the animation decides only when the next question
+   * appears, never what it is.
+   *
+   * `slidingOut` is true from a move's start until its commit. The old screen
+   * stays pressable while it leaves, so without it a quick second tap on
+   * Continue would grade the same answer twice.
+   */
+  const questionMotion = useQuestionTransition()
+  const slidingOut = questionMotion.busy
+  const slideForward = questionMotion.advance
 
   const advance = () => {
     if (index + 1 >= total) setFinished(true)
@@ -331,57 +358,6 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     else advance()
   }
 
-  /*
-   * Runs `commit` between the two halves of a horizontal slide: out to the left
-   * with the old screen, then in from the right with whatever `commit` put
-   * there. Committing at the turn means the incoming screen is never rendered
-   * until it's off-stage, so the swap itself is invisible.
-   */
-  const slideForward = useCallback(
-    (commit: () => void) => {
-      /*
-       * `commit` runs on a backstop as well as on the animation's callback, and
-       * it is load-bearing rather than defensive.
-       *
-       * Without the native driver this runs on requestAnimationFrame, which a
-       * browser stops dead for a background tab — and the *entire session
-       * advance* lives inside the completion callback. With rAF stalled the
-       * callback never fires, so the session simply stops: the card stays put,
-       * the button appears dead, and nothing recovers it. Whichever of the two
-       * arrives first commits and the other finds it already done.
-       */
-      let committed = false
-
-      const settle = (finished: boolean) => {
-        if (committed) return
-        committed = true
-        commit()
-        // Jumped, not animated: this is the incoming screen's starting position,
-        // off the right edge, and animating to it would slide the wrong way.
-        slide.setValue(finished ? 1 : 0)
-        Animated.timing(slide, {
-          toValue: 0,
-          duration: SLIDE_IN_MS,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: USE_NATIVE_DRIVER,
-        }).start()
-        // The arrival needs its own backstop, or a stalled tab leaves the
-        // incoming card parked off the right edge instead of on screen.
-        setTimeout(() => slide.setValue(0), SLIDE_IN_MS + SLIDE_BACKSTOP_MS)
-      }
-
-      Animated.timing(slide, {
-        toValue: -1,
-        duration: SLIDE_OUT_MS,
-        easing: Easing.in(Easing.cubic),
-        useNativeDriver: USE_NATIVE_DRIVER,
-      }).start(({ finished }) => settle(finished))
-
-      setTimeout(() => settle(false), SLIDE_OUT_MS + SLIDE_BACKSTOP_MS)
-    },
-    [slide],
-  )
-
   const finishSpeaking = () => {
     slideForward(() => {
       setSpeaking(null)
@@ -391,6 +367,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   const handleGrade = (grade: Grade) => {
     if (!step || step.kind === 'match') return
+    if (slidingOut.current) return
     /* The preview the learner was actually looking at, and the elapsed time
        since the card appeared. The preview keeps the button's interval and the
        stored one identical; the duration is analytics only and never reaches
@@ -407,35 +384,64 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
       playRetryTone()
     }
 
-    if (grade === 'again') {
-      setPractice({ wordId: step.wordId, remaining: settings.wrongAnswerReps, total: settings.wrongAnswerReps })
-    } else {
-      advanceThroughSpeaking(step.wordId)
-    }
+    const wordId = step.wordId
+    slideForward(() => {
+      if (grade === 'again') setPractice({ wordId, remaining: settings.wrongAnswerReps, total: settings.wrongAnswerReps })
+      else advanceThroughSpeaking(wordId)
+    })
   }
 
   const handleListeningAnswer = (correct: boolean) => {
     if (!step || step.kind === 'match') return
+    if (slidingOut.current) return
     /* A listening miss reschedules the card but doesn't detour into the writing
        drill the way an "Again" on a flashcard does — wrong ear, not wrong hand.
        No preview: this drill never showed the learner four intervals to choose
        between, so there is no displayed number for the commit to have to match,
        and scheduling fresh at the moment of the answer is correct. */
-    gradeCard(step.wordId, correct ? 'good' : 'again', undefined, Date.now() - shownAt.current)
     trackLearningEvent({ type: 'LISTENING_ANSWERED', correct })
-    setStats((s) => ({ reviewed: s.reviewed + 1, correct: s.correct + (correct ? 1 : 0) }))
-    if (correct) setCelebrateKey((k) => k + 1)
-    advance()
+    answerQuestion(correct)
   }
 
   /* Graded exactly like a listening answer — a gap is recall of the same word
      in context — but it isn't listening, so it doesn't feed that counter. */
   const handleFillGapAnswer = (correct: boolean) => {
     if (!step || step.kind !== 'fillGap') return
-    gradeCard(step.wordId, correct ? 'good' : 'again', undefined, Date.now() - shownAt.current)
-    setStats((s) => ({ reviewed: s.reviewed + 1, correct: s.correct + (correct ? 1 : 0) }))
-    if (correct) setCelebrateKey((k) => k + 1)
-    advance()
+    if (slidingOut.current) return
+    answerQuestion(correct)
+  }
+
+  /** Words missed once this session: their retries are ungraded and don't count toward accuracy. */
+  const missedWords = useRef(new Set<string>())
+
+  /* Puts the question on screen back later in the session, options reshuffled. */
+  const retryLater = () => {
+    const next = requeueMissed(steps, index)
+    slideForward(() => {
+      setSteps(next)
+      setIndex((i) => i + 1)
+    })
+  }
+
+  /*
+   * A Listening or Fill the Gap answer. Only the first attempt at a word is
+   * graded and counted: a miss records the lapse once, and the question then
+   * keeps coming back (see `requeueMissed`) until it's answered right, so a
+   * session always ends on the right answer for every word in it.
+   */
+  const answerQuestion = (correct: boolean) => {
+    if (!step || step.kind === 'match' || step.kind === 'flashcards') return
+    const isRetry = missedWords.current.has(step.wordId)
+    if (!isRetry) {
+      gradeCard(step.wordId, correct ? 'good' : 'again', undefined, Date.now() - shownAt.current)
+      setStats((s) => ({ reviewed: s.reviewed + 1, correct: s.correct + (correct ? 1 : 0) }))
+    }
+    if (correct) {
+      slideForward(advance)
+      return
+    }
+    missedWords.current.add(step.wordId)
+    retryLater()
   }
 
   /*
@@ -446,10 +452,10 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
    */
   const handleMatchComplete = (firstTry: number, pairs: number) => {
     if (!step || step.kind !== 'match') return
+    if (slidingOut.current) return
     noteWordsMatched(step.wordIds)
     setStats((s) => ({ reviewed: s.reviewed + pairs, correct: s.correct + firstTry }))
-    if (firstTry === pairs) setCelebrateKey((k) => k + 1)
-    advance()
+    slideForward(advance)
   }
 
   /**
@@ -474,7 +480,14 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   const skipForNow = () => {
     if (!step || step.kind === 'match') return
+    if (slidingOut.current) return
     const wordId = step.wordId
+
+    /* A missed question can't be skipped past: it comes back until it's answered right. */
+    if (missedWords.current.has(wordId)) {
+      retryLater()
+      return
+    }
 
     if (skippedOnce.current.has(wordId)) {
       slideForward(advance)
@@ -482,7 +495,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     }
 
     skippedOnce.current.add(wordId)
-    const requeued = step
+    const requeued = { ...step, retry: true }
     slideForward(() => {
       setSteps((prev) => [...prev, requeued])
       setIndex((i) => i + 1)
@@ -497,6 +510,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
    */
   const cantListenNow = () => {
     if (!step || step.kind !== 'listening') return
+    if (slidingOut.current) return
     pauseListening(LISTENING_PAUSE_MINUTES)
     onListeningPaused()
     const deckWords = deck.map((c) => getWord(c.wordId)).filter((w): w is VocabWord => !!w)
@@ -508,11 +522,15 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
   }
 
   const handlePracticeNext = () => {
-    if (!practice) return
+    if (!practice || slidingOut.current) return
     completePracticeRep(practice.wordId)
     if (practice.remaining - 1 <= 0) {
-      setPractice(null)
-      advanceThroughSpeaking(practice.wordId)
+      /* The last rep leaves like a question; the reps before it slide on by themselves (`PracticeRep`). */
+      const wordId = practice.wordId
+      slideForward(() => {
+        setPractice(null)
+        advanceThroughSpeaking(wordId)
+      })
     } else {
       setPractice((p) => (p ? { ...p, remaining: p.remaining - 1 } : p))
     }
@@ -539,7 +557,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
      * Three things about *when* this fires are deliberate:
      *
      * **On the way out, not on the way in.** The summary is the payoff: the
-     * accuracy, the streak, the confetti. Covering that with an advert takes
+     * celebration and the results. Covering that with an advert takes
      * the moment the session was for. By the time the learner presses this,
      * they have had it and are leaving anyway.
      *
@@ -570,22 +588,19 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     }
     /* Built to the SS930 references — see components/sessionEnd/. */
     return (
-      <SessionStage style={stageStyle}>
+      <SessionStage motion={questionMotion.motion}>
         {stats.reviewed === 0 ? (
           <SessionEnd kind="empty" mode={mode} onBack={finishSession} />
         ) : (
-          <>
-            <SessionEnd
-              kind="done"
-              mode={mode}
-              onBack={finishSession}
-              reviewed={stats.reviewed}
-              correct={stats.correct}
-              streak={streak}
-              timedOut={ranOutOfTime}
-            />
-            <Celebration trigger={celebrateKey} />
-          </>
+          <LessonCompletionCelebration
+            subtitle={ranOutOfTime ? 'Your five minutes are up.' : undefined}
+            stats={[
+              { icon: Sparkles, tone: 'xp', value: `+${Math.max(0, xp - xpAtStart)}`, label: 'XP earned' },
+              { icon: Layers, tone: 'words', value: String(stats.reviewed), label: mode === 'mixed' ? 'Questions' : 'Reviewed' },
+              { icon: Target, tone: 'accuracy', value: `${Math.round((stats.correct / stats.reviewed) * 100)}%`, label: 'Accuracy' },
+            ]}
+            onContinue={finishSession}
+          />
         )}
       </SessionStage>
     )
@@ -593,15 +608,14 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   if (step?.kind === 'match') {
     return (
-      <SessionStage style={stageStyle}>
-        <Celebration trigger={celebrateKey} />
+      <SessionStage motion={questionMotion.motion}>
         <ReviewMatchPairs
           key={stepKey}
           words={step.wordIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)}
           onComplete={handleMatchComplete}
           onClose={() => closeSession()}
-          step={index + 1}
-          total={total}
+          step={shown.step}
+          total={shown.total}
           secondsLeft={secondsLeft}
         />
       </SessionStage>
@@ -617,23 +631,20 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   if (speaking && speakingWord) {
     return (
-      <SessionStage style={stageStyle}>
+      <SessionStage motion={questionMotion.motion}>
         <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
           <Celebration trigger={celebrateKey} />
           <SessionHeader
             onClose={() => closeSession()}
-            step={index + 1}
-            total={total}
-            progress={(index + 1) / total}
+            step={shown.step}
+            total={shown.total}
+            progress={shown.step / shown.total}
             label="Speaking"
             secondsLeft={secondsLeft}
           />
-          <PronunciationCheck
-            key={speaking}
-            word={speakingWord}
-            onPass={finishSpeaking}
-            onSkip={finishSpeaking}
-          />
+          <QuestionContent key={speaking} style={{ flex: 1 }}>
+            <PronunciationCheck word={speakingWord} onPass={finishSpeaking} onSkip={finishSpeaking} />
+          </QuestionContent>
         </SafeAreaView>
       </SessionStage>
     )
@@ -644,7 +655,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     /* In the flashcard's own design. Keyed per rep: each rep's auto-advance and
        writer state belong to that rep alone. */
     return (
-      <SessionStage style={stageStyle}>
+      <SessionStage motion={questionMotion.motion}>
         <PracticeRep
           key={`${practice.wordId}-${practice.remaining}`}
           word={word}
@@ -660,8 +671,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   if (step.kind === 'fillGap') {
     return (
-      <SessionStage style={stageStyle}>
-        <Celebration trigger={celebrateKey} />
+      <SessionStage motion={questionMotion.motion}>
         <ReviewFillGap
           key={stepKey}
           word={word}
@@ -669,8 +679,8 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
           onAnswer={handleFillGapAnswer}
           onSkip={skipForNow}
           onClose={() => closeSession()}
-          step={index + 1}
-          total={total}
+          step={shown.step}
+          total={shown.total}
           secondsLeft={secondsLeft}
         />
       </SessionStage>
@@ -682,8 +692,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
      references — so the generic session header stays out of their way. */
   if (step.kind === 'listening') {
     return (
-      <SessionStage style={stageStyle}>
-        <Celebration trigger={celebrateKey} />
+      <SessionStage motion={questionMotion.motion}>
         {/* `key` carries the index as well as the word — see below. */}
         <ReviewListening
           key={`${step.wordId}-${index}`}
@@ -693,8 +702,8 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
           onSkip={skipForNow}
           onCantListen={cantListenNow}
           onClose={() => closeSession()}
-          step={index + 1}
-          total={total}
+          step={shown.step}
+          total={shown.total}
           secondsLeft={secondsLeft}
         />
       </SessionStage>
@@ -704,7 +713,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
   /* Like the Mixed Drills kinds, the flashcard owns its whole screen — header
      included — built to the SS 1011 reference. */
   return (
-    <SessionStage style={stageStyle}>
+    <SessionStage motion={questionMotion.motion}>
       <Celebration trigger={celebrateKey} />
       {/*
         `key` carries the index as well as the word: a skipped word comes back
@@ -721,8 +730,8 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
         onGrade={handleGrade}
         onSkip={skipForNow}
         onClose={() => closeSession()}
-        step={index + 1}
-        total={total}
+        step={shown.step}
+        total={shown.total}
         label={mode === 'full' || mode === 'quick' ? 'Flashcards' : MODE_TITLES[mode]}
         secondsLeft={secondsLeft}
       />
@@ -765,9 +774,7 @@ function SessionHeader({
         <Pressable onPress={onClose} accessibilityLabel="Close review" className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900">
           <X size={20} color="#64748b" />
         </Pressable>
-        <View className="h-3 flex-1 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-          <View className={`h-full rounded-full ${tint === 'amber' ? 'bg-amber-500' : 'bg-brand-500'}`} style={{ width: `${pct}%` }} />
-        </View>
+        <RaisedProgressBar progress={pct / 100} accessibilityLabel={`${unit === 'rep' ? 'Rep' : 'Card'} ${step} of ${total}`} />
         <View
           className="flex-row items-baseline justify-end"
           accessibilityLabel={`${unit === 'rep' ? 'Rep' : 'Card'} ${step} of ${total}`}

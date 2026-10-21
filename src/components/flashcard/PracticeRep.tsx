@@ -11,6 +11,7 @@ import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { DiscButton, FlashcardHeader, WritingCard, card, useFlashcardColumn } from './parts'
 import { fcColors as c, fcShoulders, fcShadow, fcType as t, fcSize, fcRepSlide, FC_CHARACTER_HOLD_MS } from './tokens'
 import type { VocabWord } from '../../types'
+import { QuestionContent } from '../motion/questionMotion'
 
 /**
  * How long a finished rep stays on screen before the next one starts by
@@ -113,7 +114,7 @@ export function PracticeRep({
     Animated.timing(slide, {
       toValue: -1,
       duration: fcRepSlide.outMs,
-      easing: Easing.in(Easing.cubic),
+      easing: Easing.bezier(0.23, 1, 0.32, 1),
       useNativeDriver: NATIVE,
     }).start(leave)
     timer.current = setTimeout(leave, fcRepSlide.outMs + fcRepSlide.backstop)
@@ -133,6 +134,9 @@ export function PracticeRep({
         <View style={{ width: column, flexGrow: 1, paddingHorizontal: fcSize.pad, paddingBottom: 12 }}>
           <FlashcardHeader onClose={onClose} step={rep} total={total} label="Rewrite it" unit="rep" secondsLeft={secondsLeft} />
 
+          {/* Moves when the session moves on to or from the reps; a veil, not a
+              fade, because of the writer's WebView (see `QuestionContent`). */}
+          <QuestionContent style={{ flexGrow: 1 }} veil={{ color: c.background, inset: { top: 6, bottom: 12, side: fcSize.pad } }}>
           <View style={[card, fcShadow, { padding: 18, marginBottom: 12 }]}>
             <Text style={{ fontFamily: 'NunitoExtraBold', ...t.label, color: c.slate, textTransform: 'uppercase' }}>
               {fromMemory ? 'Now from memory' : 'Rewrite it to lock it in'}
@@ -193,6 +197,7 @@ export function PracticeRep({
               </LiftedFace>
             </PressableScale>
           </View>
+          </QuestionContent>
         </View>
       </ScrollView>
     </SafeAreaView>

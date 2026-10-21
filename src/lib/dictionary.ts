@@ -782,7 +782,26 @@ export function appearsIn(bank: VocabWord[], term: string, script: ScriptMode): 
  * entries in this bank, and a bulk-add button that quietly drops 400 cards into
  * someone's deck is a trap. Twenty is a session's worth.
  */
+/*
+ * The landing's three lists are pure functions of the bank and their
+ * arguments, and the bank only changes when a custom word is added — so each
+ * is computed once per (bank, arguments) and remembered. Opening the
+ * Dictionary used to pay for all three on its first render, on the phone's
+ * one JavaScript thread, while the screen was animating in.
+ */
+const listCache = new WeakMap<VocabWord[], Map<string, unknown>>()
+function cached<T>(bank: VocabWord[], key: string, compute: () => T): T {
+  let forBank = listCache.get(bank)
+  if (!forBank) listCache.set(bank, (forBank = new Map()))
+  if (!forBank.has(key)) forBank.set(key, compute())
+  return forBank.get(key) as T
+}
+
 export function starterList(bank: VocabWord[], hskLevel: number, size = 20): VocabWord[] {
+  return cached(bank, `starter:${hskLevel}:${size}`, () => computeStarterList(bank, hskLevel, size))
+}
+
+function computeStarterList(bank: VocabWord[], hskLevel: number, size: number): VocabWord[] {
   return bank
     .filter((w) => w.hskLevel === hskLevel && isTeachableWord(w))
     .sort((a, b) => contentRank(a) - contentRank(b) || a.traditional.length - b.traditional.length)
@@ -797,6 +816,10 @@ export function starterList(bank: VocabWord[], hskLevel: number, size = 20): Voc
  * on its own rather than about words.
  */
 export function characterList(bank: VocabWord[], hskLevel: number, size = 40): VocabWord[] {
+  return cached(bank, `chars:${hskLevel}:${size}`, () => computeCharacterList(bank, hskLevel, size))
+}
+
+function computeCharacterList(bank: VocabWord[], hskLevel: number, size: number): VocabWord[] {
   return bank
     .filter((w) => w.hskLevel === hskLevel && [...w.traditional].length === 1 && isTeachableWord(w))
     .sort((a, b) => contentRank(a) - contentRank(b))
@@ -857,6 +880,10 @@ export function isSimpleExample(sentence: string): boolean {
  * dictionary twice does not change the word underneath the learner.
  */
 export function wordToDiscover(bank: VocabWord[], hskLevel: number, dayISO: string): VocabWord | null {
+  return cached(bank, `discover:${hskLevel}:${dayISO}`, () => computeWordToDiscover(bank, hskLevel, dayISO))
+}
+
+function computeWordToDiscover(bank: VocabWord[], hskLevel: number, dayISO: string): VocabWord | null {
   const low = Math.max(2, hskLevel)
   const high = Math.min(6, low + 2)
   const pool = bank.filter(
@@ -876,4 +903,17 @@ export function wordToDiscover(bank: VocabWord[], hskLevel: number, dayISO: stri
   // A multiplicative stride rather than `day % length`, so consecutive days
   // land far apart in the pool instead of on its neighbouring entries.
   return pool[(day * 7919) % pool.length]
+}
+
+/**
+ * Builds everything the Dictionary landing needs before the learner first opens
+ * it: the tier-2 lookup index (`warmLookup`, the largest single cost) and the
+ * three cached lists. Called once at launch, a few seconds after the app has
+ * settled, so the first open of the Dictionary tab has nothing heavy left to do.
+ */
+export function prewarmDictionary(bank: VocabWord[], hskLevel: number, dayISO: string, warmLookup: () => void): void {
+  warmLookup()
+  starterList(bank, hskLevel)
+  characterList(bank, hskLevel)
+  wordToDiscover(bank, hskLevel || 1, dayISO)
 }

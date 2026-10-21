@@ -29,6 +29,7 @@ import { playTapSound } from '../lib/sound'
 import { tapHaptic, thunkHaptic } from '../lib/haptics'
 import type { ReviewMode } from './ReviewSession'
 import { PAGE_TITLE_TOP } from '../components/pageHeader'
+import { PlayWash } from '../components/dashboard/playWash'
 
 /*
  * The Review hub, built to the Beta 2.1 reference (`SS928 Redesigned Review
@@ -107,7 +108,7 @@ export function Review() {
   const message =
     counts.due === 0
       ? 'All caught up!\nThe mistakes drill is always open if you want more.'
-      : 'Great progress! A little review today will take you even further.'
+      : 'A little review today makes a big difference!'
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
@@ -127,12 +128,8 @@ export function Review() {
       >
         <TourScrollContext.Provider value={tourScrollBy}>
         <View style={{ width: column, flexGrow: 1, paddingHorizontal: s.screen }}>
-          {/* Tab content, so no back arrow. The pill floats so the title sits at
-              the same height as every other tab's. */}
-          <View style={{ position: 'absolute', top: 10, right: s.screen, zIndex: 2 }}>
-            <StreakPill streak={streak} />
-          </View>
-          <View style={{ height: PAGE_TITLE_TOP }} />
+          {/* Tab content, so no back arrow. No streak pill either: the stats
+              panel below already carries the streak, as in the reference. */}
 
           <ReviewHero message={message} column={column} run={run} />
 
@@ -164,6 +161,7 @@ export function Review() {
                 description="Review words and meanings with spaced repetition."
                 art={revArt.cards.flashcards}
                 tint={playTints.sky}
+                plain
                 count={counts.flashcards}
                 width={contentWidth}
                 onPress={() => openSession('flashcards')}
@@ -173,6 +171,7 @@ export function Review() {
                 description="Listening, fill the gap, and match the pairs."
                 art={revArt.cards.listening}
                 tint={playTints.jade}
+                plain
                 count={counts.mixed}
                 width={contentWidth}
                 onPress={() => openSession('mixed')}
@@ -182,6 +181,7 @@ export function Review() {
                 description="Review words you’ve missed to make them stick."
                 art={revArt.cards.mistakes}
                 tint={playTints.blossom}
+                plain
                 countLabel={counts.mistakes === 1 ? 'item' : 'items'}
                 count={counts.mistakes}
                 width={contentWidth}
@@ -252,29 +252,6 @@ export function Review() {
               </TourTarget>
             </Reveal>
 
-            <Reveal from="bottom" {...beat}>
-              <ShadowSurface
-                shadow={revShadow}
-                style={{
-                  marginTop: s.lg,
-                  borderRadius: revRadius.large,
-                  backgroundColor: playTints.honey.fill,
-                  borderWidth: 1,
-                  borderColor: playTints.honey.border,
-                  paddingVertical: s.sm,
-                  paddingLeft: s.md,
-                  paddingRight: s.lg,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: s.sm,
-                }}
-              >
-                <Image source={revArt.shifuQuote} resizeMode="contain" style={{ width: 54, height: 58 }} />
-                <Text className="font-lora" style={{ flex: 1, fontSize: 14, lineHeight: 20, color: c.navy }}>
-                  “Progress isn’t about perfection, but showing up every day!”
-                </Text>
-              </ShadowSurface>
-            </Reveal>
           </View>
         </View>
         </TourScrollContext.Provider>

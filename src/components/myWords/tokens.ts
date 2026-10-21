@@ -15,6 +15,7 @@
  * the rest of this family.
  */
 
+import { playTints, type PlayTint } from '../dashboard/tokens'
 import { revColors, revShadow } from '../review/tokens'
 import type { Proficiency } from '../../lib/proficiency'
 import { PAGE_SUBTITLE, PAGE_TITLE } from '../pageHeader'
@@ -87,6 +88,13 @@ export const mwTiers: Record<Proficiency, { label: string; bg: string; ink: stri
   new: { label: 'New', bg: '#F8DFDA', ink: '#A5453A' },
   learning: { label: 'Still learning', bg: '#F6E8BF', ink: '#8A6316' },
   proficient: { label: 'Proficient', bg: '#DAECD7', ink: '#2F6B43' },
+}
+
+/** Each row's wash follows its proficiency, matching its tier tag (SS1017). */
+export const mwRowTint: Record<Proficiency, PlayTint> = {
+  new: playTints.blossom,
+  learning: playTints.honey,
+  proficient: playTints.jade,
 }
 
 export const mwSpacing = {

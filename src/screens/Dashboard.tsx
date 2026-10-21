@@ -61,21 +61,6 @@ function greeting(): string {
   return 'Good Evening'
 }
 
-const GENERAL_SHIFU_LINES = [
-  'Every character you learn brings you closer to fluency!',
-  'Consistency beats perfection — even five minutes counts today.',
-  'I believe in you! Let’s keep the momentum going.',
-  'Ready when you are! What shall we learn today?',
-  'Small steps every day add up to big progress.',
-]
-
-/** What Shifu says when there is nothing due. The due-word line is built in the bubble. */
-function shifuQuote(name: string, streak: number): string {
-  const displayName = name || 'friend'
-  if (streak >= 3) return `You’re on a ${streak}-day streak! I’m proud of you, ${displayName}.`
-  const dayIndex = devNow().getDate() % GENERAL_SHIFU_LINES.length
-  return GENERAL_SHIFU_LINES[dayIndex]
-}
 
 /** The two lines under each step on the challenge path. */
 function stepLabel(def: ChallengeDef, target: number): Pick<ChallengeStep, 'verb' | 'detail'> {
@@ -159,8 +144,6 @@ export function Dashboard() {
   const [greetingLead, ...greetingRest] = greeting().split(' ')
   const greetingTail = greetingRest.join(' ')
 
-  const fallbackMessage = useMemo(() => shifuQuote(settings.username, streak), [settings.username, streak])
-
   /*
    * A streak that's alive but untouched today is about to lapse. Warned once per
    * mount of this screen — the flame and day count are right here, so the buzz
@@ -216,12 +199,7 @@ export function Dashboard() {
               greetingLead={greetingLead}
               greetingTail={greetingTail}
               name={settings.username || 'Learner'}
-              dueCount={dueCount}
-              fallbackMessage={fallbackMessage}
               columnWidth={columnWidth}
-              streak={streak}
-              // The streak's own screen is Challenges, where its milestones are claimed.
-              onStreakPress={() => router.push('/challenges')}
               run={run}
             />
 
@@ -268,6 +246,7 @@ export function Dashboard() {
                   <ChallengesCard
                     steps={challengeSteps}
                     reward={reward}
+                    xpReward={COMPLETION_REWARDS.daily.xpReward}
                     width={contentWidth}
                     onPress={() => router.push('/challenges')}
                   />

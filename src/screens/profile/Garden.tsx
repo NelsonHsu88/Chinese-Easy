@@ -14,6 +14,7 @@ import { slotOf } from '../../lib/progression/state'
 import { ProfileSubpage, GardenScene, DecorationThumb, Tag, ProfileButton } from '../../components/profile/parts'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from '../../components/profile/tokens'
 import { playTints, playHueAt } from '../../components/dashboard/tokens'
+import { PlayWash } from '../../components/dashboard/playWash'
 import { tickHaptic, tapHaptic } from '../../lib/haptics'
 
 /*
@@ -118,6 +119,46 @@ export function Garden() {
             <Text className="font-lora" style={{ ...t.body, color: c.slate, marginTop: s.md }}>
               Your first decoration, {GARDEN_ITEMS[0].name}, arrives at Level {GARDEN_ITEMS[0].unlockLevel}. You are Level {level}.
             </Text>
+          )}
+
+          {/* How it grows: the empty garden explains itself instead of leaving
+              half the screen blank (the screen's only slack until items arrive). */}
+          {!selected && (
+            <View
+              style={{
+                marginTop: s.lg,
+                borderRadius: profRadius.large,
+                borderWidth: 1,
+                borderColor: playTints.honey.border,
+                backgroundColor: playTints.honey.fill,
+                padding: s.md,
+                gap: s.sm,
+              }}
+            >
+              <PlayWash tint={playTints.honey} radius={profRadius.large - 1} />
+              <Text className="font-lora-bold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
+                How your garden grows
+              </Text>
+              {[
+                { hue: 'jade', n: '1', line: 'Learn and review words to earn XP.' },
+                { hue: 'sky', n: '2', line: 'Each new level unlocks a decoration.' },
+                { hue: 'blossom', n: '3', line: 'Tap a decoration, then a ⊕ spot to place it.' },
+              ].map((step) => {
+                const tint = playTints[step.hue as 'jade' | 'sky' | 'blossom']
+                return (
+                  <View key={step.n} style={{ flexDirection: 'row', alignItems: 'center', gap: s.sm }}>
+                    <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: tint.badge, alignItems: 'center', justifyContent: 'center' }}>
+                      <Text className="font-nunito-extrabold" style={{ fontSize: 13, lineHeight: 17, color: c.background }}>
+                        {step.n}
+                      </Text>
+                    </View>
+                    <Text className="font-lora" style={{ ...t.body, flex: 1, color: c.navy }}>
+                      {step.line}
+                    </Text>
+                  </View>
+                )
+              })}
+            </View>
           )}
 
           {selected && (

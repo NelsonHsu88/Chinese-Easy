@@ -107,6 +107,8 @@ export function PressableScale({
   accessibilityRole = 'button',
   haptic = true,
   scaleTo = dashMotion.pressScale,
+  hitSlop,
+  accessible,
 }: {
   onPress?: () => void
   children: ReactNode
@@ -135,6 +137,14 @@ export function PressableScale({
   accessibilityRole?: 'button' | 'none'
   haptic?: boolean
   scaleTo?: number
+  /** Extends the touch area past a control drawn smaller than 44pt. */
+  hitSlop?: number
+  /**
+   * `false` for a card holding its own buttons: a Pressable is one accessibility
+   * element by default, and on iOS that hides every button inside it from
+   * VoiceOver.
+   */
+  accessible?: boolean
 }) {
   const press = useRef(new Animated.Value(0)).current
   const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, scaleTo] })
@@ -204,6 +214,8 @@ export function PressableScale({
         onPressOut={up}
         accessibilityRole={accessibilityRole}
         accessibilityLabel={accessibilityLabel}
+        accessible={accessible}
+        hitSlop={hitSlop}
         style={style}
       >
         <PressClaim.Provider value={claimFromInner}>
@@ -259,6 +271,7 @@ export function DashboardCard({
       onPress={onPress}
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={accessibilityRole}
+      accessible={accessibilityRole === 'none' ? false : undefined}
       wrapperStyle={grow}
       style={grow}
     >
@@ -272,6 +285,8 @@ export function DashboardCard({
             borderColor: border,
             borderWidth: 1,
             borderRadius: dashRadius.card,
+            /* iOS draws the smoother "squircle" corner its own UI uses; ignored elsewhere. */
+            borderCurve: 'continuous',
             minHeight,
             overflow: 'hidden',
             ...shadow,

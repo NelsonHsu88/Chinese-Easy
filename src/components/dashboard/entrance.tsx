@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from 'react-native'
+import { AccessibilityInfo, Animated, Easing, Platform, View, type StyleProp, type ViewStyle } from 'react-native'
 import { useFocusEffect } from 'expo-router'
 import { dashEntrance } from './tokens'
 import { ShadowRevealProvider, useShadowReveal } from '../shadowReveal'
@@ -20,11 +20,45 @@ import { ShadowRevealProvider, useShadowReveal } from '../shadowReveal'
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
-/** One curve for the whole scene. Decelerating, so everything lands rather than stops. */
-export const ARRIVE = Easing.out(Easing.cubic)
+/**
+ * One curve for the whole scene: a strong ease-out, cubic-bezier(0.23, 1, 0.32, 1).
+ * Moves at once and lands softly — the built-in cubic ease-out is too weak to
+ * read as intentional.
+ */
+export const ARRIVE = Easing.bezier(0.23, 1, 0.32, 1)
 
-/** The way out. Accelerating — the scene is being left, not shown. */
-const DEPART = Easing.in(Easing.cubic)
+/**
+ * The way out. Also ease-out: an exit that starts slow (ease-in) makes the
+ * screen feel as if it hesitated to answer the tap.
+ */
+const DEPART = Easing.bezier(0.23, 1, 0.32, 1)
+
+/**
+ * A return visit replays the entrance, but a tab is switched to dozens of times
+ * a day, so the replay is a quick settle rather than the whole first-visit
+ * score: shorter, with the stagger compressed and less travel. The first visit
+ * keeps the full choreography.
+ */
+const REPLAY = { duration: 0.9, delay: 0.7, distance: 0.7 } as const
+
+/*
+ * Reduced motion: the system setting, read once and kept current. With it on,
+ * reveals fade in place — no travel and no swell — and quickly.
+ */
+let reduceMotion = false
+AccessibilityInfo.isReduceMotionEnabled?.()
+  .then((value) => {
+    reduceMotion = value
+  })
+  .catch(() => {})
+AccessibilityInfo.addEventListener?.('reduceMotionChanged', (value: boolean) => {
+  reduceMotion = value
+})
+
+/** Whether the learner has asked for reduced motion. */
+export function prefersReducedMotion(): boolean {
+  return reduceMotion
+}
 
 /**
  * A counter that ticks on every focus.
@@ -134,10 +168,13 @@ export function useReveal({
   }, [displaced, run, cancelExit])
 
   useEffect(() => {
+    const replay = run > 0
+    const ms = reduceMotion ? Math.min(duration, 200) : replay ? Math.round(duration * REPLAY.duration) : duration
+    const wait = reduceMotion ? 0 : replay ? Math.round(at * REPLAY.delay) : at
     const animation = Animated.timing(displaced, {
       toValue: 0,
-      duration,
-      delay: at,
+      duration: ms,
+      delay: wait,
       easing: ARRIVE,
       useNativeDriver: USE_NATIVE_DRIVER,
     })
@@ -145,7 +182,7 @@ export function useReveal({
 
     const settle = setTimeout(
       () => displaced.setValue(0),
-      at + duration + dashEntrance.backstop,
+      wait + ms + dashEntrance.backstop,
     )
 
     return () => {
@@ -197,9 +234,11 @@ export function useReveal({
      here rather than there — a screen unmounted mid-exit would otherwise leak. */
   useEffect(() => cancelExit, [cancelExit])
 
+  /* Less travel on a replay, none under reduced motion. */
+  const travel = reduceMotion ? 0 : run > 0 ? distance * REPLAY.distance : distance
   const offset = displaced.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, from === 'left' ? -distance : distance],
+    outputRange: [0, from === 'left' ? -travel : travel],
   })
 
   const opacity = displaced.interpolate({
@@ -209,8 +248,8 @@ export function useReveal({
 
   const transform: NonNullable<ViewStyle['transform']> = [
     from === 'bottom' ? { translateY: offset } : { translateX: offset },
-    ...(withScale
-      ? [{ scale: displaced.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] }) }]
+    ...(withScale && !reduceMotion
+      ? [{ scale: displaced.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] }) }]
       : []),
     ...((extraTransform ?? []) as never[]),
   ] as never

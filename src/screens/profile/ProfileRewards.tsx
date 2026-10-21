@@ -7,6 +7,7 @@ import { REWARD_ART } from '../../components/profile/art'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from '../../components/profile/tokens'
 import { tickHaptic } from '../../lib/haptics'
 import { playTints } from '../../components/dashboard/tokens'
+import { PlayWash } from '../../components/dashboard/playWash'
 import { REWARD_HUE } from '../../components/profile/tokens'
 
 /*
@@ -31,11 +32,12 @@ export function ProfileRewards() {
               <View
                 key={def.id}
                 className="flex-row"
-                style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: tint.border, padding: s.md, gap: s.md, ...profShadow }}
+                style={{ backgroundColor: tint.fill, borderRadius: profRadius.large, borderWidth: 1, borderColor: tint.border, padding: s.md, gap: s.md, ...profShadow }}
               >
+                <PlayWash tint={tint} radius={profRadius.large - 1} />
                 <View
                   className="items-center justify-center"
-                  style={{ width: 88, height: 88, borderRadius: profRadius.medium, backgroundColor: equipped ? tint.soft : tint.fill, borderWidth: 1, borderColor: tint.border }}
+                  style={{ width: 88, height: 88, borderRadius: profRadius.medium, backgroundColor: equipped ? tint.soft : c.card, borderWidth: 1, borderColor: tint.border }}
                 >
                   <Image source={REWARD_ART[def.id]} resizeMode="contain" style={{ width: 74, height: 74, opacity: unlocked ? 1 : 0.4 }} />
                 </View>

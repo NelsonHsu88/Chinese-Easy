@@ -25,11 +25,27 @@ import { isTeachableWord, shortGloss } from './definitions'
 import type { ScriptMode, VocabWord } from '../types'
 
 /** One thing to do, in order. Option ids are fixed at plan time so distractors stay put across re-renders. */
-export type DrillStep =
+export type DrillStep = (
   | { kind: 'flashcards'; wordId: string }
   | { kind: 'listening'; wordId: string; optionIds: string[] }
   | { kind: 'fillGap'; wordId: string; optionIds: string[] }
   | { kind: 'match'; wordIds: string[] }
+) & {
+  /** A second go at an earlier step (a miss or "I don't know"), not part of the planned count. */
+  retry?: boolean
+}
+
+/**
+ * Where the session's count stands: the question being worked on, of the
+ * planned total. Retries aren't counted, so a miss leaves the count where it
+ * was and only a right answer moves it on. Every step still ahead (retries
+ * included) stands for one planned question not yet done.
+ */
+export function sessionProgress(steps: readonly DrillStep[], index: number): { step: number; total: number } {
+  const total = Math.max(1, steps.filter((s) => !s.retry).length)
+  const done = total - (steps.length - index)
+  return { step: Math.min(total, Math.max(1, done + 1)), total }
+}
 
 /** "More than five words" — below this, Match the Pairs is left out of the session entirely. */
 export const MATCH_MIN_DECK = 6
@@ -280,9 +296,32 @@ export function withoutListening(
     const gap = fillGapStep(word, deckWords, wordBank, script, usedSentences, random)
     if (!gap) continue
     gapped.add(word.id)
-    rest.push(gap)
+    rest.push(s.retry ? { ...gap, retry: true } : gap)
   }
   return [...steps.slice(0, from), ...rest]
+}
+
+// --- Missed questions --------------------------------------------------------
+
+/** A missed question comes back at least this many questions later, when there are that many left. */
+export const RETRY_MIN_GAP = 2
+
+/**
+ * A missed Listening or Fill the Gap question, put back into the session so
+ * it has to be answered right before the session can end.
+ *
+ * The copy's options are reshuffled, so the right answer isn't remembered by
+ * its position, and it lands at a random spot at least `RETRY_MIN_GAP`
+ * questions on (or at the end, if fewer are left), never straight after the
+ * miss. Other step kinds are returned unchanged.
+ */
+export function requeueMissed(steps: DrillStep[], index: number, random: Random = Math.random): DrillStep[] {
+  const missed = steps[index]
+  if (!missed || (missed.kind !== 'listening' && missed.kind !== 'fillGap')) return steps
+  const retry: DrillStep = { ...missed, optionIds: shuffle(missed.optionIds, random), retry: true }
+  const earliest = index + 1 + RETRY_MIN_GAP
+  const at = earliest >= steps.length ? steps.length : earliest + Math.floor(random() * (steps.length - earliest + 1))
+  return [...steps.slice(0, at), retry, ...steps.slice(at)]
 }
 
 // --- Match the pairs ------------------------------------------------------------

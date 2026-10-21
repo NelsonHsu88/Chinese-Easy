@@ -1067,7 +1067,7 @@ export function OnbScriptCard({
 }
 
 /** The filled-ring selection indicator used by choice cards and quiz answers. */
-export function Radio({ selected, size = 22 }: { selected: boolean; size?: number }) {
+export function Radio({ selected, size = 22, color = c.green }: { selected: boolean; size?: number; color?: string }) {
   return (
     <View
       className="items-center justify-center rounded-full"
@@ -1075,13 +1075,13 @@ export function Radio({ selected, size = 22 }: { selected: boolean; size?: numbe
         width: size,
         height: size,
         borderWidth: 2,
-        borderColor: selected ? c.green : c.dotInactive,
+        borderColor: selected ? color : c.dotInactive,
       }}
     >
       {selected && (
         <View
           className="rounded-full"
-          style={{ width: size * 0.45, height: size * 0.45, backgroundColor: c.green }}
+          style={{ width: size * 0.45, height: size * 0.45, backgroundColor: color }}
         />
       )}
     </View>

@@ -53,6 +53,10 @@ export const subColors = {
 
   /** White on jade. Named so a tick and a button label cannot drift apart. */
   onJade: '#FFFFFF',
+
+  /** The popup's close button: a solid ink disc with a white cross, so the way out is unmistakable. */
+  closeFill: '#14203A',
+  closeInk: '#FFFFFF',
 } as const
 
 /** The 4/8 rhythm, plus the two margins the layout is measured against. */

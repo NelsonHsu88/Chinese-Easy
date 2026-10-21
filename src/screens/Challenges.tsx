@@ -22,6 +22,7 @@ import {
 import {
   chalCard,
   chalColors as c,
+  chalPalette as p,
   chalSpacing as s,
   chalEntrance as anim,
   CHAL_CONTENT_MAX,
@@ -71,8 +72,15 @@ const SHELVES: { value: Shelf; label: string; heading: string }[] = [
  * an arrival means the cards below close the gap smoothly and the claimed card
  * doesn't have to be measured and flown across the screen to get there.
  */
-const LEAVE_DURATION = 380
-const ARRIVE_DURATION = 320
+const LEAVE_DURATION = 460
+const ARRIVE_DURATION = 420
+
+/**
+ * Each card's last measured height, by challenge id, so a claimed card can open
+ * its new slot at the foot of the list smoothly instead of appearing at full
+ * height in one frame and shoving the Completion Reward down.
+ */
+const slotHeights = new Map<string, number>()
 
 /** How much a claimed card fades once it has settled at the bottom. */
 const CLAIMED_OPACITY = 0.6
@@ -123,9 +131,11 @@ function resetsInLabel(shelf: Shelf): string | undefined {
 /**
  * A card in its slot, playing whichever move the list has asked of it.
  *
- * `leaving` collapses the row's height and margin so everything below rises into
- * the space; `arriving` fades and lifts it into its new place at the foot. Both
- * touch layout properties, so neither can use the native driver.
+ * Each move is staged so the card never moves while it is visible and clipped:
+ * `leaving` fades the card out in place first, then closes its row so everything
+ * below rises into the space; `arriving` opens the new row at the foot first,
+ * then fades the card in. Both touch layout properties, so neither can use the
+ * native driver.
  */
 function CardSlot({
   id,
@@ -156,7 +166,8 @@ function CardSlot({
    * completion callback, so the list never learned to move it. The fade and
    * slide always run; the height collapse joins in when the measurement exists.
    */
-  const [height, setHeight] = useState<number | null>(null)
+  const [measured, setMeasured] = useState<number | null>(null)
+  const height = measured ?? slotHeights.get(id) ?? null
 
   /*
    * Both moves report back through `once`, and both are backed by a timer as
@@ -171,7 +182,12 @@ function CardSlot({
    */
   useEffect(() => {
     if (!leaving) return
-    const finish = once(() => onLeft(id))
+    const finish = once(() => {
+      /* Hidden before the list re-renders it at the foot, so its first frame
+         there is empty rather than a full-height flash. */
+      arrive.setValue(0)
+      onLeft(id)
+    })
     Animated.timing(leave, {
       toValue: 1,
       duration: LEAVE_DURATION,
@@ -180,7 +196,7 @@ function CardSlot({
     }).start(finish)
     const safety = setTimeout(finish, LEAVE_DURATION + ANIMATION_SAFETY_MS)
     return () => clearTimeout(safety)
-  }, [leaving, leave, id, onLeft])
+  }, [leaving, leave, arrive, id, onLeft])
 
   useEffect(() => {
     if (!arriving) return
@@ -196,23 +212,31 @@ function CardSlot({
     return () => clearTimeout(safety)
   }, [arriving, arrive, id, onArrived])
 
+  // Out: gone by 40%, with a slight settle; the row closes from 30% on.
   const leavingStyle = leaving
     ? {
         ...(height === null
           ? null
           : {
-              height: leave.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }),
-              marginBottom: leave.interpolate({ inputRange: [0, 1], outputRange: [chalCard.gap, 0] }),
+              height: leave.interpolate({ inputRange: [0, 0.3, 1], outputRange: [height, height, 0] }),
+              marginBottom: leave.interpolate({ inputRange: [0, 0.3, 1], outputRange: [chalCard.gap, chalCard.gap, 0] }),
             }),
-        opacity: leave.interpolate({ inputRange: [0, 0.6, 1], outputRange: [1, 0.4, 0] }),
-        transform: [{ translateY: leave.interpolate({ inputRange: [0, 1], outputRange: [0, 18] }) }],
+        opacity: leave.interpolate({ inputRange: [0, 0.4, 1], outputRange: [1, 0, 0] }),
+        transform: [{ scale: leave.interpolate({ inputRange: [0, 0.4, 1], outputRange: [1, 0.97, 0.97] }) }],
       }
     : null
 
+  // In: the row opens over the first 55%, then the card fades up into it.
   const arrivingStyle = arriving
     ? {
-        opacity: arrive.interpolate({ inputRange: [0, 1], outputRange: [0, CLAIMED_OPACITY] }),
-        transform: [{ translateY: arrive.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }],
+        ...(height === null
+          ? null
+          : {
+              height: arrive.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, height, height] }),
+              marginBottom: arrive.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, chalCard.gap, chalCard.gap] }),
+            }),
+        opacity: arrive.interpolate({ inputRange: [0, 0.45, 1], outputRange: [0, 0, CLAIMED_OPACITY] }),
+        transform: [{ translateY: arrive.interpolate({ inputRange: [0, 0.45, 1], outputRange: [8, 8, 0] }) }],
       }
     : null
 
@@ -229,7 +253,11 @@ function CardSlot({
   return (
     <Animated.View
       onLayout={(e) => {
-        if (!leaving) setHeight(e.nativeEvent.layout.height)
+        // Only a resting row: mid-move it reports the animated height.
+        if (leaving || arriving) return
+        const h = e.nativeEvent.layout.height
+        slotHeights.set(id, h)
+        setMeasured(h)
       }}
       needsOffscreenAlphaCompositing={translucent}
       style={[
@@ -460,7 +488,7 @@ export function Challenges() {
   }, [claimedChallengeIds, leavingId, context, run])
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: p.page }}>
       {/*
         The navigator's own push transition is switched off for this route so the
         entrance below is the only animation playing — two transitions at
@@ -575,10 +603,10 @@ export function Challenges() {
 
             {rows.length === 0 && (
               <View style={{ alignItems: 'center', paddingVertical: s.xxl }}>
-                <Text className="font-lora-bold" style={{ fontSize: 18, color: c.navy }}>
+                <Text className="font-lora-bold" style={{ fontSize: 18, color: p.ink }}>
                   Nothing here yet
                 </Text>
-                <Text className="font-lora" style={{ marginTop: 4, fontSize: 14, color: c.slate }}>
+                <Text className="font-lora" style={{ marginTop: 4, fontSize: 14, color: p.slate }}>
                   A fresh set arrives soon.
                 </Text>
               </View>

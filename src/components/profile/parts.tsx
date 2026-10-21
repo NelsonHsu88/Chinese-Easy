@@ -6,6 +6,8 @@ import { router, Stack, type Href } from 'expo-router'
 import {
   ArrowLeft,
   BookOpen,
+  CalendarCheck,
+  ChartNoAxesColumnIncreasing,
   Brush,
   Check,
   ChevronRight,
@@ -41,6 +43,11 @@ import {
   type ProfileInk,
 } from './tokens'
 import { ShadowSurface } from '../shadowReveal'
+import { playTints } from '../dashboard/tokens'
+import { RefHero, refY } from '../refScene'
+
+/** Where the profile card starts in "SS1017 New APP DesIGN UI (3)" (its pixels). */
+const PROFILE_CARD_TOP_REF = 328
 
 /*
  * The Profile family's building blocks, built to the Beta 2.1 reference.
@@ -75,22 +82,24 @@ export function ProfileHero({ column, run }: { column: number; run: number }) {
   const text = useReveal({ from: 'bottom', at: profEntrance.at, duration: profEntrance.for, run, distance: profEntrance.slideY })
   /* Shifu rises a beat after the scenery settles, as on Home. */
   const shifu = useReveal({ from: 'bottom', at: profEntrance.at + 180, duration: profEntrance.for, run, distance: 18 })
-  const shifuHeight = Math.min(118, artWidth * 0.62)
+  void art
+  void artWidth
 
+  /*
+   * "SS1017 New APP DesIGN UI (3)": the landscape and Shifu with his fan, laid
+   * across the column. The profile card that follows is drawn over its foot,
+   * as in the reference, so Shifu stands behind the card rather than ending in
+   * a cut. The hero's own height is the mockup's distance to that card.
+   */
   return (
-    <View>
-      <Animated.View pointerEvents="none" style={[{ position: 'absolute', right: -s.screen, bottom: -6 }, art]}>
-        <Image source={profArt.hero} style={{ width: artWidth, height: artWidth / profHero.artRatio }} resizeMode="contain" />
-      </Animated.View>
-      <Animated.View pointerEvents="none" style={[{ position: 'absolute', right: s.sm, bottom: s.xs }, shifu]}>
-        <Image source={profArt.shifu} style={{ width: shifuHeight * (155 / 209), height: shifuHeight }} resizeMode="contain" />
-      </Animated.View>
-      <Animated.View style={[text, { paddingTop: s.sm, paddingBottom: s.xl }]}>
+    <View style={{ minHeight: refY(PROFILE_CARD_TOP_REF, column) }}>
+      <RefHero source={profArt.appHero} ratio={760 / 266} column={column} left={-s.screen} animatedStyle={shifu} />
+      <Animated.View style={[text, { paddingTop: s.md, paddingBottom: s.lg }]}>
         <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.title, color: c.navy }}>
           Profile
         </Text>
-        <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: s.xs }}>
-          Track your growth and celebrate{'\n'}your learning.
+        <Text className="font-lora" style={{ ...t.subtitle, fontSize: 14, lineHeight: 19.5, color: c.slate, marginTop: s.xs, maxWidth: column * 0.46 }}>
+          Track your growth and{'\n'}celebrate your learning.
         </Text>
       </Animated.View>
     </View>
@@ -195,9 +204,12 @@ export function ProfileCard({
   photo,
   streak,
   badges,
+  stats,
   onEdit,
   onBadges,
 }: {
+  /** The reference's second and third readings beside the streak. When given, they replace the badge shelf. */
+  stats?: { due: number; weak: number }
   name: string
   photo?: string
   level: number
@@ -296,6 +308,14 @@ export function ProfileCard({
             icon={<Image source={profArt.fire} style={{ width: 18 * FIRE_RATIO, height: 18 }} resizeMode="contain" />}
           />
           <Divider />
+          {stats ? (
+            <>
+              <Stat value={stats.due} label="Due today" disc={playTints.jade.soft} icon={<CalendarCheck size={17} color={playTints.jade.ink} strokeWidth={2.2} />} />
+              <Divider />
+              <Stat value={stats.weak} label="Weak words" disc={playTints.sky.soft} icon={<ChartNoAxesColumnIncreasing size={17} color={playTints.sky.ink} strokeWidth={2.6} />} />
+            </>
+          ) : (
+          <>
           {/*
             The badge shelf: one holder per displayable achievement, a medal in
             each filled one and a dashed place in each still free. It opens
@@ -322,6 +342,8 @@ export function ProfileCard({
               })}
             </View>
           </PressableScale>
+          </>
+          )}
         </View>
 
       </View>
@@ -362,14 +384,25 @@ function Stat({ value, label, disc, icon }: { value: number; label: string; disc
 export function SectionCard({
   title,
   action,
+  scene,
   children,
 }: {
   title: string
   action?: { label: ReactNode; onPress: () => void; accessibilityLabel: string }
+  /** A painting laid into the card's top-right corner, behind its content. */
+  scene?: ReactNode
   children: ReactNode
 }) {
   return (
     <ShadowSurface shadow={profShadow} style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.md,  }}>
+      {scene && (
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, right: 0, borderTopRightRadius: profRadius.large - 1, overflow: 'hidden' }}
+        >
+          {scene}
+        </View>
+      )}
       <View className="flex-row items-center justify-between" style={{ marginBottom: s.md, paddingLeft: 4 }}>
         <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, color: c.navy, flexShrink: 1 }}>
           {title}

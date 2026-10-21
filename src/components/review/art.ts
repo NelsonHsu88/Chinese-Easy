@@ -12,17 +12,18 @@
  * from its intrinsic dimensions, so a width with no height lays out at zero.
  */
 export const revArt = {
-  hero: require('../../assets/images/review/hero.png'),
+  hero: require('../../assets/images/app/review-hero.png'),
   foot: require('../../assets/images/review/foot.png'),
   /* The `tinted/` copies (`scripts/processTintedArt.mjs`): each mode card
      wears its own SS1017 wash, and their paper takes it. */
   cards: {
-    flashcards: require('../../assets/images/tinted/review-card-flashcards.png'),
-    listening: require('../../assets/images/tinted/review-card-listening.png'),
-    mistakes: require('../../assets/images/tinted/review-card-mistakes.png'),
+    flashcards: require('../../assets/images/app/review-flashcards.png'),
+    listening: require('../../assets/images/app/review-mixed.png'),
+    mistakes: require('../../assets/images/app/review-mistakes.png'),
   },
-  /** Shifu, small, beside the quote at the foot. */
-  shifuQuote: require('../../assets/images/tour/shifu-welcome.png'),
+  /** Shifu's portrait beside the quote at the foot, and the pagoda scene at its right. 136×140, 208×168. */
+  shifuQuote: require('../../assets/images/app/review-quote-shifu.png'),
+  quoteScene: require('../../assets/images/app/review-quote-scene.png'),
   /** The app's own painted flame, shared with the Dashboard. */
   fire: require('../../assets/images/icons/fire.png'),
 } as const
