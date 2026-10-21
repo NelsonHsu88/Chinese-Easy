@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Platform } from 'react-native'
+import { AppState, Platform } from 'react-native'
 import type { Session, User } from '@supabase/supabase-js'
 import * as WebBrowser from 'expo-web-browser'
 import * as Linking from 'expo-linking'
@@ -248,6 +248,37 @@ async function finishGoogleSignIn(authUrl: string, redirectTo: string): Promise<
   return { error: null, account: accountFor(exchanged.data.session?.user) }
 }
 
+/*
+ * Does the signed-in account still exist on the server?
+ *
+ * A session is a signed token that stays valid until it expires (an hour), and
+ * the app trusts it offline. So an account deleted on another device kept
+ * working here: Home, the deck, and a Delete button that could only fail.
+ * `getUser` asks Supabase itself. `false` only on a definite "no such user";
+ * `null` when it couldn't tell (offline), which must never sign anyone out.
+ */
+async function accountStillExists(): Promise<boolean | null> {
+  try {
+    const { error } = await getSupabase().auth.getUser()
+    if (!error) return true
+    const code = (error as { code?: string }).code
+    if (code === 'user_not_found' || /does not exist/i.test(error.message)) return false
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Local half of a deletion: erase this device's copy, start over, sign out. */
+async function forgetDeletedAccount(userId: string): Promise<void> {
+  markAccountForPurge(userId)
+  /* Back to the first page of onboarding, not to this handset's guest. */
+  requestFreshStart()
+  /* Local only: the user no longer exists, so there is no server session left
+     to revoke, and a network sign-out would only fail. */
+  await getSupabase().auth.signOut({ scope: 'local' })
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
@@ -283,6 +314,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       listener.subscription.unsubscribe()
     }
   }, [])
+
+  /*
+   * Checks the account still exists whenever a session is restored or the app
+   * comes back to the foreground (on web: the tab becomes visible again). One
+   * request each time, and only while signed in.
+   */
+  const sessionUserId = session?.user.id ?? null
+  useEffect(() => {
+    if (!isSupabaseConfigured || !sessionUserId) return
+    let checking = false
+    const check = async () => {
+      if (checking) return
+      checking = true
+      if ((await accountStillExists()) === false) await forgetDeletedAccount(sessionUserId)
+      checking = false
+    }
+    void check()
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void check()
+    })
+    return () => sub.remove()
+  }, [sessionUserId])
 
   const signUpWithEmail = useCallback(async (email: string, password: string, name?: string, captchaToken?: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
@@ -503,15 +556,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.functions.invoke('delete-account', { method: 'POST' })
     if (error) {
       if (__DEV__) console.warn('[auth] delete-account failed:', error.message)
+      /* Already deleted on another device: the server refuses the token, but
+         the outcome the learner asked for has happened. Finish it here. */
+      if ((await accountStillExists()) === false) {
+        await forgetDeletedAccount(userId)
+        return { error: null }
+      }
       return { error: 'Your account couldn’t be deleted. Check your connection and try again.' }
     }
 
-    markAccountForPurge(userId)
-    /* Back to the first page of onboarding, not to this handset's guest. */
-    requestFreshStart()
-    /* Local only: the user no longer exists, so there is no server session left
-       to revoke, and a network sign-out would only fail. */
-    await supabase.auth.signOut({ scope: 'local' })
+    await forgetDeletedAccount(userId)
     return { error: null }
   }, [session])
 
