@@ -63,14 +63,14 @@ export function UndoBar({
         <View className="h-7 w-7 items-center justify-center rounded-full bg-dict-green">
           <Check size={15} color="#ffffff" strokeWidth={3} />
         </View>
-        <Text className="flex-1 font-dict-semibold text-[15px] leading-[20px] text-white">{message}</Text>
+        <Text className="flex-1 font-nunito-semibold text-[15px] leading-[20px] text-white">{message}</Text>
         <PressScale
           onPress={onUndo}
           className="flex-row items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-2"
           accessibilityLabel="Undo adding those words"
         >
           <Undo2 size={15} color="#ffffff" strokeWidth={ICON_STROKE} />
-          <Text className="font-dict-bold text-[14px] text-white">Undo</Text>
+          <Text className="font-nunito-bold text-[14px] text-white">Undo</Text>
         </PressScale>
       </View>
     </Animated.View>

@@ -1,31 +1,27 @@
+import { RaisedButton } from '../components/dashboard/parts'
+import { lookalikesFor } from '../lib/lookalikes'
 import { useMemo, useState } from 'react'
 import { View, Text } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useApp } from '../context/AppContext'
 import { LOOKUP_HSK_LEVEL } from '../data/lookupWords'
-import { displayExample, displayPinyin, displayWord } from '../lib/hanzi'
+import { displayPinyin, displayWord } from '../lib/hanzi'
 import {
   DetailShell,
   DetailCard,
+  DetailSheetShell,
   StrokeOrderModal,
   openCharacterDetail,
   openWordDetail,
   useInDictionaryTab,
 } from '../components/dictionary/DetailShell'
-import {
-  AppearsInCard,
-  ExampleCard,
-  HeroCard,
-  MeaningCard,
-  RadicalCard,
-  WordRadicalsCard,
-  WordsContainingCard,
-  type HeroStat,
-} from '../components/dictionary/DetailSections'
+import { DetailHero, type HeroFact } from '../components/dictionary/DetailSections'
+import { SheetHeader } from '../components/dictionary/ExploreCards'
+import { buildExploreTabs } from '../components/dictionary/exploreTabs'
+import { frequencyLabel, frequencyRank } from '../lib/frequency'
 import { SentencesModal, WordsModal } from '../components/dictionary/AppearsInModals'
 import { DeckStateButton, FavoriteButton, RemoveFromDeckButton } from '../components/dictionary/DictionaryControls'
-import { PressScale } from '../components/dictionary/PressScale'
-import { DICT_BG, DICT_BUTTON_SHADOW } from '../components/dictionary/shadows'
+import { DICT_BG } from '../components/dictionary/shadows'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
 import { TourTarget } from '../components/tour/targets'
 import {
@@ -35,12 +31,13 @@ import {
   isInDeck,
   radicalFor,
   relatedCharacters,
-  sentencesWith,
+  sentencesForWord,
   strokeCountFor,
   wordsContaining,
   wordsWith,
 } from '../lib/dictionary'
 import { tapHaptic } from '../lib/haptics'
+import { allSenses, shortGloss } from '../lib/definitions'
 import type { VocabWord } from '../types'
 
 /**
@@ -112,7 +109,7 @@ export function WordDetail() {
   )
 
   const counts = useMemo(
-    () => (word ? appearsIn(wordBank, form, script) : { words: 0, sentences: 0 }),
+    () => (word ? appearsIn(wordBank, form, script, word) : { words: 0, sentences: 0 }),
     [wordBank, word, form, script],
   )
 
@@ -159,44 +156,54 @@ export function WordDetail() {
     [appearsInList, wordBank, word, form, script],
   )
   const listedSentences = useMemo(
-    () => (appearsInList === 'sentences' && word ? sentencesWith(wordBank, form, script) : []),
+    () => (appearsInList === 'sentences' && word ? sentencesForWord(wordBank, word, script) : []),
     [appearsInList, wordBank, word, form, script],
   )
 
   const deckIndex = useMemo(() => buildDeckIndex(deck, newlyAddedWordIds), [deck, newlyAddedWordIds])
 
+  /* The Explore sheet's longer lists: five related words, five example sentences. */
+  const relatedLong = useMemo(
+    () => (related.term ? wordsContaining(wordBank, related.term, script, 5) : []),
+    [wordBank, related.term, script],
+  )
+  const exampleHits = useMemo(
+    () => (word ? sentencesForWord(wordBank, word, script, 5) : []),
+    [wordBank, word, form, script],
+  )
+
   if (!word) {
     return (
       <DetailShell title="Word">
         <DetailCard>
-          <Text className="font-dict-sans text-[16px] text-dict-body">
+          <Text className="font-sans text-[16px] text-dict-body">
             This word is no longer in the dictionary. It may have been renamed or removed the last time the word
             list was updated.
           </Text>
-          <PressScale
+          <RaisedButton
             onPress={() => {
               tapHaptic()
               if (router.canGoBack()) router.back()
               else router.replace(inTab ? '/dictionary-tab' : '/my-words')
             }}
-            style={[{ height: 48, marginTop: 16 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
-            className="items-center justify-center rounded-full bg-dict-green"
             accessibilityLabel="Back to the dictionary"
+            wrapperStyle={{ marginTop: 16, alignSelf: 'stretch' }}
+            height={48}
+            fill={DICT_BG.green}
+            shoulder={DICT_BG.greenShoulder}
           >
-            <Text className="font-dict-bold text-[15px] text-white">Back to Dictionary</Text>
-          </PressScale>
+            <Text className="font-nunito-bold text-[15px] text-white">Back to Dictionary</Text>
+          </RaisedButton>
         </DetailCard>
       </DetailShell>
     )
   }
 
-  const stats: HeroStat[] = [
-    { label: 'Characters', value: String(characters.length) },
-    ...(strokeTotal !== null ? [{ label: 'Strokes', value: String(strokeTotal) }] : []),
+  const facts: HeroFact[] = [
+    ...(characters.length > 1 ? [{ text: `${characters.length} characters` }] : []),
+    ...(strokeTotal !== null ? [{ text: `${strokeTotal} strokes` }] : []),
     // Tier-2 words carry a sentinel level rather than a graded one — see HskBadge.
-    word.hskLevel < LOOKUP_HSK_LEVEL
-      ? { label: 'Level', value: `HSK ${word.hskLevel}`, green: true }
-      : { label: 'Level', value: 'Rare' },
+    word.hskLevel < LOOKUP_HSK_LEVEL ? { text: `HSK ${word.hskLevel}`, green: true } : { text: 'Rare' },
   ]
 
   const openCharacter = (character: string) => {
@@ -210,105 +217,127 @@ export function WordDetail() {
     openWordDetail(next.id, inTab)
   }
 
-  return (
-    <DetailShell title="Word">
-      {/* The four `TourTarget`s are where Shifu's word-card guide points
-          (`lib/screenTours.ts`). */}
-      <TourTarget id="word-hero" radius={20}>
-        <HeroCard
-          glyph={form}
-          pinyin={displayPinyin(word, settings.phoneticScript)}
-          stats={stats}
-          onWatch={() => {
-            tapHaptic()
-            setWatching(true)
-          }}
-          onPractice={() => {
-            tapHaptic()
-            setPractising(true)
-          }}
-        />
-      </TourTarget>
+  const single = characters.length === 1
+  const senses = allSenses(word)
+  const hints = [
+    ...(word.example || counts.sentences > 0 ? ['Examples'] : []),
+    single ? 'Radical' : 'Characters',
+    ...(related.words.length > 0 ? ['Related words'] : []),
+    ...(senses.length > 1 ? ['More meanings'] : []),
+  ].slice(0, 3)
 
-      <TourTarget id="word-save" radius={16} style={{ alignSelf: 'center' }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
-          <DeckStateButton
-            state={entryStateFor(word.id, deckIndex)}
-            onAdd={() => addToReviewDeck(word.id)}
+  const ownRadical = radicals[0]?.info ?? null
+  const lookalikes = single ? lookalikesFor(form, wordBank, script) : []
+  const rank = frequencyRank(word)
+  const tabs = buildExploreTabs({
+    glyph: form,
+    entry: word,
+    senses,
+    script,
+    /* A one-character word: characters that look like it (大 → 太 犬 天). A
+       longer word: its own characters. */
+    overviewCharacters: single
+      ? { title: 'Related characters', characters: lookalikes.slice(0, 3) }
+      : { title: 'Characters in this word', characters: [...new Set(characters)] },
+    relatedCharacters: single ? lookalikes : [...new Set(characters)],
+    relatedCharactersTitle: single ? 'Related characters' : 'Characters in this word',
+    containingTerm: related.term,
+    containingWords: related.words,
+    containingTotal: relatedTotal,
+    relatedWords: relatedLong,
+    sentences: exampleHits,
+    counts,
+    stats: [
+      ...(strokeTotal !== null ? [{ label: 'Strokes', value: String(strokeTotal) }] : []),
+      ...(!single ? [{ label: 'Characters', value: String(characters.length) }] : []),
+      ...(single && ownRadical
+        ? [{ label: 'Kangxi radical', value: `${ownRadical.radical.number} (${ownRadical.radical.character} · ${ownRadical.radical.meaning})` }]
+        : []),
+      { label: 'HSK level', value: word.hskLevel < LOOKUP_HSK_LEVEL ? `HSK ${word.hskLevel}` : 'Rare' },
+      ...(rank !== null ? [{ label: 'Frequency', value: frequencyLabel(rank) }] : []),
+    ],
+    isAdded: (id) => isInDeck(id, deckIndex),
+    onAdd: addToReviewDeck,
+    openWord,
+    openCharacter,
+    // The tab route, not the standalone `/dictionary` — that one sits outside the tab group and would drop the nav bar.
+    viewAllWords: () => router.push(`/dictionary-tab?q=${encodeURIComponent(related.term)}`),
+    openWordsList: () => setAppearsIn('words'),
+    openSentencesList: () => setAppearsIn('sentences'),
+    onWatch: () => {
+      tapHaptic()
+      setWatching(true)
+    },
+    onPractice: () => {
+      tapHaptic()
+      setPractising(true)
+    },
+    /* Opened from My Words (the standalone route), the page is also where a word leaves it. */
+    overviewFooter:
+      !inTab && isInDeck(word.id, deckIndex) ? (
+        <View style={{ paddingVertical: 8 }}>
+          <RemoveFromDeckButton
+            armed={confirmRemove}
+            onArm={() => setConfirmRemove(true)}
+            onCancel={() => setConfirmRemove(false)}
+            onConfirm={() => {
+              removeFromReviewDeck([word.id])
+              if (router.canGoBack()) router.back()
+              else router.replace('/my-words')
+            }}
           />
-          <FavoriteButton favorite={favoriteWordIds.includes(word.id)} onToggle={() => toggleFavorite(word.id)} />
         </View>
-      </TourTarget>
+      ) : undefined,
+  })
 
-      <TourTarget id="word-meaning" radius={20}>
-        <MeaningCard word={word} />
-      </TourTarget>
+  const sheetHeader = (
+    <SheetHeader
+      glyph={form}
+      reading={displayPinyin(word, settings.phoneticScript)}
+      meanings={senses.slice(0, 3)}
+      facts={[
+        ...(strokeTotal !== null ? [`${strokeTotal} strokes`] : []),
+        word.hskLevel < LOOKUP_HSK_LEVEL ? `HSK ${word.hskLevel}` : 'Rare',
+      ]}
+    />
+  )
 
-      {word.example && (
-        <ExampleCard
-          sentence={displayExample(word, script)}
-          term={form}
-          translation={word.example.translation}
-          onOpenWord={openWord}
-        />
-      )}
-
-      {/*
-       * The radical section. A word doesn't have one — each of its characters
-       * does — so a single-character entry gets the same full card as the
-       * character screen, and anything longer gets a row per character that
-       * doubles as the drill-down into that screen.
-       */}
-      <TourTarget id="word-radicals" radius={20}>
-        {characters.length === 1 ? (
-          <RadicalCard
-            character={form}
-            info={radicals[0].info}
-            related={radicals[0].info ? relatedCharacters(radicals[0].info, form) : []}
-            onOpenCharacter={openCharacter}
+  return (
+    <DetailSheetShell
+      title="Word"
+      sheetLabel="Explore this word"
+      sheetHints={hints}
+      sheetHeader={sheetHeader}
+      tabs={tabs}
+      hero={(availableHeight) => (
+        /* `word-hero` and `word-save` are where Shifu's word-card guide points (`lib/screenTours.ts`). */
+        <TourTarget id="word-hero" radius={20}>
+          <DetailHero
+            glyph={form}
+            reading={displayPinyin(word, settings.phoneticScript)}
+            meaning={shortGloss(word)}
+            facts={facts}
+            availableHeight={availableHeight}
+            onWatch={() => {
+              tapHaptic()
+              setWatching(true)
+            }}
+            onPractice={() => {
+              tapHaptic()
+              setPractising(true)
+            }}
+            save={
+              <TourTarget id="word-save" radius={16}>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
+                  <DeckStateButton state={entryStateFor(word.id, deckIndex)} onAdd={() => addToReviewDeck(word.id)} />
+                  <FavoriteButton favorite={favoriteWordIds.includes(word.id)} onToggle={() => toggleFavorite(word.id)} />
+                </View>
+              </TourTarget>
+            }
           />
-        ) : (
-          <WordRadicalsCard characters={radicals} onOpenCharacter={openCharacter} />
-        )}
-      </TourTarget>
-
-      <WordsContainingCard
-        character={related.term}
-        words={related.words}
-        totalCount={relatedTotal}
-        isAdded={(id) => isInDeck(id, deckIndex)}
-        onOpen={openWord}
-        onAdd={addToReviewDeck}
-        onViewAll={() => {
-          tapHaptic()
-          // The tab route, not the standalone `/dictionary` — that one sits
-          // outside the tab group and would drop the nav bar.
-          router.push(`/dictionary-tab?q=${encodeURIComponent(related.term)}`)
-        }}
-      />
-
-      <AppearsInCard
-        words={counts.words}
-        sentences={counts.sentences}
-        onOpenWords={() => setAppearsIn('words')}
-        onOpenSentences={() => setAppearsIn('sentences')}
-      />
-
-      {/* Opened from My Words (the standalone route), the card is also where a
-          word leaves it — the job the old My Words sheet used to do. */}
-      {!inTab && isInDeck(word.id, deckIndex) && (
-        <RemoveFromDeckButton
-          armed={confirmRemove}
-          onArm={() => setConfirmRemove(true)}
-          onCancel={() => setConfirmRemove(false)}
-          onConfirm={() => {
-            removeFromReviewDeck([word.id])
-            if (router.canGoBack()) router.back()
-            else router.replace('/my-words')
-          }}
-        />
+        </TourTarget>
       )}
-
+    >
       {appearsInList === 'words' && (
         <WordsModal
           term={form}
@@ -331,6 +360,6 @@ export function WordDetail() {
 
       {watching && <StrokeOrderModal characters={form} onClose={() => setWatching(false)} />}
       {practising && <WritingPracticeModal word={word} onClose={() => setPractising(false)} />}
-    </DetailShell>
+    </DetailSheetShell>
   )
 }

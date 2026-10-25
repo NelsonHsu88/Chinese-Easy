@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { View, Text, Pressable, ScrollView, Image, Animated, Easing, Platform, AccessibilityInfo, useWindowDimensions } from 'react-native'
+import type { TextInstance } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg'
 import { Check, ChevronLeft, HeadphoneOff, HelpCircle, Timer, X } from 'lucide-react-native'
@@ -86,7 +87,7 @@ export function DrillShell({
   const footHeight = column / DRILL_FOOT_RATIO
   const branch = column * 0.4
   /* Each question mounts its own shell, so a screen reader starts on its title. */
-  const titleRef = useRef<Text>(null)
+  const titleRef = useRef<TextInstance>(null)
   useAccessibilityFocusOnMount(titleRef)
 
   return (
@@ -126,7 +127,7 @@ export function DrillShell({
           <View
             style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: DRILL_PAD, marginTop: 6, minHeight: 36 }}
           >
-            <Text ref={titleRef} accessibilityRole="header" style={{ flex: 1, fontFamily: 'LoraBold', ...t.title, color: c.ink }}>
+            <Text ref={titleRef} accessibilityRole="header" style={{ flex: 1, fontFamily: 'NunitoExtraBold', ...t.title, color: c.ink }}>
               {title}
             </Text>
             {headerRight}

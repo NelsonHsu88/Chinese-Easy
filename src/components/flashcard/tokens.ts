@@ -92,12 +92,6 @@ export const fcSize = {
   radius: { card: 22, tile: 18 },
   /** The writing card never gets smaller than this; below it the page scrolls. */
   writingMin: 210,
-  /**
-   * Once the answer is up the stage is only replaying the stroke order, and the
-   * answer card has grown, so it gives ground — that is what keeps the grade
-   * tiles on screen on a 640pt phone instead of under the fold.
-   */
-  writingMinRevealed: 140,
   /** Reset, hint and back. */
   disc: 44,
   speaker: 46,
@@ -124,12 +118,21 @@ export const fcShadow = revShadow
 export const FC_CHARACTER_HOLD_MS = 300
 
 /**
- * The reveal: everything under the header dips out over `outMs`, swaps, and
- * comes back over `inMs`, the answer and tiles rising `rise` as they arrive.
- * `holdMs` is how long a character the learner just finished writing stays on
- * screen before that starts.
+ * The reveal: the answer sheet rises over the question in `inMs`, from the
+ * region's height plus `travelExtra` below (wholly off screen). Inside it each
+ * grade tile trails by `tileLag`, settling `tileDelay` plus `tileStagger` per
+ * tile later. `holdMs` is how long a character the learner just finished
+ * writing stays on screen first.
  */
-export const fcReveal = { holdMs: 380, outMs: 150, inMs: 360, rise: 14, backstop: 160 } as const
+export const fcReveal = {
+  holdMs: 260,
+  inMs: 480,
+  tileLag: 44,
+  tileDelay: 40,
+  tileStagger: 45,
+  travelExtra: 48,
+  backstop: 160,
+} as const
 
 /**
  * The rewrite reps' writing card: it leaves to the left and the next rep's

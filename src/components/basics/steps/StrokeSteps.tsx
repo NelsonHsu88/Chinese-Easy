@@ -79,7 +79,7 @@ export function StrokeStep({ step, ctx, column, setGate }: StepProps<Of<'stroke'
         {result !== null && (
           <Text
             accessibilityLiveRegion="polite"
-            className="font-lora"
+            className="font-nunito-semibold"
             style={{ marginTop: 12, fontSize: 15, lineHeight: 21, color: c.navy, textAlign: 'center' }}
           >
             {result === 0

@@ -96,7 +96,7 @@ export function SentenceBuilderStep({ step, ctx, stepId, setGate, onGraded }: St
     <View>
       <BasicsPill label="Build the sentence" />
       <StepTitle>{ctx.text(step.prompt)}</StepTitle>
-      <Text className="font-lora-italic" style={{ marginTop: 8, fontSize: 18, lineHeight: 25, color: c.slate }}>
+      <Text className="font-nunito-semibold-italic" style={{ marginTop: 8, fontSize: 18, lineHeight: 25, color: c.slate }}>
         “{step.meaning}”
       </Text>
 

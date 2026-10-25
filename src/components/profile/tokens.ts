@@ -87,6 +87,19 @@ export const profColors = {
 
   /** The celebration's scrim. */
   scrim: 'rgba(20, 32, 58, 0.34)',
+
+  /*
+   * The Duolingo-style Profile tab: the soft jade banner the big avatar sits
+   * on, the dashed ring and its "+" when there's no photo yet, the hairline
+   * under the pinned header, the small-caps section labels, and the
+   * "Finish your profile" card's wash.
+   */
+  banner: '#DDEFD7',
+  bannerRing: '#8FC398',
+  hairline: '#E8E5DE',
+  caps: '#7C8596',
+  finish: '#EAF4E7',
+  finishBorder: '#D3E6CE',
 } as const
 
 /**
@@ -148,6 +161,13 @@ export const profType = {
   tag: { fontSize: 12, lineHeight: 15 },
   button: { fontSize: 16, lineHeight: 20 },
   body: { fontSize: 14, lineHeight: 19 },
+  /** The Profile tab: the pinned name, the small-caps labels, the stat row and the overview tiles. */
+  header: { fontSize: 23, lineHeight: 29 },
+  caps: { fontSize: 13, lineHeight: 17, letterSpacing: 1 },
+  rowValue: { fontSize: 19, lineHeight: 24 },
+  rowLabel: { fontSize: 13.5, lineHeight: 18 },
+  tileValue: { fontSize: 17, lineHeight: 22 },
+  tileLabel: { fontSize: 12.5, lineHeight: 16 },
 } as const
 
 export const profRadius = {

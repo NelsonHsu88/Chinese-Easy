@@ -75,7 +75,12 @@ export const DICT_BG = {
    */
   greenShoulder: '#378A39',
   greenDarkShoulder: '#2D7634',
+  /** The filter row's raised pills, unselected: a hairline rim, and the shoulder it stands on. */
+  pillBorder: '#E8E5DE',
+  pillShoulder: '#DCD6CA',
   /** Removing a word from My Words — the armed confirm and its button. */
   coral: '#C8553F',
   coralPale: '#FBECE8',
+  /** The armed Remove button's shoulder, a step under its coral face. */
+  coralShoulder: '#A3402E',
 } as const

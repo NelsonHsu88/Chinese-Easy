@@ -1,9 +1,9 @@
-import { View, Text, Pressable } from 'react-native'
+import { View, Text } from 'react-native'
 import { Check, Play } from 'lucide-react-native'
 import type { BasicsStep } from '../../../data/basics/types'
 import { AudioIndicator, playZh } from '../audio'
 import { BasicsPill } from '../parts'
-import { Card, Gloss, ItemRow, LearnMore, Reading, StepBody, StepTitle, type StepProps } from '../lessonParts'
+import { Card, Gloss, ItemRow, LearnMore, RaisedTap, Reading, StepBody, StepTitle, type StepProps } from '../lessonParts'
 import { hanziFont } from '../../../lib/hanzi'
 import { basicsColors as c } from '../tokens'
 
@@ -67,28 +67,16 @@ export function DialogueStep({ step, ctx, stepId }: StepProps<Of<'dialogue'>>) {
           const left = line.speaker === 'A'
           const id = `${stepId}-line-${i}`
           return (
-            <Pressable
+            <RaisedTap
               key={i}
               onPress={() => playZh(spoken, id)}
-              accessibilityRole="button"
               accessibilityLabel={`Speaker ${line.speaker}: ${spoken}, ${line.item.gloss ?? ''}. Play`}
-              style={{ alignSelf: left ? 'flex-start' : 'flex-end', maxWidth: '88%' }}
+              tone={left ? 'card' : 'soft'}
+              radius={18}
+              corners={left ? { borderTopLeftRadius: 6 } : { borderTopRightRadius: 6 }}
+              wrapperStyle={{ alignSelf: left ? 'flex-start' : 'flex-end', maxWidth: '88%' }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, paddingHorizontal: 12 }}
             >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
-                  borderRadius: 18,
-                  borderTopLeftRadius: left ? 6 : 18,
-                  borderTopRightRadius: left ? 18 : 6,
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  backgroundColor: left ? c.card : c.sageSoft,
-                  borderWidth: 1,
-                  borderColor: left ? c.border : c.sageSoft,
-                }}
-              >
                 <Text className="font-nunito-bold" style={{ fontSize: 12, color: c.textMuted }}>
                   {line.speaker}
                 </Text>
@@ -100,24 +88,23 @@ export function DialogueStep({ step, ctx, stepId }: StepProps<Of<'dialogue'>>) {
                   {line.item.gloss && <Gloss>{line.item.gloss}</Gloss>}
                 </View>
                 <AudioIndicator id={id} size={34} />
-              </View>
-            </Pressable>
+            </RaisedTap>
           )
         })}
       </View>
-      <Pressable
+      <RaisedTap
         onPress={() => playZh(whole, `${stepId}-all`)}
-        accessibilityRole="button"
         accessibilityLabel="Play the whole conversation"
-        style={{ alignSelf: 'center', marginTop: 16 }}
+        tone="soft"
+        radius={22}
+        wrapperStyle={{ alignSelf: 'center', marginTop: 16 }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 16 }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, paddingHorizontal: 16, borderRadius: 22, backgroundColor: c.sageSoft }}>
-          <Play size={16} color={c.sageDark} strokeWidth={2.4} />
-          <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.sageDark }}>
-            Play it all
-          </Text>
-        </View>
-      </Pressable>
+        <Play size={16} color={c.sageDark} strokeWidth={2.4} />
+        <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.sageDark }}>
+          Play it all
+        </Text>
+      </RaisedTap>
     </View>
   )
 }
@@ -143,7 +130,7 @@ export function RecapStep({ step, ctx }: StepProps<Of<'recap'>>) {
             >
               <Check size={14} color={c.sageDark} strokeWidth={2.8} />
             </View>
-            <Text className="font-lora" style={{ flex: 1, fontSize: 16, lineHeight: 23, color: c.navy }}>
+            <Text className="font-nunito-semibold" style={{ flex: 1, fontSize: 16, lineHeight: 23, color: c.navy }}>
               {ctx.text(point)}
             </Text>
           </View>

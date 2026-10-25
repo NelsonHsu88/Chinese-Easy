@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   type LayoutChangeEvent,
 } from 'react-native'
+import type { TextInstance } from 'react-native'
 import { router, usePathname } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useApp } from '../../context/AppContext'
@@ -359,7 +360,7 @@ export function Layer({ children }: { children: ReactNode }) {
   )
 }
 
-type TitleRef = RefObject<Text | null>
+type TitleRef = RefObject<TextInstance | null>
 
 /**
  * A card's arrival — a short fade and an 8pt rise, or a fade alone under
@@ -367,7 +368,7 @@ type TitleRef = RefObject<Text | null>
  */
 function useArrival(id: string, reduceMotion: boolean, ready: boolean, announce: string) {
   const enter = useRef(new Animated.Value(0)).current
-  const titleRef = useRef<Text>(null)
+  const titleRef = useRef<TextInstance>(null)
 
   useEffect(() => {
     if (!ready) return

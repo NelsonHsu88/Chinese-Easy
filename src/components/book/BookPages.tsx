@@ -62,7 +62,7 @@ export function BookSheet({ width, height, folio, children }: { width: number; h
             right: 0,
             bottom: 14,
             textAlign: 'center',
-            fontFamily: 'Lora',
+            fontFamily: 'NunitoSemiBold',
             fontSize: 12,
             color: c.inkFaint,
           }}
@@ -106,8 +106,8 @@ export function TitlePage({
         >
           {forScript(story.title, script)}
         </Text>
-        <Text style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>{displayTitleReading(story.titlePinyin, phoneticScript)}</Text>
-        <Text style={{ fontFamily: 'LoraItalic', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>
+        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>{displayTitleReading(story.titlePinyin, phoneticScript)}</Text>
+        <Text style={{ fontFamily: 'NunitoSemiBoldItalic', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>
           {story.titleEnglish}
         </Text>
         {/* A printer's flourish between the title and the blurb. */}
@@ -116,8 +116,8 @@ export function TitlePage({
           <View style={{ width: 5, height: 5, borderRadius: 1, backgroundColor: c.ribbon, transform: [{ rotate: '45deg' }] }} />
           <View style={{ width: 34, height: 1, backgroundColor: c.hairline }} />
         </View>
-        <Text style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 21, color: c.inkSoft, textAlign: 'center' }}>{story.description}</Text>
-        <Text style={{ fontFamily: 'Lora', fontSize: 12, lineHeight: 18, color: c.inkFaint, textAlign: 'center', marginTop: 6 }}>
+        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 21, color: c.inkSoft, textAlign: 'center' }}>{story.description}</Text>
+        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 12, lineHeight: 18, color: c.inkFaint, textAlign: 'center', marginTop: 6 }}>
           HSK {story.hskLevel} · {formatCount(story.wordCount)} words
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 18 }}>
@@ -243,7 +243,7 @@ export const TextPage = memo(function TextPage({
                 {/* Faded rather than removed when readings are off, so the page
                     never reflows under the reader (see `useReadingFade`). */}
                 <Animated.View style={{ opacity: fade.opacity }} accessibilityElementsHidden={fade.hidden}>
-                  <Text style={{ fontFamily: 'Inter', fontSize: 9.5, lineHeight: 12, color: c.inkFaint }}>{reading || ' '}</Text>
+                  <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 9.5, lineHeight: 12, color: c.inkFaint }}>{reading || ' '}</Text>
                 </Animated.View>
               </Pressable>
             )
@@ -253,7 +253,7 @@ export const TextPage = memo(function TextPage({
         {/* The translation, under a hairline — part of the page, not a card on it. */}
         {screen.translation ? (
           <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.hairline }}>
-            <Text style={{ fontFamily: 'LoraItalic', fontSize: 13.5, lineHeight: 20, color: c.inkSoft }}>{screen.translation}</Text>
+            <Text style={{ fontFamily: 'NunitoSemiBoldItalic', fontSize: 13.5, lineHeight: 20, color: c.inkSoft }}>{screen.translation}</Text>
           </View>
         ) : null}
 
@@ -303,7 +303,7 @@ export function EndPage({
             {forScript('完', script)}
           </Text>
         </View>
-        <Text style={{ fontFamily: 'LoraItalic', fontSize: 20, lineHeight: 28, color: c.ink, marginTop: 18 }}>The End</Text>
+        <Text style={{ fontFamily: 'NunitoSemiBoldItalic', fontSize: 20, lineHeight: 28, color: c.ink, marginTop: 18 }}>The End</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, marginBottom: 12 }}>
           <View style={{ width: 34, height: 1, backgroundColor: c.hairline }} />
           <View style={{ width: 5, height: 5, borderRadius: 1, backgroundColor: c.ribbon, transform: [{ rotate: '45deg' }] }} />
@@ -312,7 +312,7 @@ export function EndPage({
         <Text className={hanziFont(script, 'semibold')} style={{ fontSize: 20, lineHeight: 28, color: c.ink, textAlign: 'center' }}>
           {forScript(story.title, script)}
         </Text>
-        <Text style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>{story.titleEnglish}</Text>
+        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 20, color: c.inkSoft, textAlign: 'center' }}>{story.titleEnglish}</Text>
 
         <Pressable onPress={onDone} accessibilityRole="button" accessibilityLabel="Back to the library" style={{ marginTop: 30 }}>
           <View

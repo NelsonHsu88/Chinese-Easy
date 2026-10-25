@@ -1,3 +1,4 @@
+import { RaisedButton } from './dashboard/parts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, Pressable, Animated, Platform } from 'react-native'
 import { Mic, MicOff, Check, ChevronRight } from 'lucide-react-native'
@@ -9,8 +10,13 @@ import { bestTranscript, gradePronunciation, PASS_THRESHOLD } from '../lib/pronu
 import { isSpeechRecognitionAvailable, startListening, type ListenSession, type RecognitionFailure } from '../lib/speechRecognition'
 import { playPositiveChime, playRetryTone } from '../lib/sound'
 import { celebrateHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
-import { CHIP_SHADOW } from './chipShadow'
 import type { VocabWord } from '../types'
+
+/** The raised buttons' faces and shoulders: Tailwind's `brand-500` on `brand-700`, and a quiet white on slate-300. */
+const BRAND = '#22c55e'
+const BRAND_SHOULDER = '#15803d'
+const QUIET = '#ffffff'
+const QUIET_BORDER = '#cbd5e1'
 
 type Status =
   /** Waiting for the learner to tap the mic. */
@@ -78,6 +84,14 @@ export function PronunciationCheck({
   const [heardSyllables, setHeardSyllables] = useState<boolean[]>([])
 
   const sessionRef = useRef<ListenSession | null>(null)
+  /*
+   * Set from the tap until the attempt ends. State alone can't guard this: a
+   * second tap before the re-render saw the old status and opened a second
+   * recognition session, of which only one was ever closed.
+   */
+  const attemptOpen = useRef(false)
+  const alive = useRef(true)
+  const skippedRef = useRef(false)
   const matchedRef = useRef(false)
   /** Best score this attempt reached, so a near miss can be told apart from a wrong word. */
   const scoreRef = useRef(0)
@@ -94,7 +108,9 @@ export function PronunciationCheck({
   // The mic must not outlive the screen: leaving it open would keep recording
   // into a session the learner has already left.
   useEffect(() => {
+    alive.current = true
     return () => {
+      alive.current = false
       sessionRef.current?.cancel()
       sessionRef.current = null
       if (passTimer.current) clearTimeout(passTimer.current)
@@ -131,7 +147,8 @@ export function PronunciationCheck({
   }, [onPass])
 
   const listen = useCallback(async () => {
-    if (status === 'listening') return
+    if (status === 'listening' || attemptOpen.current) return
+    attemptOpen.current = true
     tapHaptic()
     matchedRef.current = false
     scoreRef.current = 0
@@ -172,6 +189,10 @@ export function PronunciationCheck({
       },
       onEnd: () => {
         sessionRef.current = null
+        attemptOpen.current = false
+        // Cancelled by a skip or by leaving: nothing to judge, and the retry
+        // tone would mark the way out as a mistake.
+        if (!alive.current || skippedRef.current) return
         setLastScore(scoreRef.current)
         if (matchedRef.current) {
           succeed()
@@ -183,6 +204,7 @@ export function PronunciationCheck({
       },
       onFailure: (reason: RecognitionFailure, _message) => {
         if (reason === 'permission' || reason === 'unavailable') {
+          attemptOpen.current = false
           setBlockedBy(reason)
           setStatus('blocked')
         }
@@ -191,10 +213,30 @@ export function PronunciationCheck({
       },
     })
 
-    sessionRef.current = session
+    // The learner left while the mic was starting: close it rather than keep
+    // recording for a screen that is gone.
+    if (!alive.current) {
+      session?.cancel()
+      return
+    }
+    if (session) {
+      // Only if this attempt is still running — an engine that ended at once has
+      // already been through `onEnd`.
+      if (attemptOpen.current) sessionRef.current = session
+      return
+    }
+    // Couldn't start, and `onEnd` will never come. Unless that was a refusal
+    // (already shown as blocked), offer another try instead of a dead mic.
+    if (attemptOpen.current) {
+      attemptOpen.current = false
+      setAttempts((a) => a + 1)
+      setStatus('miss')
+    }
   }, [status, succeed, word])
 
   const skip = useCallback(() => {
+    skippedRef.current = true
+    if (passTimer.current) clearTimeout(passTimer.current)
     sessionRef.current?.cancel()
     sessionRef.current = null
     onSkip()
@@ -330,13 +372,10 @@ export function PronunciationCheck({
 
       <View className="gap-3">
         {status === 'miss' && (
-          <Pressable
-            onPress={listen}
-            className="flex-row items-center justify-center gap-2 rounded-2xl bg-brand-500 py-4 shadow-card"
-          >
+          <RaisedButton onPress={listen} accessibilityLabel="Try again" height={56} radius={16} fill={BRAND} shoulder={BRAND_SHOULDER}>
             <Mic size={20} color="#ffffff" />
             <Text className="text-lg font-bold text-white">Try again</Text>
-          </Pressable>
+          </RaisedButton>
         )}
 
         {/*
@@ -345,13 +384,14 @@ export function PronunciationCheck({
          * failed them — or straight away when the mic isn't an option at all.
          */}
         {status === 'blocked' || attempts > 0 ? (
-          <Pressable
+          <RaisedButton
             onPress={skip}
-            accessibilityRole="button"
-            style={status === 'blocked' ? CHIP_SHADOW : undefined}
-            className={`flex-row items-center justify-center gap-1.5 rounded-2xl py-4 ${
-              status === 'blocked' ? 'bg-brand-500' : 'border border-slate-300 dark:border-slate-700'
-            }`}
+            accessibilityLabel={status === 'blocked' ? 'Continue' : 'Skip speaking'}
+            height={56}
+            radius={16}
+            fill={status === 'blocked' ? BRAND : QUIET}
+            border={status === 'blocked' ? undefined : QUIET_BORDER}
+            shoulder={status === 'blocked' ? BRAND_SHOULDER : QUIET_BORDER}
           >
             <Text
               className={`text-base font-bold ${status === 'blocked' ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}
@@ -359,7 +399,7 @@ export function PronunciationCheck({
               {status === 'blocked' ? 'Continue' : 'Skip speaking'}
             </Text>
             <ChevronRight size={18} color={status === 'blocked' ? '#ffffff' : '#64748b'} />
-          </Pressable>
+          </RaisedButton>
         ) : (
           <Pressable onPress={skip} accessibilityRole="button" className="flex-row items-center justify-center gap-1.5 py-2">
             <Text className="text-sm font-semibold text-slate-400">I can't speak right now</Text>

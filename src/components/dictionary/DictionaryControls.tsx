@@ -1,12 +1,12 @@
 import { View, Text, type ViewStyle } from 'react-native'
 import { Volume2, PencilLine, Plus, Check, Sparkles, Star, Trash2 } from 'lucide-react-native'
 import { PressScale } from './PressScale'
-import { PressableScale, LiftedFace, DASH_LIFT } from '../dashboard/parts'
+import { PressableScale, LiftedFace, DASH_LIFT, RaisedButton } from '../dashboard/parts'
 import { speak } from '../../lib/speech'
 import { playPositiveChime } from '../../lib/sound'
 import { tapHaptic, tickHaptic, successHaptic, sequence } from '../../lib/haptics'
 import { LOOKUP_HSK_LEVEL } from '../../data/lookupWords'
-import { DICT_BG, DICT_BUTTON_SHADOW } from './shadows'
+import { DICT_BG } from './shadows'
 import type { EntryState } from '../../lib/dictionary'
 
 /*
@@ -57,8 +57,8 @@ export function HskBadge({ level }: { level: number }) {
       <Text
         className={
           graded
-            ? 'font-dict-bold text-[12px] leading-[15px] text-dict-green-dark'
-            : 'font-dict-bold text-[12px] leading-[15px] text-dict-muted'
+            ? 'font-nunito-bold text-[12px] leading-[15px] text-dict-green-dark'
+            : 'font-nunito-bold text-[12px] leading-[15px] text-dict-muted'
         }
       >
         {graded ? `HSK ${level}` : 'Rare'}
@@ -66,6 +66,9 @@ export function HskBadge({ level }: { level: number }) {
     </View>
   )
 }
+
+/** A filter chip's face height: the old flat chip's (10pt padding either side of an 18pt line). */
+const CHIP_HEIGHT = 38
 
 /** Filter chip — the HSK row and the All/Hanzi/Pinyin/English row. */
 export function FilterChip({
@@ -77,26 +80,45 @@ export function FilterChip({
   selected: boolean
   onPress: () => void
 }) {
+  /*
+   * Raised, like the filter row's pills and the Add button: `LiftedFace` on a
+   * shoulder, sinking onto it when pressed. Selected is the solid green of
+   * Add; the rest stand on the pills' soft grey. Compact, so all six HSK
+   * levels reach the edge of a 390pt screen rather than trailing off it — the
+   * row scrolls, but a level the learner cannot see is a level they will not
+   * think to pick.
+   */
   return (
-    <PressScale
+    <PressableScale
       onPress={() => {
         // A filter change is a state change, so it gets a tick — and no sound.
         tickHaptic()
         onPress()
       }}
-      accessibilityLabel={label}
-      /* Compact, so all six HSK levels reach the edge of a 390pt screen rather
-         than trailing off it — the row scrolls, but a level the learner cannot
-         see is a level they will not think to pick. */
-      style={[DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: selected ? DICT_BG.green : DICT_BG.card }]}
-      className={`items-center justify-center rounded-full px-4 py-2.5 ${
-        selected ? 'bg-dict-green' : 'border border-dict-line bg-dict-card'
-      }`}
+      scaleTo={1}
+      haptic={false}
+      accessibilityLabel={`${label}${selected ? ', selected' : ''}`}
     >
-      <Text className={`font-dict-bold text-[14px] leading-[18px] ${selected ? 'text-white' : 'text-dict-body'}`}>
-        {label}
-      </Text>
-    </PressScale>
+      <LiftedFace
+        height={CHIP_HEIGHT}
+        fill={selected ? DICT_BG.green : DICT_BG.card}
+        border={selected ? undefined : DICT_BG.pillBorder}
+        shoulder={selected ? DICT_BG.greenShoulder : DICT_BG.pillShoulder}
+        shadow={false}
+      >
+        <Text
+          style={{
+            paddingHorizontal: 16,
+            fontFamily: 'NunitoBold',
+            fontSize: 14,
+            lineHeight: 18,
+            color: selected ? '#ffffff' : '#42526B',
+          }}
+        >
+          {label}
+        </Text>
+      </LiftedFace>
+    </PressableScale>
   )
 }
 
@@ -117,14 +139,19 @@ export function IconChip({
   const color = tint === 'green' ? ICON_GREEN : ICON_MUTED
   const Icon = icon === 'speaker' ? Volume2 : PencilLine
   return (
-    <PressScale
+    <RaisedButton
       onPress={onPress}
       accessibilityLabel={label}
-      style={[{ width: size, height: size }, DICT_BUTTON_SHADOW, { borderRadius: size / 2, backgroundColor: DICT_BG.card }]}
-      className="h-full w-full items-center justify-center rounded-full border border-dict-line bg-dict-card"
+      height={size}
+      width={size}
+      radius={size / 2}
+      fill={DICT_BG.card}
+      border={DICT_BG.pillBorder}
+      shoulder={DICT_BG.pillShoulder}
+      scaleTo={0.9}
     >
       <Icon size={size * 0.45} color={color} strokeWidth={ICON_STROKE} />
-    </PressScale>
+    </RaisedButton>
   )
 }
 
@@ -149,7 +176,7 @@ export function SpeakChip({ text, size = 40 }: { text: string; size?: number }) 
  * Plain style objects rather than classes, deliberately. This is the control
  * whose state flips when a word is added, and on native that flip was taking
  * NativeWind-applied styles on the word screen down with it (see the comment
- * over `HeroCard`'s button row). A state-dependent style here is just a
+ * over `DetailHero`'s button row). A state-dependent style here is just a
  * different object, which React Native applies directly.
  */
 const STATE_STYLES: Record<EntryState, { label: string; box: ViewStyle; text: string }> = {
@@ -195,7 +222,7 @@ export function DeckStateButton({
       <View style={[PILL, { height: faceHeight, marginTop: DASH_LIFT, paddingHorizontal }, meta.box]}>
         {state === 'in-deck' && <Check size={16} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />}
         {state === 'new-from-story' && <Sparkles size={14} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />}
-        <Text style={{ fontFamily: 'NunitoSansSemiBold', fontSize: 14, lineHeight: 18, color: meta.text }}>
+        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 18, color: meta.text }}>
           {meta.label}
         </Text>
       </View>
@@ -228,7 +255,7 @@ export function DeckStateButton({
       <LiftedFace height={faceHeight} fill={DICT_BG.green} shoulder={DICT_BG.greenShoulder}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal }}>
           {compact && <Plus size={16} color="#ffffff" strokeWidth={ICON_STROKE} />}
-          <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: meta.text }}>{meta.label}</Text>
+          <Text style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 19, color: meta.text }}>{meta.label}</Text>
         </View>
       </LiftedFace>
     </PressableScale>
@@ -241,14 +268,19 @@ export function DeckStateButton({
  */
 export function FavoriteButton({ favorite, onToggle }: { favorite: boolean; onToggle: () => void }) {
   return (
-    <PressScale
+    <RaisedButton
       onPress={() => {
         tickHaptic()
         onToggle()
       }}
       accessibilityLabel={favorite ? 'Remove from favorites' : 'Add to favorites'}
-      style={[DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.card }]}
-      innerStyle={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+      height={44}
+      width={44}
+      radius={22}
+      fill={DICT_BG.card}
+      border={DICT_BG.pillBorder}
+      shoulder={DICT_BG.pillShoulder}
+      scaleTo={0.9}
     >
       <Star
         size={22}
@@ -256,7 +288,7 @@ export function FavoriteButton({ favorite, onToggle }: { favorite: boolean; onTo
         fill={favorite ? ICON_STAR : 'transparent'}
         strokeWidth={ICON_STROKE}
       />
-    </PressScale>
+    </RaisedButton>
   )
 }
 
@@ -291,7 +323,7 @@ export function RemoveFromDeckButton({
         innerStyle={[PILL, { paddingVertical: 12 }]}
       >
         <Trash2 size={16} color={DICT_BG.coral} strokeWidth={ICON_STROKE} />
-        <Text style={{ fontFamily: 'NunitoSansSemiBold', fontSize: 15, lineHeight: 19, color: DICT_BG.coral }}>
+        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 19, color: DICT_BG.coral }}>
           Remove from My Words
         </Text>
       </PressScale>
@@ -301,36 +333,39 @@ export function RemoveFromDeckButton({
   return (
     <View style={{ borderRadius: 20, backgroundColor: DICT_BG.coralPale, padding: 14, gap: 10 }}>
       <Text
-        style={{ fontFamily: 'NunitoSans', fontSize: 14, lineHeight: 19, color: DICT_BG.coral, textAlign: 'center' }}
+        style={{ fontFamily: 'Nunito', fontSize: 14, lineHeight: 19, color: DICT_BG.coral, textAlign: 'center' }}
       >
         Remove this word? Its review progress goes with it.
       </Text>
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        <PressScale
+        <RaisedButton
           onPress={() => {
             tickHaptic()
             onCancel()
           }}
           accessibilityLabel="Keep word"
-          outerStyle={{ flex: 1 }}
-          style={{ borderRadius: 999, backgroundColor: DICT_BG.card }}
-          innerStyle={[PILL, { paddingVertical: 12 }]}
+          wrapperStyle={{ flex: 1 }}
+          height={44}
+          fill={DICT_BG.card}
+          border={DICT_BG.pillBorder}
+          shoulder={DICT_BG.pillShoulder}
         >
-          <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: ICON_MUTED }}>Keep</Text>
-        </PressScale>
-        <PressScale
+          <Text style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 19, color: ICON_MUTED }}>Keep</Text>
+        </RaisedButton>
+        <RaisedButton
           onPress={() => {
             tapHaptic()
             onConfirm()
           }}
           accessibilityLabel="Confirm remove"
-          outerStyle={{ flex: 1 }}
-          style={{ borderRadius: 999, backgroundColor: DICT_BG.coral }}
-          innerStyle={[PILL, { paddingVertical: 12 }]}
+          wrapperStyle={{ flex: 1 }}
+          height={44}
+          fill={DICT_BG.coral}
+          shoulder={DICT_BG.coralShoulder}
         >
           <Trash2 size={16} color="#ffffff" strokeWidth={ICON_STROKE} />
-          <Text style={{ fontFamily: 'NunitoSansBold', fontSize: 15, lineHeight: 19, color: '#ffffff' }}>Remove</Text>
-        </PressScale>
+          <Text style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 19, color: '#ffffff' }}>Remove</Text>
+        </RaisedButton>
       </View>
     </View>
   )
@@ -346,7 +381,7 @@ export function AddCircleButton({ onAdd, added }: { onAdd: () => void; added: bo
     )
   }
   return (
-    <PressScale
+    <RaisedButton
       onPress={() => {
         sequence([
           { at: 0, fire: tapHaptic },
@@ -356,10 +391,16 @@ export function AddCircleButton({ onAdd, added }: { onAdd: () => void; added: bo
         onAdd()
       }}
       accessibilityLabel="Add to deck"
-      style={[{ width: 28, height: 28 }, DICT_BUTTON_SHADOW, { borderRadius: 14, backgroundColor: DICT_BG.card }]}
-      className="h-full w-full items-center justify-center rounded-full border-2 border-dict-green bg-dict-card"
+      height={28}
+      width={28}
+      radius={14}
+      fill={DICT_BG.card}
+      border={DICT_BG.green}
+      shoulder={DICT_BG.green}
+      scaleTo={0.88}
+      hitSlop={8}
     >
       <Plus size={15} color={ICON_GREEN} strokeWidth={2.5} />
-    </PressScale>
+    </RaisedButton>
   )
 }

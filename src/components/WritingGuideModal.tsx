@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, Modal as RNModal, ScrollView, Animated, Platform, useWindowDimensions } from 'react-native'
+import type { ScrollViewInstance } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { ArrowLeft, Droplet, Pencil, Puzzle, Rocket, Star, Trophy } from 'lucide-react-native'
@@ -226,7 +227,7 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
    * bottom — and one ScrollView serves every page, so without this the next page
    * would open wherever the last one was left.
    */
-  const scrollRef = useRef<ScrollView>(null)
+  const scrollRef = useRef<ScrollViewInstance>(null)
 
   const goTo = (next: number) => {
     tickHaptic()

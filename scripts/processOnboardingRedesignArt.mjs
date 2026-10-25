@@ -62,6 +62,21 @@ const PIECES = [
     feather: { ...SIDES, top: 70, bottom: 36 },
   },
   {
+    /*
+     * The welcome page's whole landscape, as the reference lays it: from just
+     * under the wordmark's cap height, so the mountains and pavilion stand
+     * either side of the subtitle, down to the feature card. The title and
+     * subtitle are painted into the reference, so a soft hole clears that
+     * patch back to paper — the app draws its own text there.
+     */
+    name: 'welcome-scene',
+    ref: 'welcome',
+    box: { left: 0, top: 280, width: 941, height: 723 },
+    sample: { x: 470, y: 470 },
+    feather: { ...SIDES, top: 50, bottom: 36 },
+    holes: [{ left: 222, right: 735, top: -60, bottom: 188, radius: 46, ramp: 34 }],
+  },
+  {
     name: 'welcome-branch',
     ref: 'welcome',
     /* Clear of the app icon (x≈397) and the wordmark (y≈285). */
@@ -253,7 +268,9 @@ async function main() {
     }
   }
 
-  for (const piece of PIECES) {
+  /* `node scripts/processOnboardingRedesignArt.mjs welcome-scene` re-cuts only the named pieces. */
+  const only = process.argv.slice(2)
+  for (const piece of PIECES.filter((p) => only.length === 0 || only.includes(p.name))) {
     const src = path.join(DIR, REF[piece.ref])
     /* A 5×5 average, so one speck of paper texture can't set the key. */
     const { data: bgPx } = await sharp(src)

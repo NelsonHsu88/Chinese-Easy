@@ -15,7 +15,7 @@ import {
   BASICS_CONTENT_MAX,
   BASICS_GUTTER,
 } from '../components/basics/tokens'
-import { BasicsBackRow, BasicsButton, BasicsChevron, BasicsProgressBar } from '../components/basics/parts'
+import { BasicsBackRow, BasicsButton, BasicsProgressBar } from '../components/basics/parts'
 import { BASICS_LESSONS, type BasicsGroupId, type Phon } from '../data/basics'
 import { basicsText, featuredLesson, groupById, groupProgress, isLessonDone, lessonKey } from '../lib/basics'
 
@@ -131,13 +131,13 @@ export function ChineseBasicsHome() {
               <BasicsBackRow fallback="/lessons-tab" />
               <View style={{ paddingTop: sp.md, paddingBottom: sp.lg, minHeight: refY(START_CARD_TOP_REF, column) - 44 }}>
                 <Text
-                  className="font-lora-bold"
+                  className="font-nunito-extrabold"
                   accessibilityRole="header"
                   style={{ ...t.pageTitle, fontSize: Math.min(t.pageTitle.fontSize, column * 0.093), color: c.navy }}
                 >
                   Chinese Basics
                 </Text>
-                <Text className="font-lora" style={{ ...t.pageSubtitle, marginTop: 6, color: c.slate }}>
+                <Text className="font-nunito-semibold" style={{ ...t.pageSubtitle, marginTop: 6, color: c.slate }}>
                   Build a strong foundation,{'\n'}step by step.
                 </Text>
               </View>
@@ -165,7 +165,7 @@ export function ChineseBasicsHome() {
                     {eyebrow}
                   </Text>
                   <Text
-                    className="font-lora-bold"
+                    className="font-nunito-extrabold"
                     style={{ marginTop: sp.xs, fontSize: t.cardTitle.fontSize * typeScale, lineHeight: t.cardTitle.lineHeight * typeScale, color: c.navy }}
                   >
                     {offer ? text(featured.title) : 'Well done'}
@@ -219,13 +219,13 @@ export function ChineseBasicsHome() {
                           <Image source={tile.art} resizeMode="cover" style={{ width: '100%', height: artHeight }} />
                           <View style={{ flex: 1, paddingHorizontal: sp.lg, paddingBottom: sp.lg, marginTop: -sp.xs }}>
                             <Text
-                              className="font-lora-bold"
+                              className="font-nunito-extrabold"
                               style={{ ...t.tileTitle, fontSize: t.tileTitle.fontSize * typeScale, lineHeight: t.tileTitle.lineHeight * typeScale, color: c.navy }}
                             >
                               {group.title}
                             </Text>
                             <Text
-                              className="font-lora"
+                              className="font-nunito-semibold"
                               style={{ marginTop: sp.xs, fontSize: t.cardBody.fontSize * typeScale, lineHeight: t.cardBody.lineHeight * typeScale, color: c.slate }}
                             >
                               {text(group.description)}
@@ -234,14 +234,15 @@ export function ChineseBasicsHome() {
                             <View style={{ flexDirection: 'row', marginBottom: sp.sm }}>
                               <BasicsProgressBar done={progress.done} total={progress.total} height={6} />
                             </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            {/* The count alone: the whole tile is the button, so no arrow. The row keeps the
+                                arrow's old height, so the tiles stay the size they were. */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', minHeight: 32 }}>
                               <Text
                                 className={progress.done === progress.total ? 'font-nunito-bold' : 'font-nunito-semibold'}
                                 style={{ ...t.meta, color: progress.done === progress.total ? c.jadeDark : c.slate }}
                               >
                                 {progress.done === progress.total ? 'Complete' : `${progress.done} / ${progress.total} lessons`}
                               </Text>
-                              <BasicsChevron size={32} />
                             </View>
                           </View>
                         </ShadowSurface>

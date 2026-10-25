@@ -1,5 +1,6 @@
+import { RaisedButton } from '../components/dashboard/parts'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { View, Text, Pressable } from 'react-native'
+import { View, Text } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { X, Timer, Sparkles, Layers, Target } from 'lucide-react-native'
@@ -45,11 +46,22 @@ import { useAds } from '../context/AdsContext'
  * underneath it — losing the flashcard's revealed state and restarting the
  * stroke writer mid-session.
  */
-function SessionStage({ motion, children }: { motion: ReturnType<typeof useQuestionTransition>['motion']; children: ReactNode }) {
+function SessionStage({
+  motion,
+  celebrate,
+  children,
+}: {
+  motion: ReturnType<typeof useQuestionTransition>['motion']
+  /** The confetti trigger. Drawn here, in the one frame every phase shares, so a
+      burst keeps playing when the session moves on to speaking or practice. */
+  celebrate: number
+  children: ReactNode
+}) {
   return (
     // Light-only like every session screen: a dark-mode stage showed black wherever a card hadn't drawn yet.
     <View className="flex-1 bg-slate-50">
       <QuestionMotionProvider motion={motion}>{children}</QuestionMotionProvider>
+      <Celebration trigger={celebrate} />
     </View>
   )
 }
@@ -588,7 +600,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     }
     /* Built to the SS930 references — see components/sessionEnd/. */
     return (
-      <SessionStage motion={questionMotion.motion}>
+      <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
         {stats.reviewed === 0 ? (
           <SessionEnd kind="empty" mode={mode} onBack={finishSession} />
         ) : (
@@ -608,7 +620,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   if (step?.kind === 'match') {
     return (
-      <SessionStage motion={questionMotion.motion}>
+      <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
         <ReviewMatchPairs
           key={stepKey}
           words={step.wordIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)}
@@ -631,9 +643,8 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   if (speaking && speakingWord) {
     return (
-      <SessionStage motion={questionMotion.motion}>
+      <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
         <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
-          <Celebration trigger={celebrateKey} />
           <SessionHeader
             onClose={() => closeSession()}
             step={shown.step}
@@ -655,7 +666,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     /* In the flashcard's own design. Keyed per rep: each rep's auto-advance and
        writer state belong to that rep alone. */
     return (
-      <SessionStage motion={questionMotion.motion}>
+      <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
         <PracticeRep
           key={`${practice.wordId}-${practice.remaining}`}
           word={word}
@@ -671,7 +682,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
 
   if (step.kind === 'fillGap') {
     return (
-      <SessionStage motion={questionMotion.motion}>
+      <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
         <ReviewFillGap
           key={stepKey}
           word={word}
@@ -692,7 +703,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
      references — so the generic session header stays out of their way. */
   if (step.kind === 'listening') {
     return (
-      <SessionStage motion={questionMotion.motion}>
+      <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
         {/* `key` carries the index as well as the word — see below. */}
         <ReviewListening
           key={`${step.wordId}-${index}`}
@@ -713,8 +724,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
   /* Like the Mixed Drills kinds, the flashcard owns its whole screen — header
      included — built to the SS 1011 reference. */
   return (
-    <SessionStage motion={questionMotion.motion}>
-      <Celebration trigger={celebrateKey} />
+    <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
       {/*
         `key` carries the index as well as the word: a skipped word comes back
         later in the same session, and keyed on the id alone the second
@@ -771,9 +781,19 @@ function SessionHeader({
   return (
     <View className="px-4 pt-4">
       <View className="flex-row items-center gap-3">
-        <Pressable onPress={onClose} accessibilityLabel="Close review" className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900">
+        <RaisedButton
+          onPress={onClose}
+          accessibilityLabel="Close review"
+          height={36}
+          width={36}
+          radius={18}
+          fill="#ffffff"
+          border="#e2e8f0"
+          shoulder="#cbd5e1"
+          scaleTo={0.9}
+        >
           <X size={20} color="#64748b" />
-        </Pressable>
+        </RaisedButton>
         <RaisedProgressBar progress={pct / 100} accessibilityLabel={`${unit === 'rep' ? 'Rep' : 'Card'} ${step} of ${total}`} />
         <View
           className="flex-row items-baseline justify-end"

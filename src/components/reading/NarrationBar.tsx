@@ -1,3 +1,4 @@
+import { RaisedButton } from '../dashboard/parts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, Animated, Easing, Platform, PanResponder, useWindowDimensions } from 'react-native'
 import { Play, Pause, RotateCcw, RotateCw, X } from 'lucide-react-native'
@@ -34,6 +35,9 @@ const FALL = { duration: 210, easing: Easing.in(Easing.cubic) } as const
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
 const TRACK_HEIGHT = 5
+/** The play button: the reader's jade, raised on a deeper jade. */
+const PLAY_FACE = '#45b887'
+const PLAY_SHOULDER = '#2F8F66'
 const KNOB = 16
 
 interface Props {
@@ -72,7 +76,7 @@ function SkipButton({ direction, onPress }: { direction: 'back' | 'forward'; onP
       <Icon size={34} color="#292936" strokeWidth={1.8} />
       {/* Centred inside the arrow's hollow, the way a podcast player reads. */}
       <View className="absolute inset-0 items-center justify-center">
-        <Text className="font-inter-semibold text-[11px]" style={{ color: '#292936' }}>
+        <Text className="font-nunito-bold text-[11px]" style={{ color: '#292936' }}>
           {SKIP_SECONDS}
         </Text>
       </View>
@@ -213,7 +217,7 @@ export function NarrationBar({
           >
             {forScript(story.title, script)}
           </Text>
-          <Text numberOfLines={1} className="font-lora text-[12.5px]" style={{ color: '#55545d' }}>
+          <Text numberOfLines={1} className="font-nunito-semibold text-[12.5px]" style={{ color: '#55545d' }}>
             {story.titleEnglish}
           </Text>
         </View>
@@ -221,12 +225,15 @@ export function NarrationBar({
         <View className="mt-4 flex-row items-center justify-center" style={{ gap: 30 }}>
           <SkipButton direction="back" onPress={() => onSkip(-SKIP_SECONDS)} />
 
-          <Pressable
+          <RaisedButton
             onPress={onTogglePlay}
-            accessibilityRole="button"
             accessibilityLabel={playing ? 'Pause' : 'Play'}
-            className="items-center justify-center rounded-full shadow-glow-jade active:opacity-85"
-            style={{ width: 66, height: 66, backgroundColor: '#45b887' }}
+            height={66}
+            width={66}
+            radius={33}
+            fill={PLAY_FACE}
+            shoulder={PLAY_SHOULDER}
+            scaleTo={0.9}
           >
             {playing ? (
               <Pause size={27} color="#ffffff" fill="#ffffff" strokeWidth={1.5} />
@@ -234,7 +241,7 @@ export function NarrationBar({
               // Nudged right so the triangle's mass, not its bounding box, sits centred.
               <Play size={27} color="#ffffff" fill="#ffffff" strokeWidth={1.5} style={{ marginLeft: 3 }} />
             )}
-          </Pressable>
+          </RaisedButton>
 
           <SkipButton direction="forward" onPress={() => onSkip(SKIP_SECONDS)} />
         </View>
@@ -290,10 +297,10 @@ export function NarrationBar({
 
         {/* Time elapsed and the whole story's length, following the knob — a drag previews where it will land. */}
         <View className="flex-row justify-between" style={{ marginTop: -2 }}>
-          <Text className="font-inter-medium text-[12px]" style={{ color: '#55545d', fontVariant: ['tabular-nums'] }}>
+          <Text className="font-nunito-semibold text-[12px]" style={{ color: '#55545d', fontVariant: ['tabular-nums'] }}>
             {formatClock(shown * totalSeconds)}
           </Text>
-          <Text className="font-inter-medium text-[12px]" style={{ color: '#8a8a99', fontVariant: ['tabular-nums'] }}>
+          <Text className="font-nunito-semibold text-[12px]" style={{ color: '#8a8a99', fontVariant: ['tabular-nums'] }}>
             {formatClock(totalSeconds)}
           </Text>
         </View>

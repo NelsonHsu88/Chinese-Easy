@@ -143,22 +143,16 @@ module.exports = {
         // connected slanted script, and they are not interchangeable at size.
         handwritten: ['KalamBold', 'cursive'],
 
-        // Reading-UI faces. React Native can't synthesise weights the way a browser
-        // can, so every weight is loaded as its own family (CJK most of
-        // all: it has no synthesisable bold) and selected by family, not fontWeight.
+        // Nunito is the app's one Latin typeface, for headings, prose and UI alike.
+        // React Native can't synthesise weights the way a browser can, so every
+        // weight is loaded as its own family (CJK most of all: it has no
+        // synthesisable bold) and selected by family, not fontWeight.
         'nunito-semibold': ['NunitoSemiBold', 'sans-serif'],
+        'nunito-semibold-italic': ['NunitoSemiBoldItalic', 'sans-serif'],
         'nunito-bold': ['NunitoBold', 'sans-serif'],
         'nunito-extrabold': ['NunitoExtraBold', 'sans-serif'],
         'nunito-black': ['NunitoBlack', 'sans-serif'],
-        inter: ['Inter', 'sans-serif'],
-        'inter-medium': ['InterMedium', 'sans-serif'],
-        'inter-semibold': ['InterSemiBold', 'sans-serif'],
-        'inter-bold': ['InterBold', 'sans-serif'],
-        // The literary serif English prose is set in — deliberately not the UI sans,
-        // so translations read like a storybook rather than app chrome.
-        lora: ['Lora', 'serif'],
-        'lora-italic': ['LoraItalic', 'serif'],
-        'lora-bold': ['LoraBold', 'serif'],
+
         // Script-specific faces, paired with the `hanzi-sc-*` set below. Neither
         // carries a fallback to the other on purpose: `hanziFont` picks the face
         // from `settings.script` so each script gets its own regional glyph
@@ -171,13 +165,6 @@ module.exports = {
         'hanzi-sans-bold': ['NotoSansTCBold', 'sans-serif'],
         'handwriting-medium': ['CaveatMedium', 'cursive'],
 
-        // Dictionary UI faces — Nunito Sans, a different typeface from the
-        // rounded `sans`/`nunito-*` families above. Weight is chosen by family,
-        // never by `fontWeight`.
-        'dict-sans': ['NunitoSans', 'sans-serif'],
-        'dict-semibold': ['NunitoSansSemiBold', 'sans-serif'],
-        'dict-bold': ['NunitoSansBold', 'sans-serif'],
-        'dict-extrabold': ['NunitoSansExtraBold', 'sans-serif'],
         // Traditional-only serif at Regular, for large vocabulary display where
         // a real 400 weight reads better than the Medium `hanzi-tc` face.
         'hanzi-tc-regular': ['NotoSerifTC', 'serif'],

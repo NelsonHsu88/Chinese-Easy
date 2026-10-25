@@ -16,11 +16,13 @@
  * his ground and the title; results and Continue at the bottom — sized so
  * nothing overlaps, crops or scrolls, from an iPhone SE to a Pro Max.
  *
- * On the turn: the art is one flat painting, so a true 360° spin (which shows
- * his side and back) needs turnaround frames that don't exist yet — see
- * scripts/celebration/README.md. Rather than flip or squash the painting, he
- * makes a lively turn of about a third: a twist one way and back the other in
- * perspective, never far enough to go thin.
+ * Two Shifus. With `FEATURES.celebration3d` on, he is the 3D render
+ * (`Shifu3D`): the jump, the full 360° turn and the landing are all in the
+ * render itself, and the clock starts when it does, so the sparkles, fanfare
+ * and text land on its touchdown. Off, he is the flat painting, and the
+ * transforms here make the jump. A flat painting can't show his side or back,
+ * so that version makes a lively turn of about a third instead: a twist one
+ * way and back the other, in perspective, never far enough to go thin.
  */
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { AccessibilityInfo, Animated, Easing, Image, PixelRatio, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native'
@@ -30,7 +32,12 @@ import { ReviewButton } from '../review/parts'
 import { BrushHighlight } from '../BrushHighlight'
 import { playFanfare } from '../../lib/sound'
 import { successHaptic } from '../../lib/haptics'
-import { CELEB_CONTENT_MAX, SHIFU_ART, celebColors as C, celebTiming as T, celebType } from './tokens'
+import { FEATURES } from '../../lib/features'
+import { Shifu3D } from './Shifu3D'
+import { CELEB_CONTENT_MAX, SHIFU_3D, SHIFU_ART, celebColors as C, celebTiming, celebTiming3D, celebType } from './tokens'
+
+const THREE_D = FEATURES.celebration3d
+const T = THREE_D ? celebTiming3D : celebTiming
 
 const SHIFU = require('../../assets/images/celebration/shifu-jump.png')
 const MOUNTAINS = require('../../assets/images/decor/mountains-wide.png')
@@ -63,6 +70,9 @@ export function LessonCompletionCelebration({ stats, onContinue, title = 'Great 
   const insets = useSafeAreaInsets()
   const clock = useRef(new Animated.Value(0)).current
   const [settled, setSettled] = useState(false)
+  /** null until the reduced-motion setting is known. */
+  const [motion, setMotion] = useState<boolean | null>(null)
+  const [playKey, setPlayKey] = useState(0)
   const run = useRef(0)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
 
@@ -87,7 +97,15 @@ export function LessonCompletionCelebration({ stats, onContinue, title = 'Great 
     const charW = (charH * SHIFU_ART.width) / SHIFU_ART.height
     const ground = 14 // room under his feet for the shadow
     const jump = Math.max(24, Math.min(100, charH * 0.3, stage - charH - ground - 6))
-    return { column, k, fs, contentH, titleH, bottomH, breathing, stage, charH, charW, ground, jump }
+    // The 3D render: standing as tall as the painting, soles on the same floor,
+    // the top of the jump inside the safe area, the sleeves inside the column.
+    const v3h = Math.min(
+      charH / SHIFU_3D.standing,
+      (stage + breathing - ground) / (SHIFU_3D.apex - SHIFU_3D.feet),
+      (column * 0.98) / (SHIFU_3D.span * SHIFU_3D.aspect),
+    )
+    const v3 = { w: v3h * SHIFU_3D.aspect, h: v3h, bottom: ground - SHIFU_3D.feet * v3h }
+    return { column, k, fs, contentH, titleH, bottomH, breathing, stage, charH, charW, ground, jump, v3 }
   }, [width, height, insets.top, insets.bottom, subtitle])
 
   /* ── Playback ───────────────────────────────────────────────────────── */
@@ -124,9 +142,15 @@ export function LessonCompletionCelebration({ stats, onContinue, title = 'Great 
 
   useEffect(() => {
     let alive = true
+    const begin = (animate: boolean) => {
+      if (!alive) return
+      setMotion(animate)
+      // The 3D Shifu starts the clock itself, once its animation is running.
+      if (!THREE_D || !animate) play(animate)
+    }
     AccessibilityInfo.isReduceMotionEnabled()
-      .then((reduce) => alive && play(!reduce))
-      .catch(() => alive && play(true))
+      .then((reduce) => begin(!reduce))
+      .catch(() => begin(true))
     return () => {
       alive = false
       run.current++
@@ -147,7 +171,25 @@ export function LessonCompletionCelebration({ stats, onContinue, title = 'Great 
       <View style={{ flex: 1, paddingTop: insets.top + L.breathing, paddingBottom: insets.bottom, alignItems: 'center' }}>
         {/* Zone 2: the stage — headroom for the jump, Shifu standing on its floor. */}
         <View style={{ width: L.column, height: L.stage, alignItems: 'center', justifyContent: 'flex-end' }}>
+          {THREE_D ? (
+            // The render carries his own contact shadow, jump and turn.
+            // No fade-in: his first frame is a calm standing pose, and a fade on
+            // the JS clock can lag the animation while a large image decodes.
+            <View style={{ position: 'absolute', bottom: L.v3.bottom, width: L.v3.w, height: L.v3.h }}>
+              <Pressable
+                // Development only: a long press replays the celebration.
+                onLongPress={__DEV__ ? () => setPlayKey((k) => k + 1) : undefined}
+                accessible={false}
+                style={{ width: '100%', height: '100%' }}
+              >
+                {motion !== null ? (
+                  <Shifu3D width={L.v3.w} height={L.v3.h} playKey={playKey} animate={motion} onStart={motion ? () => play(true) : undefined} />
+                ) : null}
+              </Pressable>
+            </View>
+          ) : null}
           {/* A soft contact shadow — a wash that fades at its rim, not a bar. */}
+          {!THREE_D ? (
           <Animated.View style={{ marginBottom: 2, opacity: A.shadowOpacity, transform: [{ scaleX: A.shadowScale }] }}>
             <Svg width={L.charW * 0.7} height={22}>
               <Defs>
@@ -160,6 +202,8 @@ export function LessonCompletionCelebration({ stats, onContinue, title = 'Great 
               <Ellipse cx={(L.charW * 0.7) / 2} cy={11} rx={(L.charW * 0.7) / 2} ry={11} fill="url(#celebShadow)" />
             </Svg>
           </Animated.View>
+          ) : null}
+          {!THREE_D ? (
           <Animated.View
             pointerEvents="box-none"
             style={{
@@ -187,8 +231,18 @@ export function LessonCompletionCelebration({ stats, onContinue, title = 'Great 
               <Image source={SHIFU} style={{ width: L.charW, height: L.charH }} resizeMode="contain" accessibilityIgnoresInvertColors />
             </Pressable>
           </Animated.View>
-          <Sparkles A={A} charW={L.charW} charH={L.charH} ground={L.ground} />
-          <Petals A={A} charW={L.charW} ground={L.ground} />
+          ) : null}
+          {THREE_D ? (
+            <Sparkles
+              A={A}
+              box={{ w: L.v3.w, h: L.v3.h, bottom: L.v3.bottom }}
+              head={{ x: L.v3.w / 2, y: L.v3.h * (1 - SHIFU_3D.head) }}
+              r={L.v3.h * SHIFU_3D.headRadius * 1.55}
+            />
+          ) : (
+            <Sparkles A={A} box={{ w: L.charW, h: L.charH, bottom: L.ground }} head={{ x: 0.47 * L.charW, y: L.charH * 0.3 }} r={L.charW * 0.4} />
+          )}
+          <Petals A={A} charW={THREE_D ? L.v3.w * SHIFU_3D.span * 0.75 : L.charW} ground={L.ground} />
         </View>
 
         {/* The title, under where he lands. */}
@@ -240,37 +294,39 @@ function buildAnimations(t: Animated.Value, L: Layout) {
   const at = (inputRange: number[], outputRange: number[] | string[], easing?: (v: number) => number) =>
     t.interpolate({ inputRange, outputRange: outputRange as number[], easing, extrapolate: 'clamp' })
 
+  // The painting's own jump (unused by the 3D Shifu) keeps its own beats.
+  const P = celebTiming
   // Squash and stretch, from his feet: scaleY about the centre moves the feet,
   // so a matching translate keeps them planted.
-  const sY = [0, T.crouchTo, 360, 520, T.liftTo, T.touchAt, 1380, T.landTo]
+  const sY = [0, P.crouchTo, 360, 520, P.liftTo, P.touchAt, 1380, P.landTo]
   const sYv = [1, 0.94, 1.06, 1, 1, 1, 0.92, 1.02]
-  const scaleY = t.interpolate({ inputRange: [...sY, T.landTo + 80], outputRange: [...sYv, 1], extrapolate: 'clamp' })
-  const scaleX = t.interpolate({ inputRange: [...sY, T.landTo + 80], outputRange: [1, 1.03, 0.96, 1, 1, 1, 1.05, 0.99, 1], extrapolate: 'clamp' })
+  const scaleY = t.interpolate({ inputRange: [...sY, P.landTo + 80], outputRange: [...sYv, 1], extrapolate: 'clamp' })
+  const scaleX = t.interpolate({ inputRange: [...sY, P.landTo + 80], outputRange: [1, 1.03, 0.96, 1, 1, 1, 1.05, 0.99, 1], extrapolate: 'clamp' })
   const plant = t.interpolate({
-    inputRange: [...sY, T.landTo + 80],
+    inputRange: [...sY, P.landTo + 80],
     outputRange: [...sYv, 1].map((s) => ((1 - s) * L.charH) / 2),
     extrapolate: 'clamp',
   })
 
   // Up fast and easing into the top; a little float through the turn; down
   // with gravity onto the touch.
-  const rise = at([T.crouchTo, T.liftTo], [0, 1], OUT)
-  const fall = at([T.turnTo, T.touchAt], [0, 1], IN)
-  const float = at([T.liftTo, 900, T.turnTo], [0, -6, 0])
+  const rise = at([P.crouchTo, P.liftTo], [0, 1], OUT)
+  const fall = at([P.turnTo, P.touchAt], [0, 1], IN)
+  const float = at([P.liftTo, 900, P.turnTo], [0, -6, 0])
   const lift = Animated.add(
     Animated.add(Animated.multiply(rise, -L.jump), Animated.add(float, Animated.multiply(fall, L.jump))),
     plant,
   )
 
   // The turn: a third of a turn one way, through, and back — springing home.
-  const turn = at([T.liftTo, 820, 1010, T.turnTo, 1220], ['0deg', '-34deg', '26deg', '-6deg', '0deg'] as unknown as number[])
-  const lean = at([T.crouchTo, 420, T.liftTo, 900, T.turnTo, T.touchAt], ['0deg', '-4deg', '0deg', '5deg', '-3deg', '0deg'] as unknown as number[])
+  const turn = at([P.liftTo, 820, 1010, P.turnTo, 1220], ['0deg', '-34deg', '26deg', '-6deg', '0deg'] as unknown as number[])
+  const lean = at([P.crouchTo, 420, P.liftTo, 900, P.turnTo, P.touchAt], ['0deg', '-4deg', '0deg', '5deg', '-3deg', '0deg'] as unknown as number[])
 
   const enter = at([0, T.enterTo], [0, 1])
 
   // The shadow knows how high he is.
-  const shadowScale = at([0, T.crouchTo, T.liftTo, T.turnTo, T.touchAt, 1380, T.landTo], [1, 1.08, 0.58, 0.58, 1, 1.1, 1])
-  const shadowOpacity = at([0, T.enterTo, T.crouchTo, T.liftTo, T.turnTo, T.touchAt, T.landTo], [0, 0.2, 0.28, 0.09, 0.09, 0.26, 0.2])
+  const shadowScale = at([0, P.crouchTo, P.liftTo, P.turnTo, P.touchAt, 1380, P.landTo], [1, 1.08, 0.58, 0.58, 1, 1.1, 1])
+  const shadowOpacity = at([0, P.enterTo, P.crouchTo, P.liftTo, P.turnTo, P.touchAt, P.landTo], [0, 0.2, 0.28, 0.09, 0.09, 0.26, 0.2])
 
   // Gold marks at his head, popping out on the landing and staying.
   const sparkle = at([T.touchAt - 20, T.touchAt + 200], [0, 1], SPRINGY)
@@ -294,11 +350,10 @@ type Anims = ReturnType<typeof buildAnimations>
 /* ── Pieces ───────────────────────────────────────────────────────────── */
 
 /** Gold dashes radiating from his head, like the painting's own. */
-function Sparkles({ A, charW, charH, ground }: { A: Anims; charW: number; charH: number; ground: number }) {
-  const head = { x: 0.47 * charW, y: charH * 0.3 }
-  const marks = [-118, -98, -36, -14].map((deg, i) => ({ deg, r: charW * (i % 2 ? 0.44 : 0.4), len: 15 + (i % 2) * 5 }))
+function Sparkles({ A, box, head, r }: { A: Anims; box: { w: number; h: number; bottom: number }; head: { x: number; y: number }; r: number }) {
+  const marks = [-118, -98, -36, -14].map((deg, i) => ({ deg, r: r * (i % 2 ? 1.1 : 1), len: 15 + (i % 2) * 5 }))
   return (
-    <View pointerEvents="none" style={{ position: 'absolute', bottom: ground, width: charW, height: charH }}>
+    <View pointerEvents="none" style={{ position: 'absolute', bottom: box.bottom, width: box.w, height: box.h }}>
       {marks.map((m, i) => {
         const rad = (m.deg * Math.PI) / 180
         const x = head.x + Math.cos(rad) * m.r

@@ -1,5 +1,6 @@
 import { forwardRef } from 'react'
-import { View, Text, Image, Pressable, Platform, type StyleProp, type ViewStyle } from 'react-native'
+import { View, Text, Image, Platform, type StyleProp, type ViewStyle } from 'react-native'
+import type { TextInstance } from 'react-native'
 import { ArrowRight } from 'lucide-react-native'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { tourColors as c, tourShadow, tourCard as k, tourType as t } from './tokens'
@@ -37,7 +38,7 @@ export interface TooltipProps {
 }
 
 /** The ref is the title, which is where screen-reader focus is sent on arrival. */
-export const TourTooltip = forwardRef<Text, TooltipProps>(function TourTooltip(
+export const TourTooltip = forwardRef<TextInstance, TooltipProps>(function TourTooltip(
   { title, body, shifu, large, primaryLabel, onPrimary, secondaryLabel, secondaryHint, onSecondary, progress, width, style },
   titleRef,
 ) {
@@ -116,23 +117,23 @@ export const TourTooltip = forwardRef<Text, TooltipProps>(function TourTooltip(
               alignItems: 'center',
               justifyContent: 'space-between',
               marginTop: 12,
-              columnGap: 10,
+              columnGap: 8,
               rowGap: 6,
             }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Pressable
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              {/* Raised like the CTA, quietly: white on a grey shoulder. */}
+              <PressableScale
                 onPress={onSecondary}
-                accessibilityRole="button"
+                scaleTo={1}
+                haptic={false}
                 accessibilityLabel={secondaryLabel}
                 accessibilityHint={secondaryHint}
-                hitSlop={12}
-                style={{ minHeight: 44, justifyContent: 'center' }}
               >
-                {({ pressed }) => (
-                  <Text style={{ ...t.quiet, color: c.textMuted, opacity: pressed ? 0.6 : 1 }}>{secondaryLabel}</Text>
-                )}
-              </Pressable>
+                <LiftedFace height={k.buttonHeight} fill={c.quietFace} border={c.quietBorder} shoulder={c.quietShoulder} shadow={false}>
+                  <Text style={{ ...t.quiet, color: c.textMuted, paddingHorizontal: 12 }}>{secondaryLabel}</Text>
+                </LiftedFace>
+              </PressableScale>
 
               {progress && <Dots index={progress.index} count={progress.count} />}
             </View>
@@ -140,7 +141,7 @@ export const TourTooltip = forwardRef<Text, TooltipProps>(function TourTooltip(
             {primaryLabel && onPrimary && (
               <PressableScale onPress={onPrimary} scaleTo={1} haptic={false} accessibilityLabel={primaryLabel}>
                 <LiftedFace height={k.buttonHeight} fill={c.cta} shoulder={c.ctaShoulder}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14 }}>
                     <Text style={{ ...t.button, color: c.onCta }}>{primaryLabel}</Text>
                     <ArrowRight size={16} color={c.onCta} strokeWidth={2.6} />
                   </View>

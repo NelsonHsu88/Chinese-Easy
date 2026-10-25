@@ -285,7 +285,7 @@ export function ReviewFillGap({
                 </View>
               </Pressable>
             )}
-            <Text style={{ flexShrink: 1, fontFamily: 'LoraItalic', ...t.translation, color: c.slate, textAlign: 'center' }}>
+            <Text style={{ flexShrink: 1, fontFamily: 'NunitoSemiBoldItalic', ...t.translation, color: c.slate, textAlign: 'center' }}>
               {translation}
             </Text>
           </View>

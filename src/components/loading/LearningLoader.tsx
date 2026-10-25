@@ -24,13 +24,15 @@
  * decoded video, so it keeps playing smoothly through that work.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Animated, Easing, InteractionManager, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { Animated, Easing, Platform, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
+import { runAfterInteractions } from '../../lib/afterInteractions'
 import { LinearGradient } from 'expo-linear-gradient'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useReduceMotion } from '../tour/useReduceMotion'
 import { ShifuWritingLoop, type ShifuLoopHandle } from './ShifuWritingLoop'
 import { SHIFU_LOOP } from './loop'
 import { loadColors as C, loadTiming as T, loadType } from './tokens'
+import { RaisedButton } from '../dashboard/parts'
 
 const useNativeDriver = Platform.OS !== 'web'
 
@@ -68,6 +70,20 @@ const LoaderContext = createContext<LearningLoaderApi>(NOOP)
 /** For the activity inside a loader. Outside one, both calls do nothing. */
 export function useLearningLoader(): LearningLoaderApi {
   return useContext(LoaderContext)
+}
+
+/* Kept apart from the api so flipping it never changes the api object the
+   activity's effects may depend on. */
+const LoaderGoneContext = createContext(true)
+
+/**
+ * True once the loader has faded away completely and the activity is all
+ * that's on screen — the moment for anything the learner should *hear* or
+ * see start, like a listening question's first playback. Always true outside
+ * a loader.
+ */
+export function useLearningLoaderGone(): boolean {
+  return useContext(LoaderGoneContext)
 }
 
 type Phase = 'loading' | 'leaving' | 'done' | 'error'
@@ -142,7 +158,7 @@ export function LearningLoader({ message, children, onBack, minDurationMs = T.mi
     }
     // After the screen transition; but never held hostage by some other
     // long-running "interaction" elsewhere in the app.
-    const task = InteractionManager.runAfterInteractions(mount)
+    const task = runAfterInteractions(mount)
     const mountBackstop = setTimeout(mount, 700)
     later(() => current.current === attempt && setSlow(true), T.slowMs)
     later(() => {
@@ -213,11 +229,13 @@ export function LearningLoader({ message, children, onBack, minDurationMs = T.mi
     <View style={styles.fill}>
       {showActivity && (
         <LoaderContext.Provider value={api}>
-          {/* Page-coloured, so whatever the activity has yet to draw as the loader
-              lifts is ivory — never the system's dark-mode black. */}
-          <View key={attempt} style={[styles.fill, styles.page]}>
-            {children}
-          </View>
+          <LoaderGoneContext.Provider value={phase === 'done'}>
+            {/* Page-coloured, so whatever the activity has yet to draw as the loader
+                lifts is ivory — never the system's dark-mode black. */}
+            <View key={attempt} style={[styles.fill, styles.page]}>
+              {children}
+            </View>
+          </LoaderGoneContext.Provider>
         </LoaderContext.Provider>
       )}
 
@@ -279,7 +297,7 @@ function JadeDots({ still }: { still: boolean }) {
   useEffect(() => {
     if (still) return
     // Not an "interaction": an endless loop that counted as one would hold
-    // InteractionManager — and with it the activity's mount — forever.
+    // the idle wait — and with it the activity's mount — forever.
     const anim = Animated.loop(Animated.timing(t, { toValue: 1, duration: 1200, easing: Easing.linear, useNativeDriver, isInteraction: false }))
     anim.start()
     return () => anim.stop()
@@ -303,20 +321,18 @@ function JadeDots({ still }: { still: boolean }) {
 }
 
 function LoaderButton({ label, primary, onPress }: { label: string; primary?: boolean; onPress: () => void }) {
-  const [down, setDown] = useState(false)
   return (
-    <Pressable onPress={onPress} onPressIn={() => setDown(true)} onPressOut={() => setDown(false)} accessibilityRole="button">
-      <View
-        style={[
-          styles.button,
-          primary
-            ? { backgroundColor: down ? C.jadePressed : C.jade }
-            : { borderWidth: 1.5, borderColor: C.outline, backgroundColor: down ? C.quietPressed : 'transparent' },
-        ]}
-      >
-        <Text style={[loadType.button, { color: primary ? C.onJade : C.ink }]}>{label}</Text>
-      </View>
-    </Pressable>
+    <RaisedButton
+      onPress={onPress}
+      accessibilityLabel={label}
+      height={styles.button.height}
+      wrapperStyle={{ minWidth: styles.button.minWidth, marginHorizontal: styles.button.marginHorizontal }}
+      fill={primary ? C.jade : C.page}
+      border={primary ? undefined : C.outline}
+      shoulder={primary ? C.jadePressed : C.outline}
+    >
+      <Text style={[loadType.button, { color: primary ? C.onJade : C.ink, paddingHorizontal: styles.button.paddingHorizontal }]}>{label}</Text>
+    </RaisedButton>
   )
 }
 

@@ -128,16 +128,10 @@ export const SCREEN_TOURS: readonly ScreenTour[] = [
         shifu: 'welcome',
       },
       {
-        targetId: 'word-meaning',
-        title: 'What it means',
-        body: 'The clearest meaning first, then every other sense the word has.',
+        targetId: 'word-sheet',
+        title: 'Pull up for more',
+        body: 'Drag this up, or tap it, for every meaning, an example sentence, radicals and related words.',
         shifu: 'thinking',
-      },
-      {
-        targetId: 'word-radicals',
-        title: 'How it’s built',
-        body: 'The radical inside each character, a clue to its meaning. Tap a character to look at it on its own.',
-        shifu: 'celebrate',
       },
     ],
   },
@@ -170,16 +164,10 @@ export const SCREEN_TOURS: readonly ScreenTour[] = [
     pathname: '/settings',
     steps: [
       {
-        targetId: 'settings-profile',
-        title: 'Your profile',
-        body: 'Your name, photo and level. Tap to change them.',
-        shifu: 'point',
-      },
-      {
         targetId: 'settings-study',
         title: 'Make it yours',
         body: 'Script and pinyin, daily reminders, and how many new words a day suit you.',
-        shifu: 'welcome',
+        shifu: 'point',
       },
       {
         targetId: 'settings-app',

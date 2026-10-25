@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
-import { View } from 'react-native'
-import Animated, { useAnimatedStyle, useSharedValue, withDelay, withTiming, Easing } from 'react-native-reanimated'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Animated, Easing, Platform, View } from 'react-native'
 
 const COLORS = ['#22c55e', '#ff6b6b', '#f5b93d', '#3b82f6', '#a855f7', '#ec4899', '#43d488']
 const PARTICLE_COUNT = 28
 const DURATION_MS = 950
+const NATIVE = Platform.OS !== 'web'
 
 interface Particle {
   id: number
@@ -20,9 +20,29 @@ interface Props {
   trigger: number
 }
 
-/** A brief Duolingo-style confetti burst from the center of the screen. */
+/**
+ * A brief Duolingo-style confetti burst from the center of the screen.
+ *
+ * Fires when `trigger` changes while mounted, never on mount. The review
+ * session mounts a fresh one each time it moves between screens (flashcard,
+ * speaking, practice), and firing on mount replayed the last burst on every
+ * one of them — including the card right after an "Again".
+ *
+ * RN's own Animated, not Reanimated, which doesn't drive on web: there the
+ * dots sat frozen in a cluster mid-screen until the timer removed them.
+ */
 export function Celebration({ trigger }: Props) {
-  const [active, setActive] = useState(false)
+  const [burst, setBurst] = useState<number | null>(null)
+  const seen = useRef(trigger)
+
+  useEffect(() => {
+    if (trigger === seen.current) return
+    seen.current = trigger
+    if (trigger === 0) return
+    setBurst(trigger)
+    const timer = setTimeout(() => setBurst(null), DURATION_MS)
+    return () => clearTimeout(timer)
+  }, [trigger])
 
   const particles = useMemo<Particle[]>(() => {
     return Array.from({ length: PARTICLE_COUNT }, (_, i) => {
@@ -37,17 +57,9 @@ export function Celebration({ trigger }: Props) {
         delay: Math.round(Math.random() * 70),
       }
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trigger])
+  }, [burst])
 
-  useEffect(() => {
-    if (trigger === 0) return
-    setActive(true)
-    const timer = setTimeout(() => setActive(false), DURATION_MS)
-    return () => clearTimeout(timer)
-  }, [trigger])
-
-  if (!active) return null
+  if (burst === null) return null
 
   return (
     <View
@@ -55,32 +67,38 @@ export function Celebration({ trigger }: Props) {
       className="absolute inset-0 z-50 items-center justify-center overflow-hidden"
     >
       {particles.map((p) => (
-        <ConfettiDot key={`${trigger}-${p.id}`} particle={p} />
+        <ConfettiDot key={`${burst}-${p.id}`} particle={p} />
       ))}
     </View>
   )
 }
 
 function ConfettiDot({ particle }: { particle: Particle }) {
-  const progress = useSharedValue(0)
+  const progress = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    progress.value = withDelay(
-      particle.delay,
-      withTiming(1, { duration: DURATION_MS - particle.delay, easing: Easing.out(Easing.quad) }),
-    )
+    const anim = Animated.timing(progress, {
+      toValue: 1,
+      delay: particle.delay,
+      duration: DURATION_MS - particle.delay,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: NATIVE,
+      isInteraction: false,
+    })
+    anim.start()
+    return () => anim.stop()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const style = useAnimatedStyle(() => ({
-    opacity: 1 - progress.value,
+  const style = {
+    opacity: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
     transform: [
-      { translateX: progress.value * particle.tx },
-      { translateY: progress.value * particle.ty },
-      { rotate: `${progress.value * particle.rot}deg` },
-      { scale: 1 - progress.value * 0.4 },
+      { translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [0, particle.tx] }) },
+      { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [0, particle.ty] }) },
+      { rotate: progress.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${particle.rot}deg`] }) },
+      { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [1, 0.6] }) },
     ],
-  }))
+  }
 
   return (
     <Animated.View

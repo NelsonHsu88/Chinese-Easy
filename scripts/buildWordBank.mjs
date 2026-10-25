@@ -55,7 +55,7 @@
  * repairExampleSenses.mjs, and re-deriving them from the corpus would throw that
  * corrective pass away and require re-running it.
  *
- * ⚠ **Always run `node scripts/repairExampleSenses.mjs` after this script** —
+ * ⚠ **Always run `npx tsx scripts/repairExampleSenses.mjs` after this script** —
  * after *any* run of it, not only one that rebuilt from the corpus.
  *
  * Two separate reasons, and the second is easy to miss:
@@ -75,10 +75,11 @@
  * so running it twice is free.
  *
  * Usage:  node scripts/buildWordBank.mjs [wordCount]
- *         node scripts/repairExampleSenses.mjs
+ *         npx tsx scripts/repairExampleSenses.mjs
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { CEDICT_LINE, chooseRow, cleanGloss, isProperRow, loadCommonReadings, toPinyin } from './lib/cedict.mjs'
 
 const ROOT = process.cwd()
 const DATA_DIR = process.env.WORDBANK_DATA ?? path.join(ROOT, '.wordbank-data')
@@ -90,88 +91,15 @@ const WORD_COUNT = Number(process.argv[2] ?? 26000)
 /** Longest sentence (in characters) we'll attach — short ones are better examples. */
 const MAX_SENTENCE_LEN = 28
 
-// ---------------------------------------------------------------- pinyin
-
-const VOWELS = {
-  a: 'āáǎàa',
-  e: 'ēéěèe',
-  i: 'īíǐìi',
-  o: 'ōóǒòo',
-  u: 'ūúǔùu',
-  'ü': 'ǖǘǚǜü',
-}
-
-/** "xue2" -> "xué". Tone goes on a/o/e, else on the last vowel of the syllable. */
-function toneMark(syllable) {
-  const m = syllable.match(/^([a-zA-ZüÜ:]+)([1-5])$/)
-  if (!m) return syllable.replace(/5$/, '')
-  let [, body, tone] = m
-  body = body.replace(/u:/g, 'ü').replace(/v/g, 'ü')
-  const t = Number(tone)
-  if (t === 5) return body.toLowerCase()
-
-  const lower = body.toLowerCase()
-  let target = -1
-  for (const v of ['a', 'o', 'e']) {
-    const i = lower.indexOf(v)
-    if (i !== -1) { target = i; break }
-  }
-  if (target === -1) {
-    for (let i = lower.length - 1; i >= 0; i--) {
-      if ('iuü'.includes(lower[i])) { target = i; break }
-    }
-  }
-  if (target === -1) return lower
-  const ch = lower[target]
-  return lower.slice(0, target) + VOWELS[ch][t - 1] + lower.slice(target + 1)
-}
-
-const toPinyin = (raw) => raw.trim().split(/\s+/).map(toneMark).join(' ')
-
 // ---------------------------------------------------------------- cedict
-
-const CEDICT_LINE = /^(\S+) (\S+) \[([^\]]*)\] \/(.*)\/$/
-
-/** CEDICT glosses carry a lot of apparatus a learner doesn't want to read. */
-function cleanGloss(defs) {
-  const parts = defs
-    .split('/')
-    .map((d) => d.trim())
-    .filter(Boolean)
-    // Drop cross-reference and metadata glosses that read as noise to a learner.
-    .filter((d) => !/^(CL:|Taiwan pr\.|see |variant of|old variant|abbr\. for|also pr\.)/i.test(d))
-    // "(bound form) Afghanistan (abbr. for 阿富汗[...])" is a sense that only
-    // exists inside compounds. The parenthetical stripping below would leave it
-    // as a bare "Afghanistan", and 阿 glossed as Afghanistan — which it never
-    // means on its own. Both markers are required: "abbr. for" alone also tags
-    // real standalone words (超市 "supermarket (abbr. for 超級市場)"). And only a
-    // lone name: 僧's sole sense is "(bound form) Buddhist monk (abbr. …)", and
-    // dropping that would delete a real word.
-    .filter((d) => !/^\(bound form\) [A-Z][a-z]+ \(abbr\. for\b/.test(d))
-    .map((d) =>
-      d
-        // Inline pinyin keys and 傳統|简体 pairs, e.g. 皮革的[pi2 ge2 de5]
-        .replace(/\[[^\]]*\]/g, '')
-        .replace(/[㐀-鿿]+\|[㐀-鿿]+/g, '')
-        // Long parenthetical grammar notes
-        .replace(/\([^)]*\)/g, '')
-        .replace(/["“”]/g, '')
-        .replace(/\s{2,}/g, ' ')
-        .replace(/\s*[;,]\s*$/, '')
-        .trim(),
-    )
-    // Stripping the apparatus above can leave dangling fragments ("... or  )"),
-    // so drop anything with orphaned punctuation or leftover CJK.
-    .filter((d) => d && d.length <= 60 && !/[()\[\]|]/.test(d) && !/[㐀-鿿]/.test(d))
-    .filter((d) => /[a-z]/i.test(d))
-  const gloss = parts.slice(0, 3).join('; ')
-  return gloss.length > 90 ? gloss.slice(0, 90).replace(/[;,]\s*\S*$/, '') : gloss
-}
 
 /** Words CEDICT flags as coarse — out of place in a beginner learning app. */
 const VULGAR = /\b(taboo|vulgar|obscene|offensive|slang for penis|derogatory)\b/i
 
-const cedict = new Map()
+const commonReadings = loadCommonReadings(path.join(ROOT, 'src/data/characterPinyin.json'))
+
+/** Every row per simplified form, in file order; `chooseRow` picks the reading. */
+const rowsBySimp = new Map()
 const simpToTradChar = new Map()
 const tradToSimpChar = new Map()
 for (const line of fs.readFileSync(path.join(DATA_DIR, 'cedict'), 'utf8').split('\n')) {
@@ -179,19 +107,23 @@ for (const line of fs.readFileSync(path.join(DATA_DIR, 'cedict'), 'utf8').split(
   const m = line.trim().match(CEDICT_LINE)
   if (!m) continue
   const [, trad, simp, pinyin, defs] = m
-  // CEDICT lists several readings per form and proper nouns often come first —
-  // taking entry[0] blindly made 水 "surname Shui" instead of "water". Proper
-  // nouns are marked by a capitalised pinyin syllable, so prefer common readings.
-  const isProper = /^[A-Z]/.test(pinyin) || /^surname\b/i.test(defs)
-  const prev = cedict.get(simp)
-  if (!prev || (prev.isProper && !isProper)) cedict.set(simp, { trad, pinyin, defs, isProper })
+  if (!rowsBySimp.has(simp)) rowsBySimp.set(simp, [])
+  rowsBySimp.get(simp).push({ trad, pinyin, defs })
   // Single-char rows double as a script-conversion table. Tatoeba's Mandarin
   // corpus is a mix of simplified and traditional, so sentences get normalised
-  // in both directions rather than assumed to be simplified.
-  if (simp.length === 1 && trad.length === 1) {
+  // in both directions rather than assumed to be simplified. Variant rows are
+  // skipped: taking them gave 和 → 咊, 以 → 㕥, 歡 → 懽 in example sentences.
+  const variant = /^(old |archaic |)variant of\b/i.test(defs)
+  if (simp.length === 1 && trad.length === 1 && !variant) {
     if (!simpToTradChar.has(simp)) simpToTradChar.set(simp, trad)
     if (!tradToSimpChar.has(trad)) tradToSimpChar.set(trad, simp)
   }
+}
+
+const cedict = new Map()
+for (const [simp, rows] of rowsBySimp) {
+  const row = chooseRow(simp, rows, commonReadings.get(simp))
+  cedict.set(simp, { ...row, isProper: isProperRow(row.pinyin, row.defs) })
 }
 
 const toTraditional = (s) => [...s].map((c) => simpToTradChar.get(c) ?? c).join('')

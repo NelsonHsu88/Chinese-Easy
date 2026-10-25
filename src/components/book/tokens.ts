@@ -31,6 +31,9 @@ export const bookColors = {
   /** The deep teal of the reference's buttons and active chip. */
   teal: '#1F5A54',
   tealSoft: '#DDEBE5',
+  /** The raised word-sheet buttons' shoulders: under the teal, and under the white paper button. */
+  tealShoulder: '#123B37',
+  paperShoulder: '#DCD5C9',
   /** A word not yet in My Words — the reader's coral dots. */
   coral: '#E0705F',
   /** The narrator's place in the text. */

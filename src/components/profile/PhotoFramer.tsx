@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Image, Animated, PanResponder, Pressable, useWindowDimensions, type GestureResponderEvent } from 'react-native'
+import { View, Text, Image, Animated, PanResponder, useWindowDimensions, type GestureResponderEvent } from 'react-native'
 import Svg, { Circle, Path } from 'react-native-svg'
 import { Check, Minus, Plus } from 'lucide-react-native'
 import { clampFraming, coverScale, cropFor, type AvatarCrop, type Framing, type PickedPhoto } from '../../lib/photoFraming'
 import { tickHaptic } from '../../lib/haptics'
 import { ProfileButton } from './parts'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from './tokens'
+import { RaisedButton } from '../dashboard/parts'
 
 /*
  * Framing a new profile photo: the photo under a circle, dragged to position
@@ -150,10 +151,10 @@ export function PhotoFramer({ photo, onCancel, onSave }: Props) {
       <View
         style={{ alignSelf: 'center', width: '100%', maxWidth: 400, backgroundColor: c.background, borderRadius: 24, borderWidth: 1, borderColor: c.border, padding: s.xl, ...profShadow }}
       >
-        <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, color: c.navy }}>
+        <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.section, color: c.navy }}>
           Frame your photo
         </Text>
-        <Text className="font-lora" style={{ ...t.tag, color: c.slate, marginTop: 4 }}>
+        <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.slate, marginTop: 4 }}>
           Drag to move it. Pinch, or use − and +, to zoom.
         </Text>
 
@@ -202,15 +203,19 @@ export function PhotoFramer({ photo, onCancel, onSave }: Props) {
 
 function ZoomButton({ label, onPress, icon: Icon }: { label: string; onPress: () => void; icon: typeof Plus }) {
   return (
-    <Pressable
+    <RaisedButton
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={6}
-      className="items-center justify-center active:opacity-60"
-      style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: c.card, borderWidth: 1, borderColor: c.border }}
+      height={44}
+      width={44}
+      radius={22}
+      fill={c.card}
+      border={c.border}
+      shoulder={c.quietShoulder}
+      scaleTo={0.9}
     >
       <Icon size={20} color={c.jadeDark} strokeWidth={2.2} />
-    </Pressable>
+    </RaisedButton>
   )
 }

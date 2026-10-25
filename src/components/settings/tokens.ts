@@ -50,6 +50,9 @@ export const setColors = {
    * button somebody forgot to label.
    */
   sage: '#6FA377',
+
+  /** The shoulder under the coral Delete button — a step darker than `coralDark`. */
+  coralShoulder: '#B9443A',
 } as const
 
 /**
@@ -132,6 +135,8 @@ export const setRow = {
 export const setMotion = {
   press: 120,
   pressScale: 0.99,
+  /** The switch's knob sliding across, and its track turning green. */
+  toggleMs: 220,
 } as const
 
 /**

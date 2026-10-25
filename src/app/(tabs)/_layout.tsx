@@ -2,7 +2,7 @@ import { type ComponentType } from 'react'
 import { View, Text } from 'react-native'
 import { Tabs, router, usePathname } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Home, GraduationCap, Library, Repeat, BookOpen, Settings as SettingsIcon } from 'lucide-react-native'
+import { Home, GraduationCap, Library, Repeat, BookOpen, UserRound } from 'lucide-react-native'
 import { dashColors as tabColors } from '../../components/dashboard/tokens'
 import { useApp } from '../../context/AppContext'
 import { dueCountFor } from '../../lib/selectors'
@@ -249,10 +249,10 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="profile-tab"
         options={{
-          title: 'Settings',
-          tabBarIcon: ({ focused }) => <TabItem icon={SettingsIcon} label="Settings" focused={focused} />,
+          title: 'Profile',
+          tabBarIcon: ({ focused }) => <TabItem icon={UserRound} label="Profile" focused={focused} />,
         }}
         listeners={{ tabPress: () => tickHaptic() }}
       />

@@ -189,11 +189,11 @@ export function ChineseBasicsGroup() {
                       maxWidth: column - BASICS_GUTTER * 2 - artWidth - sp.sm,
                     }}
                   >
-                    <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.groupTitle, ...BANNER_TITLE, color: c.navy }}>
+                    <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.groupTitle, ...BANNER_TITLE, color: c.navy }}>
                       {group.title}
                     </Text>
                   </View>
-                  <Text className="font-lora" style={{ ...hubType.intro, marginTop: 6, color: c.slate }}>
+                  <Text className="font-nunito-semibold" style={{ ...hubType.intro, marginTop: 6, color: c.slate }}>
                     {group.intro}
                   </Text>
                   <View style={{ marginTop: sp.lg, flexDirection: 'row', alignItems: 'center', gap: sp.md }}>
@@ -385,11 +385,11 @@ function SectionHeader({
           )}
         </View>
         <View style={{ flex: 1 }}>
-          <Text className="font-lora-bold" accessibilityRole="header" style={{ ...hubType.sectionTitle, color: c.navy }}>
+          <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...hubType.sectionTitle, color: c.navy }}>
             {title}
           </Text>
           {note && (
-            <Text className="font-lora" style={{ ...hubType.sectionNote, marginTop: 1, color: c.slate }}>
+            <Text className="font-nunito-semibold" style={{ ...hubType.sectionNote, marginTop: 1, color: c.slate }}>
               {note}
             </Text>
           )}
@@ -498,7 +498,7 @@ function LessonRow({
             }}
           >
             <Text
-              className={HAS_CJK.test(glyph) ? hanziFont(script, 'semibold') : 'font-lora-bold'}
+              className={HAS_CJK.test(glyph) ? hanziFont(script, 'semibold') : 'font-nunito-extrabold'}
               numberOfLines={1}
               style={{
                 fontSize: long ? 16 : 23,
@@ -536,10 +536,10 @@ function LessonRow({
         </View>
 
         <View style={{ flex: 1 }}>
-          <Text className="font-lora-bold" style={{ ...hubType.rowTitle, color: c.navy }}>
+          <Text className="font-nunito-extrabold" style={{ ...hubType.rowTitle, color: c.navy }}>
             {title}
           </Text>
-          <Text className="font-lora" style={{ ...hubType.rowBody, marginTop: 2, color: c.slate }}>
+          <Text className="font-nunito-semibold" style={{ ...hubType.rowBody, marginTop: 2, color: c.slate }}>
             {subtitle}
           </Text>
           <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', columnGap: sp.md, rowGap: sp.xs }}>
@@ -598,10 +598,10 @@ function ResourceRow({
           {icon}
         </View>
         <View style={{ flex: 1 }}>
-          <Text className="font-lora-bold" style={{ ...hubType.rowTitle, color: c.navy }}>
+          <Text className="font-nunito-extrabold" style={{ ...hubType.rowTitle, color: c.navy }}>
             {title}
           </Text>
-          <Text className="font-lora" style={{ ...hubType.rowBody, marginTop: 2, color: c.slate }}>
+          <Text className="font-nunito-semibold" style={{ ...hubType.rowBody, marginTop: 2, color: c.slate }}>
             {subtitle}
           </Text>
           <Text className="font-nunito-semibold" style={{ ...t.meta, marginTop: 4, color: c.slate }}>

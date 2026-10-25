@@ -5,8 +5,7 @@ import { Redirect, router, useLocalSearchParams } from 'expo-router'
 import { Check, ChevronLeft, X } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { Reveal } from '../components/dashboard/entrance'
-import { basicsColors as c, basicsSpacing as sp, basicsType as t, BASICS_CONTENT_MAX, BASICS_GUTTER, BASICS_GROUP_HUE } from '../components/basics/tokens'
-import { playTints } from '../components/dashboard/tokens'
+import { basicsColors as c, basicsSpacing as sp, basicsType as t, BASICS_CONTENT_MAX, BASICS_GUTTER } from '../components/basics/tokens'
 import { BasicsButton, BasicsPill, BasicsProgressBar, BasicsRaised } from '../components/basics/parts'
 import { PressableScale } from '../components/dashboard/parts'
 import { AnswerSheet } from '../components/drills/parts'
@@ -134,8 +133,9 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
     goTo(0)
   }
 
-  /* The group's hue (SS1017): its progress bar and every lesson card take it. */
-  const tint = playTints[BASICS_GROUP_HUE[lesson.group]]
+  /* No group hue inside a lesson, by request: cards, rows and the progress bar
+     stay white and jade, so the colour that's left is the feedback. */
+  const tint = null
 
   if (finished) {
     const next = lessonAfter(lesson.id, [...completedLessonIds, key], phonetic)
@@ -184,7 +184,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
             </View>
           </Pressable>
           <Text
-            className="font-lora-bold"
+            className="font-nunito-extrabold"
             numberOfLines={1}
             accessibilityRole="header"
             style={{ ...t.headerTitle, flex: 1, color: c.navy, textAlign: 'center' }}
@@ -230,7 +230,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
               <ChevronLeft size={22} color={c.jadeDark} strokeWidth={2.2} />
             </View>
           </Pressable>
-          <BasicsProgressBar done={index + 1} total={steps.length} tint={tint} />
+          <BasicsProgressBar done={index + 1} total={steps.length} />
           <Text
             className="font-nunito-semibold"
             accessibilityLabel={`Step ${index + 1} of ${steps.length}`}
@@ -254,10 +254,12 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
               paddingHorizontal: 10,
               paddingVertical: 3,
               borderRadius: 999,
-              backgroundColor: tint.soft,
+              backgroundColor: c.card,
+              borderWidth: 1,
+              borderColor: c.border,
             }}
           >
-            <Text className="font-nunito-bold" style={{ ...t.pill, color: tint.text }}>
+            <Text className="font-nunito-bold" style={{ ...t.pill, color: c.slate }}>
               {groupById(lesson.group)?.title ?? 'Chinese Basics'}
             </Text>
           </View>
@@ -297,7 +299,7 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
           kind="correct"
           detail={
             gate.correct ? (
-              <Text className="font-lora" style={{ ...t.bodySmall, width: '100%', color: c.navy }}>
+              <Text className="font-nunito-semibold" style={{ ...t.bodySmall, width: '100%', color: c.navy }}>
                 {gate.correct}
               </Text>
             ) : undefined
@@ -358,7 +360,7 @@ function FinishCard({
               LESSON COMPLETE
             </Text>
             <Text
-              className="font-lora-bold"
+              className="font-nunito-extrabold"
               accessibilityRole="header"
               style={{ ...t.stepTitle, marginTop: 6, color: c.navy, textAlign: 'center' }}
             >
@@ -378,14 +380,14 @@ function FinishCard({
                   <View style={{ width: 22, height: 22, borderRadius: 11, marginTop: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.sageSoft }}>
                     <Check size={13} color={c.sageDark} strokeWidth={2.8} />
                   </View>
-                  <Text className="font-lora" style={{ ...t.bodySmall, flex: 1, color: c.navy }}>
+                  <Text className="font-nunito-semibold" style={{ ...t.bodySmall, flex: 1, color: c.navy }}>
                     {ctx.text(o)}
                   </Text>
                 </View>
               ))}
             </View>
             {suggestPractice(score) && (
-              <Text className="font-lora" style={{ ...t.bodySmall, marginTop: sp.lg, color: c.slate, textAlign: 'center' }}>
+              <Text className="font-nunito-semibold" style={{ ...t.bodySmall, marginTop: sp.lg, color: c.slate, textAlign: 'center' }}>
                 A few of these were new to your ear. Running the lesson again usually helps them stick.
               </Text>
             )}

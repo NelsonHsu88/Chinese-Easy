@@ -17,7 +17,8 @@ import {
 } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, foldPinyin, hanziFont } from '../lib/hanzi'
-import { PressableScale } from '../components/dashboard/parts'
+import { LiftedFace, PressableScale } from '../components/dashboard/parts'
+import { FilterDrawer } from '../components/dictionary/FilterDrawer'
 import { playTints, type PlayTint } from '../components/dashboard/tokens'
 import { ReviewButton } from '../components/review/parts'
 import { TIER_ORDER } from '../components/ProficiencyChip'
@@ -43,7 +44,6 @@ import {
   MW_CONTENT_MAX,
   mwRowTint,
 } from '../components/myWords/tokens'
-import { PlayWash } from '../components/dashboard/playWash'
 
 /*
  * My Words, built to the Beta 2.1 reference (`SS928 Mywords Redesigned
@@ -215,13 +215,13 @@ export function MyWords() {
           </View>
 
           <Text
-            className="font-lora-bold"
+            className="font-nunito-extrabold"
             accessibilityRole="header"
             style={{ ...t.title, color: c.navy, marginTop: -sp.xs }}
           >
             My Words
           </Text>
-          <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: 4, maxWidth: '64%' }}>
+          <Text className="font-nunito-semibold" style={{ ...t.subtitle, color: c.slate, marginTop: 4, maxWidth: '64%' }}>
             Review and organize your saved vocabulary.
           </Text>
 
@@ -255,7 +255,8 @@ export function MyWords() {
             />
           </View>
 
-          {panelOpen && (
+          {/* Unfolds and folds like the dictionary's filter panel (`FilterDrawer`). */}
+          <FilterDrawer open={panelOpen}>
             <FilterPanel
               dueOnly={dueOnly}
               dueTotal={dueTotal}
@@ -274,7 +275,7 @@ export function MyWords() {
               }}
               onDone={() => setPanelOpen(false)}
             />
-          )}
+          </FilterDrawer>
 
           <StatsPanel
             saved={learned.length}
@@ -400,9 +401,11 @@ function SearchField({ value, onChange }: { value: string; onChange: (v: string)
 }
 
 /**
- * A filter pill, flat and outlined like the reference; the active one fills
- * with jade. Only colour varies with `active` — no shadow is toggled, so the
- * NativeWind conditional-shadow crash cannot reach it.
+ * A filter pill, raised like the dictionary's: `LiftedFace` on a shoulder,
+ * sinking onto it and squashing a little on press, then springing back with
+ * a small overshoot (`PressableScale`'s release spring). The active one is
+ * the Dictionary's selected filter: pale green face, green rim and shoulder.
+ * Plain style objects, no shadow classes.
  *
  * The label never truncates: the top row holds three chips precisely so each
  * has room for its whole word, and the panel's chips wrap onto a new line.
@@ -427,35 +430,37 @@ function Chip({
   /** A dot for "more is set in the panel than this label says". */
   badge?: boolean
 }) {
-  const ink = active ? c.onJade : c.navy
-  const iconInk = active ? c.onJade : c.slate
+  const ink = active ? c.chipOnInk : c.navy
+  const iconInk = active ? c.chipOnInk : c.slate
   return (
-    <Pressable
+    <PressableScale
       onPress={() => {
         tickHaptic()
         onPress()
       }}
-      accessibilityRole="button"
-      accessibilityState={{ selected: active }}
-      className="flex-row items-center justify-center active:opacity-70"
-      style={{
-        flexGrow: grow ? 1 : 0,
-        height: small ? 36 : 44,
-        paddingHorizontal: small ? sp.md : 18,
-        gap: 6,
-        borderRadius: mwRadius.pill,
-        borderWidth: 1,
-        borderColor: active ? c.jade : c.fieldBorder,
-        backgroundColor: active ? c.jade : c.field,
-      }}
+      /* A deeper squash than a card's, so the release spring has something to bounce back from. */
+      scaleTo={0.92}
+      haptic={false}
+      wrapperStyle={{ flexGrow: grow ? 1 : 0 }}
+      accessibilityLabel={`${label}${active ? ', selected' : ''}`}
     >
-      {Icon && <Icon size={small ? 15 : 17} color={iconInk} strokeWidth={2} />}
-      <Text className="font-sans" style={{ ...t.chip, fontSize: small ? 13.5 : t.chip.fontSize, color: ink }}>
-        {label}
-      </Text>
-      {badge && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: c.onJade }} />}
-      {Trailing && <Trailing size={16} color={iconInk} strokeWidth={2} />}
-    </Pressable>
+      <LiftedFace
+        height={small ? 36 : 44}
+        fill={active ? c.chipOnFill : c.field}
+        border={active ? c.chipOnRim : c.fieldBorder}
+        shoulder={active ? c.chipOnRim : c.fieldShoulder}
+        shadow={false}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: small ? sp.md : 18 }}>
+          {Icon && <Icon size={small ? 15 : 17} color={iconInk} strokeWidth={2} />}
+          <Text style={{ ...t.chip, fontFamily: active ? 'NunitoBold' : 'Nunito', fontSize: small ? 13.5 : t.chip.fontSize, color: ink }}>
+            {label}
+          </Text>
+          {badge && <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: c.chipOnRim }} />}
+          {Trailing && <Trailing size={16} color={iconInk} strokeWidth={2} />}
+        </View>
+      </LiftedFace>
+    </PressableScale>
   )
 }
 
@@ -564,6 +569,9 @@ function PanelSection({ title, children }: { title: string; children: ReactNode 
  * Saved words / Due today / Favorites — the reference's panel. Due and
  * Favorites toggle their filter; Saved words clears every filter.
  */
+/** A stat tile's least height: its padding, the number's line and the label's. */
+const STAT_TILE_MIN = 62
+
 function StatsPanel({
   saved,
   due,
@@ -586,7 +594,7 @@ function StatsPanel({
       value: saved,
       label: 'Saved words',
       tint: playTints.jade,
-      icon: <BookOpen size={22} color={playTints.jade.ink} strokeWidth={2} />,
+      icon: <BookOpen size={18} color={playTints.jade.ink} strokeWidth={2.2} />,
       onPress: onSaved,
     },
     {
@@ -594,7 +602,7 @@ function StatsPanel({
       value: due,
       label: 'Due today',
       tint: playTints.sky,
-      icon: <Clock3 size={22} color={playTints.sky.ink} strokeWidth={2} />,
+      icon: <Clock3 size={18} color={playTints.sky.ink} strokeWidth={2.2} />,
       onPress: onDue,
     },
     {
@@ -602,15 +610,24 @@ function StatsPanel({
       value: favorites,
       label: 'Favorites',
       tint: playTints.honey,
-      icon: <Star size={22} color={c.star} fill={c.star} strokeWidth={1.8} />,
+      icon: <Star size={18} color={c.star} fill={c.star} strokeWidth={1.8} />,
       onPress: onFavorites,
     },
   ]
 
   return (
-    <View className="flex-row" style={{ marginTop: sp.lg, gap: sp.sm }}>
+    /* Compact: the icon beside its number, the label under them — about half
+       the height of an icon disc stacked over a large number. */
+    /*
+     * Sized by their contents, never stretched. The tiles used to be `flex-1`
+     * inside a column with no height of its own; when the filter drawer folded
+     * away and the page re-laid out, native layout could hand them less than
+     * their contents and the labels squashed. `flexShrink: 0` keeps the row
+     * from being squeezed by anything around it.
+     */
+    <View style={{ flexDirection: 'row', alignItems: 'stretch', marginTop: sp.md, gap: sp.sm, flexShrink: 0 }}>
       {columns.map((col) => (
-        <View key={col.key} className="flex-1">
+        <View key={col.key} style={{ flex: 1, minWidth: 0 }}>
           <Pressable
             onPress={() => {
               tickHaptic()
@@ -618,25 +635,23 @@ function StatsPanel({
             }}
             accessibilityRole="button"
             accessibilityLabel={`${col.value} ${col.label}`}
-            className="flex-1 items-center active:opacity-70"
+            className="items-center justify-center active:opacity-70"
             style={{
-              paddingVertical: sp.md,
-              borderRadius: mwRadius.panel,
+              flexGrow: 1,
+              minHeight: STAT_TILE_MIN,
+              paddingVertical: sp.sm,
+              paddingHorizontal: sp.xs,
+              borderRadius: mwRadius.card,
               backgroundColor: col.tint.fill,
               borderWidth: 1,
               borderColor: col.tint.border,
             }}
           >
-            <View
-              className="items-center justify-center rounded-full"
-              style={{ width: 40, height: 40, backgroundColor: col.tint.soft }}
-            >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               {col.icon}
+              <Text style={{ ...t.statValue, fontFamily: 'NunitoExtraBold', color: c.navy }}>{col.value}</Text>
             </View>
-            <Text className="font-lora-bold" style={{ ...t.statValue, color: c.navy, marginTop: 6 }}>
-              {col.value}
-            </Text>
-            <Text className="font-sans" numberOfLines={1} style={{ ...t.statLabel, color: c.slate }}>
+            <Text numberOfLines={1} style={{ ...t.statLabel, fontFamily: 'Nunito', color: c.slate, marginTop: 1 }}>
               {col.label}
             </Text>
           </Pressable>
@@ -711,7 +726,6 @@ function WordRow({
           gap: 10,
         }}
       >
-        <PlayWash tint={mwRowTint[entry.level]} />
         <View style={{ width: mwCard.hanziWidth }}>
           <Text
             className={hanziClass}

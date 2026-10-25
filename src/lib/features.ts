@@ -22,6 +22,13 @@ export const FEATURES = {
   lessons: false,
 
   /**
+   * The completion celebration's 3D Shifu (`components/celebration/Shifu3D.tsx`,
+   * rendered in Blender) in place of the painted cut-out. Off: the painting,
+   * with its own transform-driven jump and small turn.
+   */
+  celebration3d: true,
+
+  /**
    * My Town: `src/screens/MyTown.tsx`, route `/my-town`, and the buildings in
    * `src/data/townBuildings.ts`. XP still accrues while this is off, so a
    * returning player finds their balance intact.

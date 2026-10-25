@@ -26,10 +26,12 @@ import {
   type VerdictKind,
 } from './tokens'
 import { tickHaptic } from '../../lib/haptics'
-import { PressableScale, LiftedFace } from '../dashboard/parts'
+import { PressableScale, LiftedFace, RaisedButton } from '../dashboard/parts'
 import { hanziFont } from '../../lib/hanzi'
 import type { ScriptMode } from '../../types'
 import { ShadowRevealProvider, ShadowSurface, useRevealedShadow, useShadowReveal } from '../shadowReveal'
+import { dashShoulders } from '../dashboard/tokens'
+import { playTapSound } from '../../lib/sound'
 
 /*
  * The onboarding building blocks.
@@ -547,7 +549,7 @@ export function OnbTitle({
 }) {
   return (
     <Text
-      className={classic ? 'text-center font-nunito-extrabold' : 'text-center font-lora-bold'}
+      className={classic ? 'text-center font-nunito-extrabold' : 'text-center font-nunito-extrabold'}
       accessibilityRole="header"
       style={{ ...(classic ? t.titleClassic : hero ? t.titleHero : t.title), color: c.navy }}
     >
@@ -591,11 +593,14 @@ export function OnbButton({
   icon,
   onPress,
   disabled,
+  sound = true,
 }: {
   label: string
   icon?: ReactNode
   onPress: () => void
   disabled?: boolean
+  /** The press click. Off where the press plays its own sound (a verdict, the fanfare). */
+  sound?: boolean
 }) {
   /*
    * The paper backing is what a disabled button fades towards. The redesign
@@ -622,7 +627,14 @@ export function OnbButton({
       */}
       <View style={{ opacity: disabled ? 0.45 : 1 }} needsOffscreenAlphaCompositing={!!disabled}>
         <PressableScale
-          onPress={disabled ? undefined : onPress}
+          onPress={
+            disabled
+              ? undefined
+              : () => {
+                  if (sound) playTapSound()
+                  onPress()
+                }
+          }
           scaleTo={1}
           haptic={false}
           accessibilityLabel={label}
@@ -656,7 +668,15 @@ export function OnbTextButton({
   tone?: 'green' | 'muted'
 }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" hitSlop={10} className="items-center active:opacity-60">
+    <Pressable
+      onPress={() => {
+        playTapSound()
+        onPress()
+      }}
+      accessibilityRole="button"
+      hitSlop={10}
+      className="items-center active:opacity-60"
+    >
       <Text
         className="font-nunito-bold"
         style={{ fontSize: 15, color: tone === 'green' ? c.greenDark : c.textMuted }}
@@ -934,7 +954,7 @@ export function OnbChoiceCard({
           {icon}
         </View>
         <View className="flex-1">
-          <Text className="font-lora-bold" style={{ ...t.cardTitleSerif, color: c.navy }}>
+          <Text className="font-nunito-extrabold" style={{ ...t.cardTitleSerif, color: c.navy }}>
             {title}
           </Text>
           <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 3 }}>
@@ -1033,7 +1053,7 @@ export function OnbScriptCard({
         </Text>
 
         <Text
-          className="font-lora-bold"
+          className="font-nunito-extrabold"
           style={{ fontSize: 19, lineHeight: 24, color: selected ? c.greenDark : c.navy, textAlign: 'center', marginTop: s.md }}
         >
           {label}
@@ -1180,25 +1200,19 @@ export function ResultToast({ verdict, detail }: { verdict: VerdictKind; detail?
  */
 export function DontKnowButton({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable
+    <RaisedButton
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel="I don't know this word"
-      className="flex-row items-center justify-center active:opacity-70"
-      style={{
-        height: 44,
-        borderRadius: 22,
-        borderWidth: 1,
-        borderColor: c.border,
-        backgroundColor: c.card,
-        gap: s.sm,
-      }}
+      height={44}
+      fill={c.card}
+      border={c.border}
+      shoulder={dashShoulders.quiet}
     >
       <HelpCircle size={17} color={c.textMuted} strokeWidth={2.3} />
       <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.textSecondary }}>
         I don't know
       </Text>
-    </Pressable>
+    </RaisedButton>
   )
 }
 

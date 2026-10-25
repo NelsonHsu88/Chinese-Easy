@@ -19,6 +19,9 @@ import { useLeave } from '../../components/settings/transition'
 import { useCaptcha } from '../../components/auth/Captcha'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../../lib/passwordRules'
 import { setColors as c, setSpacing as s, setRow, setRadius } from '../../components/settings/tokens'
+import { RaisedButton } from '../../components/dashboard/parts'
+import { dashShoulders } from '../../components/dashboard/tokens'
+import { tapHaptic } from '../../lib/haptics'
 
 /*
  * The drawer everything unglamorous lives in.
@@ -354,42 +357,41 @@ function AccountSection() {
               </Text>
             ) : null}
             <View style={{ flexDirection: 'row', gap: s.sm, marginTop: s.md }}>
-              <View style={{ flex: 1 }}>
-              <PressRow
+              <RaisedButton
                 onPress={
                   stage === 'working'
                     ? undefined
                     : () => {
+                        tapHaptic()
                         setError(null)
                         setStage('idle')
                       }
                 }
                 accessibilityLabel="Keep my account"
-                style={{
-                  height: 44,
-                  borderRadius: 22,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1.5,
-                  borderColor: c.border,
-                }}
+                height={44}
+                fill={c.background}
+                border={c.border}
+                shoulder={dashShoulders.quiet}
+                wrapperStyle={{ flex: 1 }}
               >
                 <Text className="font-nunito-bold" style={{ fontSize: 15, color: c.textSecondary }}>
                   Cancel
                 </Text>
-              </PressRow>
-              </View>
-              <View style={{ flex: 1 }}>
-              <PressRow
-                onPress={stage === 'working' ? undefined : () => void confirmDelete()}
+              </RaisedButton>
+              <RaisedButton
+                onPress={
+                  stage === 'working'
+                    ? undefined
+                    : () => {
+                        tapHaptic()
+                        void confirmDelete()
+                      }
+                }
                 accessibilityLabel="Permanently delete my account"
-                style={{
-                  height: 44,
-                  borderRadius: 22,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: c.coralDark,
-                }}
+                height={44}
+                fill={c.coralDark}
+                shoulder={c.coralShoulder}
+                wrapperStyle={{ flex: 1 }}
               >
                 {stage === 'working' ? (
                   <ActivityIndicator color="#FFFFFF" />
@@ -398,8 +400,7 @@ function AccountSection() {
                     Delete
                   </Text>
                 )}
-              </PressRow>
-              </View>
+              </RaisedButton>
             </View>
           </View>
         )}

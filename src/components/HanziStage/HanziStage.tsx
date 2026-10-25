@@ -1,4 +1,4 @@
-import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentRef } from 'react'
 import { Animated, Easing, Platform, View, Text, ActivityIndicator, type LayoutChangeEvent } from 'react-native'
 import WebView, { type WebViewMessageEvent } from 'react-native-webview'
 import type { CharacterJson } from 'hanzi-writer'
@@ -435,7 +435,7 @@ interface GlyphProps {
 }
 
 function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides, hintKey, revealKey, restartKey, size, holdCharacterOnComplete, active, onStrokeTotal, onQuizProgress, onQuizComplete, onDemoComplete }: GlyphProps) {
-  const webviewRef = useRef<WebView>(null)
+  const webviewRef = useRef<ComponentRef<typeof WebView>>(null)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const startedRef = useRef(false)
   const webviewReadyRef = useRef(false)
@@ -446,7 +446,6 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
   const padding = Math.max(8, Math.round(size * 0.06))
   const drawingWidth = Math.max(3, Math.round(size / 60))
   const strokeWidth = Math.max(2, Math.round(size / 100))
-  const showStartHint = mode === 'quiz' && !showOutline
 
   useEffect(() => {
     let cancelled = false
@@ -487,7 +486,6 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
       speed,
       showOutline,
       showGuides,
-      showStartHint,
       size,
       padding,
       drawingWidth,
@@ -593,6 +591,22 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
 
   const handleMessage = (event: WebViewMessageEvent) => processMessage(event.nativeEvent.data)
 
+  /*
+   * The OS can kill a WebView's content process (memory pressure, a renderer
+   * crash), most often with several writers alive at once. The view survives
+   * but stays blank, and since nothing re-sends the init, the glyph never draws
+   * again. Remounting it boots a fresh document, which goes through the usual
+   * ready → init → start path.
+   */
+  const [webviewGeneration, setWebviewGeneration] = useState(0)
+  const reloadWebView = () => {
+    webviewReadyRef.current = false
+    initSentRef.current = false
+    startedRef.current = false
+    setStatus((current) => (current === 'error' ? current : 'loading'))
+    setWebviewGeneration((n) => n + 1)
+  }
+
   // On web there's no react-native-webview bridge — the glyph's <iframe> posts straight
   // to window instead (see writerHtml.ts's post()). Every glyph's iframe shares the same
   // top-level window, so filter by source to route each message to the right instance.
@@ -653,9 +667,12 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
             })
           : (
             <WebView
+              key={webviewGeneration}
               ref={webviewRef}
               source={{ html: WRITER_HTML }}
               onMessage={handleMessage}
+              onContentProcessDidTerminate={reloadWebView}
+              onRenderProcessGone={reloadWebView}
               /*
                * The same readiness backstop the web branch above has, and it is
                * needed here for exactly the same reason.

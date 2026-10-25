@@ -44,6 +44,10 @@ export const onbColors = {
   card: '#FFFDFC',
   border: '#E7E5DE',
 
+  /** The sakura bloom on the welcome page's app mark. */
+  bloom: '#F6B8B0',
+  bloomHeart: '#EE9A92',
+
   /** Divider rules and the inactive page dots — lighter than `border`. */
   hairline: '#EDEAE2',
   dotInactive: '#DBD7CD',
@@ -177,6 +181,28 @@ export const onbMotion = {
    */
   art: 560,
   artSlide: 46,
+} as const
+
+/**
+ * The words-per-day wheel: one row per number, five rows in view. Numbers
+ * fade and shrink over `fadeRows` rows either side of the centre.
+ */
+export const onbWheel = {
+  row: 56,
+  visible: 5,
+  numberSize: 34,
+  fadeRows: 2.5,
+  farOpacity: 0.08,
+  farScale: 0.62,
+  /** How much a drag past 1 or 50 still moves the wheel — a held spring's give. */
+  edgeGive: 0.3,
+  /** The spring a release settles on: firm enough to land, soft enough to glide. */
+  springStiffness: 170,
+  springDamping: 22,
+  /** How far ahead a flick is projected (ms of its speed) to pick where it lands. */
+  flickMs: 220,
+  /** Lands the spring if a browser tab stops animating it. */
+  backstopMs: 1600,
 } as const
 
 /**

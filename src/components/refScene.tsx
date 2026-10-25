@@ -48,7 +48,7 @@ export function RefHero({
   column: number
   /** Offset from the parent's left edge — minus the gutter when the parent is padded. */
   left?: number
-  animatedStyle?: StyleProp<ViewStyle> | Animated.WithAnimatedObject<ViewStyle>
+  animatedStyle?: StyleProp<ViewStyle> | Animated.WithAnimatedValue<ViewStyle>
   /** Clouds drifting behind the painting's sky; `false` for none. */
   clouds?: CloudSpec[] | false
 }) {

@@ -9,7 +9,7 @@ import type { Story, StoryCollection } from '../types'
 import { displayTitleReading, hanziFont } from '../lib/hanzi'
 import { forScript } from '../lib/scriptConversion'
 import { playTapSound } from '../lib/sound'
-import { tapHaptic, tickHaptic } from '../lib/haptics'
+import { tapHaptic } from '../lib/haptics'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { FIRE_ICON } from '../components/dashboard/art'
 import { StoryArt } from '../components/reading/StoryArt'
@@ -19,6 +19,10 @@ import { AppBannerAd } from '../components/ads/AppBannerAd'
 import { Asset } from 'expo-asset'
 import { ShadowRevealProvider, ShadowSurface, useShadowReveal } from '../components/shadowReveal'
 import { PAGE_TITLE } from '../components/pageHeader'
+import { FilterPanelCard, PanelLabel, Pill, PILL_HEIGHT } from '../components/dictionary/Landing'
+import { FilterButton } from '../components/dictionary/FilterDrawer'
+import { FilterChip } from '../components/dictionary/DictionaryControls'
+import { DASH_LIFT } from '../components/dashboard/parts'
 
 /*
  * The Reading Library, built to the Beta 2.1 reference
@@ -64,7 +68,9 @@ const CARD_PAD = 10
  * will over- or under-fill the screen.
  */
 const TITLE_H = 58
-const CHROME = 44 + TITLE_H + 66
+/** The filter row: the Dictionary's raised pills and their shoulder, with breathing room. */
+const FILTER_ROW_H = PILL_HEIGHT + DASH_LIFT + 22
+const CHROME = 44 + TITLE_H + FILTER_ROW_H
 /** A shelf's heading line, and the gap under its row of cards. */
 const HEADING_H = 34
 const ROW_GAP = 14
@@ -95,6 +101,15 @@ export function Books() {
   const { storyProgress, settings, streak } = useApp()
   const script = settings.script
   const [shelf, setShelf] = useState<StoryCollection | 'all'>('all')
+  /* The middle pill remembers the last shelf picked, the way the Dictionary's
+     shows the learner's level: one tap back to it after looking at All. */
+  const [lastShelf, setLastShelf] = useState<StoryCollection>('everyday')
+  const [panelOpen, setPanelOpen] = useState(false)
+  const pickShelf = (id: StoryCollection | 'all') => {
+    setShelf(id)
+    if (id !== 'all') setLastShelf(id)
+    setPanelOpen(false)
+  }
   const { width: winW, height: winH } = useWindowDimensions()
   const insets = useSafeAreaInsets()
 
@@ -161,52 +176,38 @@ export function Books() {
 
         <View style={{ height: TITLE_H, paddingHorizontal: EDGE, justifyContent: 'center' }}>
           {/* Sized to the column so "Library" clears the pagoda on a narrow phone. */}
-          <Text accessibilityRole="header" style={{ fontFamily: 'LoraBold', ...PAGE_TITLE, fontSize: Math.min(PAGE_TITLE.fontSize, column * 0.085), color: c.ink }}>
+          <Text accessibilityRole="header" style={{ fontFamily: 'NunitoExtraBold', ...PAGE_TITLE, fontSize: Math.min(PAGE_TITLE.fontSize, column * 0.085), color: c.ink }}>
             Reading Library
           </Text>
         </View>
 
-        {/* Shelf chips. Pinned to their own height: a horizontal ScrollView beside
-            the vertical one would otherwise be squeezed and crop them. */}
-        <View style={{ height: 66, flexGrow: 0, flexShrink: 0 }}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ flexGrow: 0 }}
-            contentContainerStyle={{ gap: 9, paddingHorizontal: EDGE, paddingVertical: 13, alignItems: 'center' }}
-          >
-            {SHELVES.map((s) => {
-              const active = shelf === s.id
-              return (
-                <Pressable
-                  key={s.id}
-                  onPress={() => {
-                    if (active) return
-                    tickHaptic()
-                    setShelf(s.id)
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                >
-                  <View
-                    style={{
-                      height: 38,
-                      paddingHorizontal: 19,
-                      borderRadius: 19,
-                      justifyContent: 'center',
-                      backgroundColor: active ? c.teal : c.card,
-                      borderWidth: 1,
-                      borderColor: active ? c.teal : c.chipBorder,
-                    }}
-                  >
-                    <Text style={{ fontFamily: active ? 'LoraBold' : 'Lora', fontSize: 15, color: active ? c.cream : c.ink }}>
-                      {s.label}
-                    </Text>
-                  </View>
-                </Pressable>
-              )
-            })}
-          </ScrollView>
+        {/* Shelf filters, built like the Dictionary's: All, the shelf last picked,
+            and the round button that unfolds every shelf as a chip. Nothing to
+            scroll: every shelf is one tap from the panel. */}
+        <View style={{ paddingHorizontal: EDGE, paddingTop: 10, paddingBottom: 12, flexShrink: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Pill label="All" flex={0.8} selected={shelf === 'all'} onPress={() => pickShelf('all')} accessibilityLabel="All shelves" />
+            <Pill
+              label={SHELVES.find((x) => x.id === lastShelf)?.label ?? ''}
+              flex={1.7}
+              selected={shelf !== 'all'}
+              onPress={() => pickShelf(lastShelf)}
+            />
+            <FilterButton
+              open={panelOpen}
+              refined={false}
+              size={PILL_HEIGHT}
+              onPress={() => setPanelOpen((open) => !open)}
+            />
+          </View>
+          <FilterPanelCard open={panelOpen}>
+            <PanelLabel first>Shelves</PanelLabel>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {SHELVES.map((x) => (
+                <FilterChip key={x.id} label={x.label} selected={shelf === x.id} onPress={() => pickShelf(x.id)} />
+              ))}
+            </View>
+          </FilterPanelCard>
         </View>
 
         {/* Fills the screen on any phone; only scrolls when even the smallest card would not fit three shelves. */}
@@ -217,10 +218,10 @@ export function Books() {
                 <View style={{ height: HEADING_H, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: EDGE }}>
                   <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
                     {/* English only, by request. */}
-                    <Text style={{ fontFamily: 'LoraBold', fontSize: 19, lineHeight: 26, color: c.ink }}>{s.label.en}</Text>
+                    <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 19, lineHeight: 26, color: c.ink }}>{s.label.en}</Text>
                   </View>
                   {s.stories.length > 0 && (
-                    <Text style={{ fontFamily: 'Lora', fontSize: 13.5, color: c.inkSoft }}>
+                    <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 13.5, color: c.inkSoft }}>
                       {s.stories.length} {s.stories.length === 1 ? 'book' : 'books'}
                     </Text>
                   )}
@@ -239,7 +240,7 @@ export function Books() {
                       justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontFamily: 'LoraItalic', fontSize: 14, color: c.inkFaint }}>No {s.label.en.toLowerCase()} stories on this shelf yet</Text>
+                    <Text style={{ fontFamily: 'NunitoSemiBoldItalic', fontSize: 14, color: c.inkFaint }}>No {s.label.en.toLowerCase()} stories on this shelf yet</Text>
                   </View>
                 ) : (
                   <ScrollView
@@ -296,8 +297,8 @@ function StreakPill({ streak }: { streak: number }) {
       }}
     >
       <Image source={FIRE_ICON} style={{ width: 17, height: 17 }} resizeMode="contain" />
-      <Text style={{ fontFamily: 'LoraBold', fontSize: 15, color: c.ink }}>{streak}</Text>
-      <Text style={{ fontFamily: 'Lora', fontSize: 14, color: c.inkSoft }}>Streak</Text>
+      <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 15, color: c.ink }}>{streak}</Text>
+      <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, color: c.inkSoft }}>Streak</Text>
     </ShadowSurface>
   )
 }
@@ -370,14 +371,14 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
           </View>
           {/* The reading and the English title may each wrap to a second line
               rather than end in "…"; the blurb gives up a line for each. */}
-          <Text numberOfLines={2} style={{ fontFamily: 'Lora', fontSize: 12, lineHeight: 16, color: c.inkFaint }}>
+          <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', fontSize: 12, lineHeight: 16, color: c.inkFaint }}>
             {reading}
           </Text>
-          <Text numberOfLines={2} style={{ fontFamily: 'Lora', fontSize: 14, lineHeight: 19, color: c.ink }}>
+          <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 19, color: c.ink }}>
             {story.titleEnglish}
           </Text>
           {blurbRoom > 0 && (
-            <Text numberOfLines={blurbRoom} style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 17, color: c.inkSoft, marginTop: 3 }}>
+            <Text numberOfLines={blurbRoom} style={{ fontFamily: 'NunitoSemiBold', fontSize: 12.5, lineHeight: 17, color: c.inkSoft, marginTop: 3 }}>
               {available ? story.description : 'Coming soon'}
             </Text>
           )}
@@ -386,12 +387,12 @@ function StoryCard({ story, width, height, percent }: { story: Story; width: num
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <BookOpen size={13} color={c.inkFaint} />
-              <Text style={{ fontFamily: 'Lora', fontSize: 12, color: c.inkFaint }}>{formatCount(story.wordCount)} words</Text>
+              <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 12, color: c.inkFaint }}>{formatCount(story.wordCount)} words</Text>
             </View>
             <View style={{ flex: 1, height: 5, borderRadius: 3, backgroundColor: c.track, overflow: 'hidden' }}>
               <View style={{ width: `${percent}%`, height: '100%', borderRadius: 3, backgroundColor: c.teal }} />
             </View>
-            <Text style={{ fontFamily: 'Lora', fontSize: 12, color: c.inkSoft, minWidth: 30, textAlign: 'right' }}>{percent}%</Text>
+            <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 12, color: c.inkSoft, minWidth: 30, textAlign: 'right' }}>{percent}%</Text>
           </View>
         </View>
       </ShadowSurface>

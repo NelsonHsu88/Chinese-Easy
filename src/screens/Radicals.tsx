@@ -51,7 +51,7 @@ function RadicalTile({ radical, width, tint, onPress }: { radical: Radical; widt
       accessibilityLabel={`${radical.character}, ${radical.pinyin}, ${radical.meaning}`}
     >
       <Text className="font-hanzi-tc-regular text-[26px] leading-[32px] text-dict-heading">{radical.character}</Text>
-      <Text numberOfLines={1} className="font-dict-sans text-[11.5px] leading-[15px] text-dict-soft">
+      <Text numberOfLines={1} className="font-sans text-[11.5px] leading-[15px] text-dict-soft">
         {radical.pinyin}
       </Text>
     </PressScale>
@@ -103,7 +103,7 @@ export function Radicals() {
         }}
       >
         <Image source={INTRO_ART.source} resizeMode="contain" style={{ width: 72, height: 72 / INTRO_ART.ratio }} />
-        <Text className="flex-1 font-dict-sans text-[14px] leading-[20px] text-dict-body">
+        <Text className="flex-1 font-sans text-[14px] leading-[20px] text-dict-body">
           The building blocks characters are made of — {RADICALS.length} of the most common ones. These aren't full
           words, so they won't be added to My Words.
         </Text>
@@ -127,12 +127,12 @@ export function Radicals() {
           autoCapitalize="none"
           keyboardType="ascii-capable"
           accessibilityLabel="Search radicals"
-          className="flex-1 font-dict-sans text-[15px] text-dict-heading"
+          className="flex-1 font-sans text-[15px] text-dict-heading"
         />
       </View>
 
       {groups.length === 0 && (
-        <Text className="py-12 text-center font-dict-sans text-[15px] text-dict-soft">
+        <Text className="py-12 text-center font-sans text-[15px] text-dict-soft">
           No radicals match this search.
         </Text>
       )}
@@ -145,7 +145,7 @@ export function Radicals() {
           <View key={group.strokeCount} className="gap-2.5">
             <View className="flex-row items-center" style={{ gap: 8 }}>
               <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: tint.soft }}>
-                <Text className="font-dict-bold" style={{ fontSize: 12.5, lineHeight: 17, color: tint.text }}>
+                <Text className="font-nunito-bold" style={{ fontSize: 12.5, lineHeight: 17, color: tint.text }}>
                   {group.strokeCount} stroke{group.strokeCount === 1 ? '' : 's'}
                 </Text>
               </View>

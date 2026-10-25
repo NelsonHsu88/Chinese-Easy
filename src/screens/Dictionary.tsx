@@ -1,5 +1,7 @@
+import { RaisedButton } from '../components/dashboard/parts'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { View, Text, TextInput, ScrollView, Pressable, Animated, Easing, Image, Platform, InteractionManager, useWindowDimensions } from 'react-native'
+import { View, Text, TextInput, ScrollView, Pressable, Animated, Easing, Image, Platform, useWindowDimensions } from 'react-native'
+import { runAfterInteractions } from '../lib/afterInteractions'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
 import { ChevronLeft, Search, X, Layers } from 'lucide-react-native'
@@ -7,7 +9,6 @@ import { useApp } from '../context/AppContext'
 import { defaultPhoneticFor, displayPinyin } from '../lib/hanzi'
 import {
   buildDeckIndex,
-  characterList,
   entryStateFor,
   isInDeck,
   searchWords,
@@ -18,7 +19,6 @@ import {
 } from '../lib/dictionary'
 import { todayISO } from '../lib/date'
 import { warmLookup } from '../data/lookupWords'
-import { PressScale } from '../components/dictionary/PressScale'
 import { dictEntrance } from '../components/dictionary/entrance'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { useScrollToTopOnFocus } from '../components/useScrollToTopOnFocus'
@@ -29,12 +29,10 @@ import {
   FilterPanel,
   FilterRow,
   HskLevelBar,
-  RecentList,
-  SectionHeading,
   WordToDiscover,
 } from '../components/dictionary/Landing'
 import { ICON_GREEN, ICON_GREEN_DARK, ICON_MUTED, ICON_STROKE } from '../components/dictionary/DictionaryControls'
-import { DICT_BG, DICT_BUTTON_SHADOW } from '../components/dictionary/shadows'
+import { DICT_BG } from '../components/dictionary/shadows'
 import { UndoBar } from '../components/dictionary/UndoBar'
 import { FlexGap } from '../components/FlexGap'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
@@ -60,8 +58,6 @@ const GUTTER = 20
 /** Any Han character — CJK Unified Ideographs plus Extension A. */
 const HAS_HANZI = /[㐀-䶿一-鿿]/
 
-/** Rows shown in the Recent group before "See all". */
-const RECENT_PREVIEW = 2
 /** The pagoda and blossom over the title, top right (SS1017). */
 /* "SS1017 New APP DesIGN UI (6)": bamboo, birds, sun and the bridge pavilion, full width. */
 const HEADER_ART = { source: require('../assets/images/app/dict-header.png'), ratio: 778 / 232 }
@@ -72,7 +68,7 @@ const SEARCH_TOP_REF = 352
  * The shelves the landing opens onto. Each is a titled list with a way back;
  * none is a separate route, so the search field stays where it is above them.
  */
-type Shelf = 'recents' | 'vocabulary' | 'characters'
+type Shelf = 'recents' | 'vocabulary'
 
 /**
  * Fades its children in from 0 opacity when `animate` is true at mount, and
@@ -221,7 +217,7 @@ export function Dictionary() {
        hundred milliseconds on the same thread the animation needs. Usually
        already done by `prewarmDictionary` at launch, when it costs nothing. */
     let timer: ReturnType<typeof setTimeout> | undefined
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = runAfterInteractions(() => {
       timer = setTimeout(warmLookup, 700)
     })
     return () => {
@@ -294,6 +290,13 @@ export function Dictionary() {
      discover, which start below the fold on a short phone — so it can ask for
      a scroll. The offset is tracked rather than read back, as on the Dashboard. */
   const scrollY = useRef(0)
+  /* Opening a shelf (Recent's See all, HSK Vocabulary, Characters) starts it at
+     its first row, not at the offset the landing page was scrolled to. */
+  useEffect(() => {
+    if (shelf === null) return
+    scroll.current?.scrollTo({ y: 0, animated: false })
+    scrollY.current = 0
+  }, [shelf, scroll])
   const tourScrollBy = useMemo(
     () => (dy: number) => scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true }),
     [scroll],
@@ -305,7 +308,6 @@ export function Dictionary() {
   )
 
   const vocabulary = useMemo(() => starterList(wordBank, hskLevel), [wordBank, hskLevel])
-  const characters = useMemo(() => characterList(wordBank, hskLevel), [wordBank, hskLevel])
 
   /*
    * Keyed on the day string so a dictionary left open across midnight (or a
@@ -336,9 +338,8 @@ export function Dictionary() {
     }
     if (shelf === 'recents') return recentWords
     if (shelf === 'vocabulary') return vocabulary
-    if (shelf === 'characters') return characters
     return []
-  }, [searching, wordBank, query, effectiveField, levelOnly, hskLevel, shelf, recentWords, vocabulary, characters])
+  }, [searching, wordBank, query, effectiveField, levelOnly, hskLevel, shelf, recentWords, vocabulary])
 
   /** Vocabulary-shelf words not yet in the deck — what bulk add would actually add. */
   const pending = useMemo(() => vocabulary.filter((w) => !isInDeck(w.id, deckIndex)), [vocabulary, deckIndex])
@@ -372,7 +373,7 @@ export function Dictionary() {
   }
 
   const shelfTitle =
-    shelf === 'recents' ? 'Recent' : shelf === 'vocabulary' ? `HSK ${hskLevel} vocabulary` : `HSK ${hskLevel} characters`
+    shelf === 'recents' ? 'Recent' : `HSK ${hskLevel} vocabulary`
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-dict-page">
@@ -411,7 +412,7 @@ export function Dictionary() {
             */}
             <View className="pb-4" style={{ paddingTop: PAGE_TITLE_TOP + 10, minHeight: refY(SEARCH_TOP_REF, columnWidth) }}>
               <RefHero source={HEADER_ART.source} ratio={HEADER_ART.ratio} column={columnWidth} left={-GUTTER} />
-              <Text className="font-lora-bold text-dict-heading" accessibilityRole="header" style={{ ...PAGE_TITLE, fontSize: 40, lineHeight: 46 }}>
+              <Text className="font-nunito-extrabold text-dict-heading" accessibilityRole="header" style={{ ...PAGE_TITLE, fontSize: 40, lineHeight: 46 }}>
                 Dictionary
               </Text>
             </View>
@@ -459,7 +460,7 @@ export function Dictionary() {
                  * rather than on the field being non-empty, so "pengyou" doesn't
                  * get rendered in a Chinese serif.
                  */
-                style={{ fontFamily: HAS_HANZI.test(query) ? 'NotoSerifTC' : 'NunitoSans', height: '100%' }}
+                style={{ fontFamily: HAS_HANZI.test(query) ? 'NotoSerifTC' : 'Nunito', height: '100%' }}
               />
               {query.length > 0 && (
                 <Pressable
@@ -493,7 +494,7 @@ export function Dictionary() {
             */}
             <FadeSection key={section} animate={animateSection}>
             <View className="mt-3.5">
-              {shelf === 'vocabulary' || shelf === 'characters' ? (
+              {shelf === 'vocabulary' ? (
                 <HskLevelBar
                   level={hskLevel}
                   panelOpen={panelOpen}
@@ -540,7 +541,7 @@ export function Dictionary() {
 
             {searching ? (
               <>
-                <Text className="mb-1 mt-7 font-lora-bold text-[21px] leading-[28px] text-dict-heading">Results</Text>
+                <Text className="mb-1 mt-7 font-nunito-extrabold text-[21px] leading-[28px] text-dict-heading">Results</Text>
                 <ResultList
                   results={results}
                   emptyBody={
@@ -562,18 +563,19 @@ export function Dictionary() {
                 emptyBody={shelf === 'recents' ? 'Words you look up will show up here.' : 'Try another HSK level.'}
                 action={
                   shelf === 'vocabulary' ? (
-                    <PressScale
-                      onPress={bulkAdd}
-                      disabled={pending.length === 0}
-                      className="flex-row items-center justify-center gap-1.5 rounded-full border border-dict-green/30 bg-dict-green-pale px-4"
-                      style={[{ height: 44 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.greenPale }]}
+                    <RaisedButton
+                      onPress={pending.length === 0 ? undefined : bulkAdd}
                       accessibilityLabel={`Add ${pending.length} words to My Words`}
+                      height={44}
+                      fill={DICT_BG.greenPale}
+                      border={DICT_BG.green}
+                      shoulder={DICT_BG.green}
                     >
                       <Layers size={16} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-                      <Text className="font-dict-bold text-[14px] text-dict-green-dark">
+                      <Text className="font-nunito-bold text-[14px] text-dict-green-dark">
                         {pending.length === 0 ? 'All in your deck' : `Add all ${pending.length} to My Words`}
                       </Text>
-                    </PressScale>
+                    </RaisedButton>
                   ) : null
                 }
                 results={results}
@@ -586,13 +588,13 @@ export function Dictionary() {
               />
             ) : (
               <>
-                {/* Explore opens the landing, then Word to discover; Recent closes it. */}
+                {/* Explore opens the landing, then Word to discover closes it. */}
                 <FlexGap min={18} max={28} />
                 <TourTarget id="dictionary-explore" radius={18}>
                   <ExploreGrid
                     script={settings.script}
                     onVocabulary={() => setShelf('vocabulary')}
-                    onCharacters={() => setShelf('characters')}
+                    onRecent={() => setShelf('recents')}
                     onRadicals={() => router.push('/radicals')}
                     onMyWords={() => router.push('/my-words')}
                   />
@@ -614,12 +616,6 @@ export function Dictionary() {
                   </>
                 )}
 
-                <FlexGap min={30} max={40} />
-                <SectionHeading
-                  title="Recent"
-                  onSeeAll={recentWords.length > RECENT_PREVIEW ? () => setShelf('recents') : undefined}
-                />
-                <RecentList words={recentWords.slice(0, RECENT_PREVIEW)} settings={settings} onOpen={openWord} />
               </>
             )}
             </FadeSection>
@@ -667,8 +663,8 @@ function ResultList({
   if (results.length === 0) {
     return (
       <View className="mt-10 items-center gap-2 px-6">
-        <Text className="font-dict-bold text-[17px] text-dict-heading">{emptyTitle}</Text>
-        <Text className="text-center font-dict-sans text-[15px] leading-[21px] text-dict-soft">{emptyBody}</Text>
+        <Text className="font-nunito-bold text-[17px] text-dict-heading">{emptyTitle}</Text>
+        <Text className="text-center font-sans text-[15px] leading-[21px] text-dict-soft">{emptyBody}</Text>
       </View>
     )
   }
@@ -692,7 +688,7 @@ function ResultList({
   )
 }
 
-/** A titled shelf with a way back out — Recent, HSK vocabulary, characters. */
+/** A titled shelf with a way back out — Recent or HSK vocabulary. */
 function BrowseResults({
   title,
   onBack,
@@ -711,19 +707,23 @@ function BrowseResults({
   return (
     <>
       <View className="flex-row items-center justify-between pb-3 pt-7">
-        <Text className="flex-1 font-lora-bold text-[21px] leading-[28px] text-dict-heading">{title}</Text>
-        <PressScale
+        <Text className="flex-1 font-nunito-extrabold text-[21px] leading-[28px] text-dict-heading">{title}</Text>
+        <RaisedButton
           onPress={() => {
             tickHaptic()
             onBack()
           }}
-          className="flex-row items-center gap-1.5 rounded-full border border-dict-border bg-dict-card pl-3 pr-4"
-          style={[{ height: 44 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.card }]}
           accessibilityLabel="Back to the dictionary home"
+          height={44}
+          fill={DICT_BG.card}
+          border={DICT_BG.pillBorder}
+          shoulder={DICT_BG.pillShoulder}
         >
-          <ChevronLeft size={19} color={ICON_GREEN_DARK} strokeWidth={2.5} />
-          <Text className="font-dict-bold text-[14px] text-dict-green-dark">Back</Text>
-        </PressScale>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 12, paddingRight: 16 }}>
+            <ChevronLeft size={19} color={ICON_GREEN_DARK} strokeWidth={2.5} />
+            <Text className="font-nunito-bold text-[14px] text-dict-green-dark">Back</Text>
+          </View>
+        </RaisedButton>
       </View>
       {action}
       <ResultList emptyTitle={emptyTitle} emptyBody={emptyBody} {...rest} />

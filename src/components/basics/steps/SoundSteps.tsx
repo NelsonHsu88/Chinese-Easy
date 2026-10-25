@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { View, Text, Pressable } from 'react-native'
+import { View, Text } from 'react-native'
 import { Check } from 'lucide-react-native'
 import type { BasicsStep, SoundSymbol, Tone, ZhItem } from '../../../data/basics/types'
 import { FINALS, INITIALS } from '../../../data/basics/sounds'
@@ -11,7 +11,8 @@ import { tickHaptic, correctHaptic } from '../../../lib/haptics'
 import { AudioButton, AudioIndicator, playZh, useAudioPhase } from '../audio'
 import { BasicsPill } from '../parts'
 import { ToneContour } from '../ToneContour'
-import { Card, Chip, Gloss, Hanzi, ItemRow, Reading, StepBody, StepTitle, type BasicsCtx, type StepProps } from '../lessonParts'
+import { Card, Chip, Gloss, Hanzi, ItemRow, RaisedTap, Reading, StepBody, StepTitle, type BasicsCtx, type StepProps } from '../lessonParts'
+import { PressableScale } from '../../dashboard/parts'
 import { basicsColors as c, basicsType as bt } from '../tokens'
 
 /*
@@ -53,7 +54,7 @@ export function SoundStep({ step, ctx, stepId }: StepProps<Of<'sound'>>) {
       <Card style={{ marginTop: 12, alignItems: 'center', paddingVertical: 20 }}>
         <Symbol symbol={step.symbol} ctx={ctx} size={72} />
         <Text
-          className="font-lora"
+          className="font-nunito-semibold"
           style={{ marginTop: 10, fontSize: 16, lineHeight: 23, color: c.navy, textAlign: 'center' }}
         >
           {ctx.text(step.how)}
@@ -85,7 +86,7 @@ export function SoundStep({ step, ctx, stepId }: StepProps<Of<'sound'>>) {
             <ContrastCard symbol={step.symbol} item={main} ctx={ctx} id={`${stepId}-cmp-a`} />
             <ContrastCard symbol={step.contrast.symbol} item={step.contrast.example} ctx={ctx} id={`${stepId}-cmp-b`} />
           </View>
-          <Text className="font-lora" style={{ marginTop: 10, fontSize: 15, lineHeight: 21, color: c.slate }}>
+          <Text className="font-nunito-semibold" style={{ marginTop: 10, fontSize: 15, lineHeight: 21, color: c.slate }}>
             {ctx.text(step.contrast.note)}
           </Text>
         </>
@@ -97,19 +98,18 @@ export function SoundStep({ step, ctx, stepId }: StepProps<Of<'sound'>>) {
 function ContrastCard({ symbol, item, ctx, id }: { symbol: SoundSymbol; item: ZhItem; ctx: BasicsCtx; id: string }) {
   const text = ctx.zh(item.zh)
   return (
-    <Pressable
+    <RaisedTap
       onPress={() => playZh(text, id)}
-      accessibilityRole="button"
       accessibilityLabel={`${symbol[ctx.phonetic]}: ${text}. Play`}
-      style={{ flex: 1 }}
+      radius={18}
+      wrapperStyle={{ flex: 1 }}
+      style={{ alignItems: 'center', paddingVertical: 12, gap: 4 }}
     >
-      <View style={{ alignItems: 'center', borderRadius: 18, borderWidth: 1, borderColor: c.border, backgroundColor: c.card, paddingVertical: 12, gap: 4 }}>
-        <Symbol symbol={symbol} ctx={ctx} size={28} />
-        <Hanzi zh={item.zh} ctx={ctx} size={28} />
-        <Reading pinyin={item.pinyin} ctx={ctx} size={14} center />
-        <AudioIndicator id={id} size={36} />
-      </View>
-    </Pressable>
+      <Symbol symbol={symbol} ctx={ctx} size={28} />
+      <Hanzi zh={item.zh} ctx={ctx} size={28} />
+      <Reading pinyin={item.pinyin} ctx={ctx} size={14} center />
+      <AudioIndicator id={id} size={36} />
+    </RaisedTap>
   )
 }
 
@@ -155,7 +155,7 @@ export function SyllablePartsStep({ step, ctx, stepId, setGate }: StepProps<Of<'
       <StepTitle>{ctx.text(step.title)}</StepTitle>
       <StepBody>{ctx.text(step.body)}</StepBody>
       <Card style={{ marginTop: 16, alignItems: 'center', paddingVertical: 18 }}>
-        <Pressable onPress={() => open('whole')} accessibilityRole="button" accessibilityLabel={`${wholeText}. Play the whole syllable`}>
+        <PressableScale onPress={() => open('whole')} scaleTo={1} haptic={false} accessibilityLabel={`${wholeText}. Play the whole syllable`}>
           <View style={{ alignItems: 'center' }}>
             <Hanzi zh={step.whole.zh} ctx={ctx} size={64} />
             <Reading pinyin={step.whole.pinyin} ctx={ctx} size={22} center />
@@ -163,7 +163,7 @@ export function SyllablePartsStep({ step, ctx, stepId, setGate }: StepProps<Of<'
               <AudioIndicator id={wholeId} size={44} />
             </View>
           </View>
-        </Pressable>
+        </PressableScale>
         <View style={{ marginTop: 18, flexDirection: 'row', alignItems: 'stretch', gap: 8 }}>
           {step.initial && (
             <PartTile label="Initial" focused={focus === 'initial'} seen={seen.has('initial')} onPress={() => open('initial')}>
@@ -178,7 +178,7 @@ export function SyllablePartsStep({ step, ctx, stepId, setGate }: StepProps<Of<'
           </PartTile>
         </View>
         <Text
-          className="font-lora"
+          className="font-nunito-semibold"
           accessibilityLiveRegion="polite"
           style={{ marginTop: 14, minHeight: 44, fontSize: 15, lineHeight: 21, color: c.navy, textAlign: 'center' }}
         >
@@ -203,29 +203,22 @@ function PartTile({
   children: React.ReactNode
 }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={`${label}${seen ? ', seen' : ''}`} accessibilityState={{ selected: focused }}>
-      <View
-        style={{
-          width: 88,
-          minHeight: 92,
-          borderRadius: 16,
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 4,
-          borderWidth: focused ? 2 : 1,
-          borderColor: focused ? c.jade : c.border,
-          backgroundColor: focused ? c.sageSoft : c.card,
-        }}
-      >
-        {children}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-          {seen && <Check size={11} color={c.sageDark} strokeWidth={3} />}
-          <Text className="font-nunito-bold" style={{ ...bt.pill, color: c.sageDark }}>
-            {label.toUpperCase()}
-          </Text>
-        </View>
+    <RaisedTap
+      onPress={onPress}
+      accessibilityLabel={`${label}${seen ? ', seen' : ''}`}
+      accessibilityState={{ selected: focused }}
+      tone={focused ? 'selected' : 'card'}
+      radius={16}
+      style={{ width: 88, minHeight: 92, alignItems: 'center', justifyContent: 'center', gap: 4 }}
+    >
+      {children}
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+        {seen && <Check size={11} color={c.sageDark} strokeWidth={3} />}
+        <Text className="font-nunito-bold" style={{ ...bt.pill, color: c.sageDark }}>
+          {label.toUpperCase()}
+        </Text>
       </View>
-    </Pressable>
+    </RaisedTap>
   )
 }
 
@@ -290,26 +283,16 @@ function ToneRow({
   }, [phase, slowPhase])
 
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        borderRadius: 18,
-        borderWidth: 1,
-        borderColor: played ? c.sage : c.border,
-        backgroundColor: c.card,
-        paddingRight: 10,
-      }}
-    >
-      <Pressable
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <RaisedTap
         onPress={() => {
           onPlay()
           playZh(text, id)
         }}
-        accessibilityRole="button"
         accessibilityLabel={`${toneLabel(tone)}, ${TONE_SHAPES[tone]}. ${text}${item.gloss ? `, ${item.gloss}` : ''}. Play`}
-        style={{ flex: 1 }}
+        radius={18}
+        borderColor={played ? c.sage : undefined}
+        wrapperStyle={{ flex: 1 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12 }}>
           <ToneContour tone={tone} width={76} sweepKey={sweep} />
@@ -327,7 +310,7 @@ function ToneRow({
           </View>
           <AudioIndicator id={id} size={40} />
         </View>
-      </Pressable>
+      </RaisedTap>
       <AudioButton text={text} id={id} size={36} slow label={`Play ${text} slowly`} />
     </View>
   )
@@ -429,32 +412,22 @@ export function SyllableBuilderStep({ step, ctx, stepId, setGate }: StepProps<Of
       </BuilderRow>
       <BuilderRow title="Tone">
         {([1, 2, 3, 4] as Tone[]).map((t) => (
-          <Pressable
-            key={t}
-            onPress={toneAvailable(t) ? () => (tickHaptic(), setTone(t)) : undefined}
-            accessibilityRole="button"
-            accessibilityLabel={`${toneLabel(t)}${toneAvailable(t) ? '' : ', no common word'}`}
-            accessibilityState={{ selected: tone === t, disabled: !toneAvailable(t) }}
-          >
-            <View
-              style={{
-                width: 70,
-                height: 56,
-                borderRadius: 14,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: tone === t ? 2 : 1,
-                borderColor: tone === t ? c.jade : c.border,
-                backgroundColor: tone === t ? c.sageSoft : c.card,
-                opacity: toneAvailable(t) ? 1 : 0.35,
-              }}
+          <View key={t} style={{ opacity: toneAvailable(t) ? 1 : 0.35 }}>
+            <RaisedTap
+              onPress={() => (tickHaptic(), setTone(t))}
+              disabled={!toneAvailable(t)}
+              accessibilityLabel={`${toneLabel(t)}${toneAvailable(t) ? '' : ', no common word'}`}
+              accessibilityState={{ selected: tone === t, disabled: !toneAvailable(t) }}
+              tone={tone === t ? 'selected' : 'card'}
+              radius={14}
+              style={{ width: 70, height: 56, alignItems: 'center', justifyContent: 'center' }}
             >
               <ToneContour tone={t} width={44} />
               <Text className="font-nunito-bold" style={{ ...bt.pill, color: c.slate }}>
                 {t}
               </Text>
-            </View>
-          </Pressable>
+            </RaisedTap>
+          </View>
         ))}
       </BuilderRow>
 
@@ -495,7 +468,7 @@ function BuildResultView({
   partial: string
 }) {
   const muted = (s: string) => (
-    <Text className="font-lora" style={{ fontSize: 15, lineHeight: 21, color: c.slate, textAlign: 'center' }}>
+    <Text className="font-nunito-semibold" style={{ fontSize: 15, lineHeight: 21, color: c.slate, textAlign: 'center' }}>
       {s}
     </Text>
   )

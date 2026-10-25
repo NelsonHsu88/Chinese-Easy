@@ -69,11 +69,25 @@ export const SPEECH_RATE = 0.85
 /** A slower read, for "play it again, slowly" — the listening drill's replay. */
 export const SLOW_SPEECH_RATE = 0.6
 
+/*
+ * Which request to speak is current. Every speak and every stop takes the next
+ * number, and a request whose voice lookup resolves after a newer one has been
+ * made says nothing.
+ *
+ * Without it, two quick taps on a speaker both got past `Speech.stop()` before
+ * either reached `Speech.speak` (the voice lookup is async), so the engine
+ * queued both and said the word twice. It also stops a word asked for just
+ * before a screen closed from being spoken after it has gone.
+ */
+let generation = 0
+
 /** Speaks Chinese text aloud in Mandarin, never Cantonese. */
 export function speak(text: string, opts: { rate?: number } = {}): void {
   if (!text) return
+  const mine = ++generation
   Speech.stop()
   void mandarinVoice().then((voice) => {
+    if (mine !== generation) return
     Speech.speak(text, {
       language: voice?.language ?? FALLBACK_LANGUAGE,
       voice: voice?.identifier,
@@ -100,8 +114,15 @@ export function speakTracked(text: string, opts: TrackedSpeechOptions = {}): voi
     opts.onEnd?.()
     return
   }
+  const mine = ++generation
   Speech.stop()
   void mandarinVoice().then((voice) => {
+    // Superseded before it started: report it ended, so a button showing
+    // "loading" for it settles.
+    if (mine !== generation) {
+      opts.onEnd?.()
+      return
+    }
     Speech.speak(text, {
       language: voice?.language ?? FALLBACK_LANGUAGE,
       voice: voice?.identifier,
@@ -160,7 +181,9 @@ export function speakWithProgress(text: string, opts: ProgressSpeechOptions): vo
     opts.onDone?.()
     return
   }
+  const mine = ++generation
   void mandarinVoice().then((voice) => {
+    if (mine !== generation) return
     Speech.speak(text, {
       language: voice?.language ?? FALLBACK_LANGUAGE,
       voice: voice?.identifier,
@@ -174,12 +197,16 @@ export function speakWithProgress(text: string, opts: ProgressSpeechOptions): vo
         if (typeof at === 'number') opts.onBoundary?.(at)
       },
       onStart: () => opts.onStart?.(),
-      onDone: () => opts.onDone?.(),
+      // Something else spoke or stopped since: this run was cut off, not finished.
+      onDone: () => {
+        if (mine === generation) opts.onDone?.()
+      },
     })
   })
 }
 
 /** Silences whatever is being spoken. Safe to call when nothing is. */
 export function stopSpeaking(): void {
+  generation++
   void Speech.stop()
 }

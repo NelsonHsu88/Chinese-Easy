@@ -1,8 +1,9 @@
+import { RaisedButton } from '../components/dashboard/parts'
 import { View, Text, useWindowDimensions } from 'react-native'
-import { BarChart3, Bell, BookOpen, Info, SlidersHorizontal, Sparkles, Target } from 'lucide-react-native'
-import { router } from 'expo-router'
+import { ArrowLeft, BarChart3, Bell, BookOpen, Info, SlidersHorizontal, Sparkles, Target } from 'lucide-react-native'
+import { router, type Href } from 'expo-router'
 import { useApp } from '../context/AppContext'
-import { getLevelFromXp, levelTitle } from '../lib/progression/levels'
+import { playTints } from '../components/dashboard/tokens'
 import {
   SettingsShell,
   SakuraCorner,
@@ -11,15 +12,12 @@ import {
   GroupCard,
   NavRow,
 } from '../components/settings/parts'
-import { ProfileCard } from '../components/settings/cards'
 import { TourTarget } from '../components/tour/targets'
 import { useScreenTransition } from '../components/settings/transition'
 import { setColors as c, setSpacing as s, setType as t, setRadius, SET_CONTENT_MAX } from '../components/settings/tokens'
-import { PAGE_TITLE_TOP } from '../components/pageHeader'
 
 /** Everything this screen can open. Typed so a renamed route fails the build. */
 type SettingsHref =
-  | '/profile'
   | '/subscribe'
   | '/settings/learning'
   | '/settings/reminders'
@@ -39,9 +37,11 @@ type SettingsHref =
  * wanted. A row that already summarises its own state ("Daily at 7:00 PM", "20
  * words") answers most visits without opening anything at all.
  *
- * The detail screens live in `src/screens/settings/`, reached through
- * `/settings/<name>` — a directory with no `index`, so `/settings` itself stays
- * owned by the tab route and expo-router has no path to loop on.
+ * Reached from the gear on the Profile tab, so it is a page of its own at
+ * `/settings` (`app/settings/index.tsx`) with a back arrow, not a tab. The
+ * detail screens live in `src/screens/settings/`, reached through
+ * `/settings/<name>`. The learner's name, photo and level are the Profile
+ * tab's business now, so the profile card that used to head this page is gone.
  *
  * Built to the Beta 2.1 reference "SS104 Setting UI Redesign.png": Lora
  * headings and row titles, no row icons, the reference's own sakura branch and
@@ -87,8 +87,7 @@ function formatTime(time: string): string {
 }
 
 export function Settings() {
-  const { settings, isAdFree, xp } = useApp()
-  const level = getLevelFromXp(xp)
+  const { settings, isAdFree } = useApp()
   const phonetics = settings.phoneticScript === 'pinyin' ? 'Pinyin' : 'Zhuyin'
 
   const { width } = useWindowDimensions()
@@ -102,6 +101,8 @@ export function Settings() {
    */
   const { style, shadow, leave } = useScreenTransition()
   const open = (href: SettingsHref) => () => leave(() => router.push(href))
+  /* Back to Profile — guarded, since a deep link or a web reload has nothing to pop. */
+  const back = () => leave(() => (router.canGoBack() ? router.back() : router.replace('/profile-tab' as Href)))
 
 
   return (
@@ -115,33 +116,37 @@ export function Settings() {
           The branch is drawn before the title and sits behind it in paint order,
           but it is out of flow, so the title's own box is untouched.
         */}
-        <View style={{ paddingTop: PAGE_TITLE_TOP }}>
+        <View style={{ paddingTop: s.md }}>
+          <RaisedButton
+            onPress={back}
+            accessibilityLabel="Back to Profile"
+            hitSlop={10}
+            height={40}
+            width={40}
+            radius={20}
+            fill={playTints.jade.fill}
+            border={playTints.jade.border}
+            shoulder={playTints.jade.border}
+            scaleTo={0.9}
+          >
+            <ArrowLeft size={20} color={playTints.jade.text} strokeWidth={2.4} />
+          </RaisedButton>
+        </View>
+        <View style={{ paddingTop: s.sm }}>
           <SakuraCorner width={column * SAKURA_SHARE} />
           <Text
-            className="font-lora-bold"
+            className="font-nunito-extrabold"
             accessibilityRole="header"
             style={{ ...t.title, color: c.navy }}
           >
             Settings
           </Text>
-          <Text className="font-lora" style={{ ...t.subtitle, color: c.textSecondary, marginTop: s.xs }}>
+          <Text className="font-nunito-semibold" style={{ ...t.subtitle, color: c.textSecondary, marginTop: s.xs }}>
             Personalise your learning experience.
           </Text>
         </View>
 
-        <View style={{ marginTop: s.xxxl }}>
-          <TourTarget id="settings-profile" radius={setRadius.card}>
-            <ProfileCard
-              name={settings.username}
-              photo={settings.avatarUri}
-              detail={`Level ${level} · ${levelTitle(level)}`}
-              height={84}
-              onPress={open('/profile')}
-            />
-          </TourTarget>
-        </View>
-
-        <View style={{ marginTop: SECTION_GAP, gap: HEADING_GAP }}>
+        <View style={{ marginTop: s.xxxl, gap: HEADING_GAP }}>
           <SectionHeading>Study</SectionHeading>
           <TourTarget id="settings-study" radius={setRadius.card}>
           <GroupCard>

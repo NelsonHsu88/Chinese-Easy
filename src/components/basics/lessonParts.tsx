@@ -1,6 +1,6 @@
 import { PlayWash } from '../dashboard/playWash'
 import { createContext, useContext, useRef, useState } from 'react'
-import { View, Text, Pressable, Animated } from 'react-native'
+import { View, Text, Animated, type AccessibilityState, type StyleProp, type ViewStyle } from 'react-native'
 import { Check, ChevronDown, ChevronUp, Info, RotateCcw } from 'lucide-react-native'
 import { ShadowSurface } from '../shadowReveal'
 import { dashShadow, type PlayTint } from '../dashboard/tokens'
@@ -12,7 +12,7 @@ import type { ScriptMode } from '../../types'
 import type { CheckStatus } from '../../lib/basicsEngine'
 import { AudioButton, AudioIndicator, playZh } from './audio'
 import { PressableScale } from '../dashboard/parts'
-import { BasicsRaised } from './parts'
+import { BasicsRaised, shade } from './parts'
 import { useAnswerReaction } from '../motion/questionMotion'
 import { AnswerShimmer, AnswerSparks } from '../motion/answerFeedback'
 import { basicsColors as c, basicsRadius as radius, basicsSpacing as sp, basicsType as t } from './tokens'
@@ -29,6 +29,74 @@ export interface BasicsCtx {
   both: boolean
   text: (s: Phon) => string
   zh: (z: Zh) => string
+}
+
+/**
+ * Anything tappable in a lesson, raised: a `BasicsRaised` face on a shoulder
+ * that sinks while pressed. Defaults to the card face on the quiet shoulder;
+ * `tone` picks the soft-green or selected look, `tint` a group's hue.
+ */
+export function RaisedTap({
+  onPress,
+  accessibilityLabel,
+  accessibilityState,
+  tone = 'card',
+  tint,
+  radius: r = 16,
+  corners,
+  borderColor,
+  disabled,
+  wrapperStyle,
+  style,
+  underlay,
+  children,
+}: {
+  onPress?: () => void
+  accessibilityLabel: string
+  accessibilityState?: AccessibilityState
+  tone?: 'card' | 'soft' | 'selected'
+  tint?: PlayTint | null
+  radius?: number
+  corners?: { borderTopLeftRadius?: number; borderTopRightRadius?: number }
+  /** Overrides the rim colour, e.g. a row the learner has already played. */
+  borderColor?: string
+  disabled?: boolean
+  wrapperStyle?: StyleProp<ViewStyle>
+  style?: StyleProp<ViewStyle>
+  underlay?: React.ReactNode
+  children: React.ReactNode
+}) {
+  const look =
+    tone === 'selected'
+      ? { fill: c.sageSoft, border: c.jade, borderWidth: 2, shoulder: c.shoulder.jade }
+      : tone === 'soft'
+        ? { fill: c.sageSoft, border: undefined, borderWidth: 0, shoulder: c.shoulder.sage }
+        : tint
+          ? { fill: tint.fill, border: tint.border, borderWidth: 1, shoulder: shade(tint.soft, 0.12) }
+          : { fill: c.card, border: c.border, borderWidth: 1, shoulder: c.shoulder.quiet }
+  return (
+    <PressableScale
+      onPress={disabled ? undefined : onPress}
+      scaleTo={1}
+      haptic={false}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={accessibilityState}
+      wrapperStyle={wrapperStyle}
+    >
+      <BasicsRaised
+        fill={look.fill}
+        shoulder={look.shoulder}
+        border={borderColor ?? look.border}
+        borderWidth={borderColor ? Math.max(1, look.borderWidth) : look.borderWidth}
+        radius={r}
+        corners={corners}
+        underlay={underlay}
+        style={style}
+      >
+        {children}
+      </BasicsRaised>
+    </PressableScale>
+  )
 }
 
 export function makeCtx(script: ScriptMode, phonetic: Phonetic, both: boolean): BasicsCtx {
@@ -71,7 +139,7 @@ export interface StepProps<S> {
 export function StepTitle({ children }: { children: string }) {
   return (
     <Text
-      className="font-lora-bold"
+      className="font-nunito-extrabold"
       accessibilityRole="header"
       style={{ ...t.stepTitle, marginTop: 6, color: c.navy }}
     >
@@ -82,7 +150,7 @@ export function StepTitle({ children }: { children: string }) {
 
 export function StepBody({ children }: { children: string }) {
   return (
-    <Text className="font-lora" style={{ ...t.body, marginTop: sp.sm, color: c.slate }}>
+    <Text className="font-nunito-semibold" style={{ ...t.body, marginTop: sp.sm, color: c.slate }}>
       {children}
     </Text>
   )
@@ -202,37 +270,29 @@ export function ItemRow({
      as part of the lesson rather than as white form fields. */
   const tint = useContext(LessonTintContext)
   return (
-    <Pressable
+    <RaisedTap
       onPress={() => playZh(spoken, audioId)}
-      accessibilityRole="button"
       accessibilityLabel={`${spoken}${item.gloss ? `, ${ctx.text(item.gloss)}` : ''}. Play`}
+      tint={tint}
+      radius={radius.inner}
+      underlay={
+        tint ? (
+          <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, borderRadius: radius.inner, overflow: 'hidden' }}>
+            <PlayWash tint={tint} />
+          </View>
+        ) : null
+      }
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10, paddingHorizontal: 14, minHeight: 64 }}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 14,
-          borderRadius: radius.inner,
-          borderWidth: 1,
-          borderColor: tint?.border ?? c.border,
-          backgroundColor: tint?.fill ?? c.card,
-          paddingVertical: 10,
-          paddingHorizontal: 14,
-          minHeight: 64,
-          overflow: 'hidden',
-        }}
-      >
-        {tint && <PlayWash tint={tint} />}
-        <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 30, lineHeight: 40, color: c.navy }}>
-          {shown}
-        </Text>
-        <View style={{ flex: 1 }}>
-          <Reading pinyin={item.pinyin} ctx={ctx} size={15.5} both={bothReadings} />
-          {item.gloss && <Gloss>{ctx.text(item.gloss)}</Gloss>}
-        </View>
-        <AudioIndicator id={audioId} size={40} />
+      <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 30, lineHeight: 40, color: c.navy }}>
+        {shown}
+      </Text>
+      <View style={{ flex: 1 }}>
+        <Reading pinyin={item.pinyin} ctx={ctx} size={15.5} both={bothReadings} />
+        {item.gloss && <Gloss>{ctx.text(item.gloss)}</Gloss>}
       </View>
-    </Pressable>
+      <AudioIndicator id={audioId} size={40} />
+    </RaisedTap>
   )
 }
 
@@ -242,22 +302,25 @@ export function LearnMore({ children }: { children: string }) {
   const Icon = open ? ChevronUp : ChevronDown
   return (
     <View style={{ marginTop: sp.lg }}>
-      <Pressable
-        onPress={() => setOpen((o) => !o)}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
-        hitSlop={8}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 }}>
+      {/* A small raised pill, so it reads as something to press. */}
+      <View style={{ alignSelf: 'flex-start' }}>
+        <RaisedTap
+          onPress={() => setOpen((o) => !o)}
+          accessibilityLabel="Learn more"
+          accessibilityState={{ expanded: open }}
+          tone="soft"
+          radius={20}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 14 }}
+        >
           <Info size={16} color={c.sageDark} strokeWidth={2.2} />
           <Text className="font-nunito-bold" style={{ fontSize: 14, color: c.sageDark }}>
             Learn more
           </Text>
           <Icon size={16} color={c.sageDark} strokeWidth={2.2} />
-        </View>
-      </Pressable>
+        </RaisedTap>
+      </View>
       {open && (
-        <Text className="font-lora" style={{ ...t.bodySmall, color: c.slate }}>
+        <Text className="font-nunito-semibold" style={{ ...t.bodySmall, color: c.slate, marginTop: 10 }}>
           {children}
         </Text>
       )}
@@ -298,7 +361,7 @@ export function FeedbackPanel({
             {heading}
           </Text>
         </View>
-        <Text className="font-lora" style={{ ...t.bodySmall, marginTop: sp.xs, color: c.navy }}>
+        <Text className="font-nunito-semibold" style={{ ...t.bodySmall, marginTop: sp.xs, color: c.navy }}>
           {message}
         </Text>
       </View>

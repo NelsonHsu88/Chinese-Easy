@@ -1,4 +1,4 @@
-import { View, Text, Animated } from 'react-native'
+import { View, Text, Animated, PixelRatio } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import { BrushHighlight } from '../BrushHighlight'
 import { RefHero, ShifuBubble, shifuBubbleFontSize } from '../refScene'
@@ -50,7 +50,15 @@ export function HomeHero({
   const greetingRoom = columnWidth * GREETING_RIGHT - textLeft
   const greetingSize = Math.max(17, Math.min(t.greeting.fontSize * typeScale, greetingRoom / (greetingText.length * 0.55)))
   const nameRoom = columnWidth * NAME_RIGHT - textLeft
-  const nameSize = Math.max(24, Math.min(t.name.fontSize * typeScale, nameRoom / ((name.length + 1) * 0.56)))
+  /*
+   * A name too long for its line, even at the smallest size the line allows,
+   * would end in "…" — so it is greeted as "Scholar" instead. Measured by
+   * estimate (no shrink-to-fit on Android), counting CJK and capitals as the
+   * wider glyphs they are, and at the text size the system may scale it to.
+   */
+  const fontScale = Math.min(NAME_MAX_FONT_SCALE, PixelRatio.getFontScale())
+  const shownName = nameEms(name) * NAME_MIN_SIZE * fontScale * NAME_FIT_MARGIN > nameRoom ? FALLBACK_NAME : name
+  const nameSize = Math.max(NAME_MIN_SIZE, Math.min(t.name.fontSize * typeScale, nameRoom / (nameEms(shownName) * NAME_FIT_MARGIN)))
   /* Shifu's welcome, in the bubble Learn and Review share. Wide enough for two or
      three lines of the hand, and stopping short of Shifu so his face stays clear. */
   const bubbleWidth = Math.max(150, columnWidth * BUBBLE_RIGHT - textLeft)
@@ -71,7 +79,7 @@ export function HomeHero({
       <View style={{ paddingLeft: textLeft, paddingTop: artHeight * TEXT_TOP, paddingBottom: 12 }}>
         <Animated.View style={greeting}>
           <Text
-            className="font-lora-bold"
+            className="font-nunito-extrabold"
             accessibilityRole="header"
             style={{ ...t.greeting, fontSize: greetingSize, lineHeight: greetingSize * 1.26, color: c.ink, maxWidth: greetingRoom }}
           >
@@ -83,12 +91,12 @@ export function HomeHero({
                 overhangs the text above and below for the paint to reach both. */}
             <BrushHighlight color={c.nameWash} bleedX={6} bleedTop={-nameSize * 0.12} bleedBottom={-nameSize * 0.1} fleck={false}>
               <Text
-                className="font-lora-bold"
+                className="font-nunito-extrabold"
                 numberOfLines={1}
-                maxFontSizeMultiplier={1.25}
+                maxFontSizeMultiplier={NAME_MAX_FONT_SCALE}
                 style={{ ...t.name, fontSize: nameSize, lineHeight: nameSize * 1.13, color: c.ink, paddingHorizontal: 2, maxWidth: nameRoom }}
               >
-                {name}!
+                {shownName}!
               </Text>
             </BrushHighlight>
           </View>
@@ -100,6 +108,26 @@ export function HomeHero({
       </View>
     </View>
   )
+}
+
+/** The name line's smallest size, and the most the system text size may enlarge it. */
+const NAME_MIN_SIZE = 24
+const NAME_MAX_FONT_SCALE = 1.25
+/** Headroom on the width estimate, so a near miss falls back rather than truncating. */
+const NAME_FIT_MARGIN = 1.08
+/** Who the greeting addresses when the learner's name won't fit on its line. */
+const FALLBACK_NAME = 'Scholar'
+
+/** The name and its "!" in ems of Nunito ExtraBold — CJK and full-width glyphs a full em. */
+function nameEms(name: string): number {
+  let ems = 0.32 // the "!"
+  for (const ch of name) {
+    if (/[\u2E80-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]/.test(ch)) ems += 1
+    else if (/[A-Z0-9]/.test(ch)) ems += 0.66
+    else if (/\s/.test(ch)) ems += 0.26
+    else ems += 0.56
+  }
+  return ems
 }
 
 /** The column SS1020 is laid out for; the type is full size from here up. */

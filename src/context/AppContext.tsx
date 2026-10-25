@@ -339,7 +339,8 @@ interface AppContextValue {
 
   /** Daily/milestone challenges. */
   claimedChallengeIds: string[]
-  claimChallenge: (challengeId: string, xpReward: number) => void
+  /** False when it was already claimed (a repeated tap) and nothing was awarded. */
+  claimChallenge: (challengeId: string, xpReward: number) => boolean
 
   /** Dictionary search history, most recent first, capped at RECENT_SEARCH_LIMIT. */
   recentSearchIds: string[]
@@ -461,6 +462,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
    * `data/mockDeck.ts` for anyone who wants a populated deck to develop against.
    */
   const [deck, setDeck] = useState<SrsCard[]>([])
+  /*
+   * The deck as of the last call that changed it, for handlers that must not
+   * act twice on one word. State lags: two taps on Add inside one frame both
+   * saw the word missing and both counted toward today's goal.
+   */
+  const deckRef = useRef(deck)
+  deckRef.current = deck
   const [reviewLog, setReviewLog] = useState<ReviewLogEntry[]>([])
   /*
    * What the sealed review archive adds up to.
@@ -510,6 +518,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [celebrations, setCelebrations] = useState<Celebration[]>([])
   const [devClockOverride, setDevClockOverrideState] = useState<string | null>(null)
   const [claimedChallengeIds, setClaimedChallengeIds] = useState<string[]>([])
+  /* Read by `claimChallenge`, so a double tap can't pay out twice before a render. */
+  const claimedRef = useRef(claimedChallengeIds)
+  claimedRef.current = claimedChallengeIds
   const [recentSearchIds, setRecentSearchIds] = useState<string[]>([])
   const [storyProgress, setStoryProgress] = useState<Record<string, number>>({})
   const [tour, setTour] = useState<TourState>(INITIAL_TOUR)
@@ -995,6 +1006,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
        rather than being diffed against the departing account's state. */
     syncBaseline.current = null
     setSettings(DEFAULT_SETTINGS)
+    deckRef.current = []
     setDeck([])
     setQuarantinedCards([])
     setReviewLog([])
@@ -1322,10 +1334,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addToReviewDeck = useCallback(
     (wordId: string) => {
-      setDeck((prev) => {
-        if (prev.some((c) => c.wordId === wordId)) return prev
-        return [...prev, createNewCard(wordId)]
-      })
+      // Already in: nothing was added, so nothing counts toward today's goal.
+      if (deckRef.current.some((c) => c.wordId === wordId)) return
+      const card = createNewCard(wordId)
+      deckRef.current = [...deckRef.current, card]
+      setDeck((prev) => (prev.some((c) => c.wordId === wordId) ? prev : [...prev, card]))
       bumpDailyProgress(1)
       registerActivity()
     },
@@ -1335,6 +1348,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const removeFromReviewDeck = useCallback((wordIds: string[]) => {
     if (wordIds.length === 0) return
     const drop = new Set(wordIds)
+    deckRef.current = deckRef.current.filter((c) => !drop.has(c.wordId))
     setDeck((prev) => prev.filter((c) => !drop.has(c.wordId)))
     // Also clear any "new word" badges for them, or the Dictionary tab would go
     // on advertising words that are no longer in the deck.
@@ -1502,12 +1516,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const claimChallenge = useCallback(
-    (challengeId: string, xpReward: number) => {
-      if (claimedChallengeIds.includes(challengeId)) return
-      setClaimedChallengeIds((prev) => [...prev, challengeId])
+    (challengeId: string, xpReward: number): boolean => {
+      if (claimedRef.current.includes(challengeId)) return false
+      claimedRef.current = [...claimedRef.current, challengeId]
+      setClaimedChallengeIds((prev) => (prev.includes(challengeId) ? prev : [...prev, challengeId]))
       awardXp(xpReward, { type: 'challenge', challengeId })
+      return true
     },
-    [claimedChallengeIds, awardXp],
+    [awardXp],
   )
 
   /** Moves a word to the front of the search history, de-duplicating and trimming the tail. */
@@ -1594,6 +1610,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
    */
   const resetToFirstRun = useCallback(() => {
     setSettings(DEFAULT_SETTINGS)
+    deckRef.current = []
     setDeck([])
     setReviewLog([])
     reviewLedger.current = EMPTY_LEDGER

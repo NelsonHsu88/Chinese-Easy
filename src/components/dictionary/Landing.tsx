@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Animated, View, Text, ScrollView, Image } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import {
@@ -5,21 +6,20 @@ import {
   ChevronRight,
   Plus,
   Sparkle,
-  Volume2,
 } from 'lucide-react-native'
 import { playTints, refSurface, type PlayTint } from '../dashboard/tokens'
 import { PressScale } from './PressScale'
+import { LiftedFace, PressableScale, RaisedButton } from '../dashboard/parts'
 import { FilterButton, FilterDrawer } from './FilterDrawer'
 import { ReadingSentence } from './ReadingSentence'
 import { PlayWash } from '../dashboard/playWash'
-import { FilterChip, ICON_GREEN_DARK, ICON_MUTED, ICON_STROKE } from './DictionaryControls'
-import { DICT_BG, DICT_BUTTON_SHADOW, DICT_CARD_SHADOW } from './shadows'
+import { FilterChip, ICON_GREEN_DARK, ICON_MUTED, ICON_STROKE, SpeakChip } from './DictionaryControls'
+import { DICT_BG, DICT_CARD_SHADOW } from './shadows'
 import { useRevealedShadow } from '../shadowReveal'
 import { displayExample, displayPinyin, displayWord, hanziFont } from '../../lib/hanzi'
 import { shortGloss } from '../../lib/definitions'
 import { ZHUYIN_SYLLABLE_GAP } from '../../lib/zhuyin'
 import { SEARCH_FIELDS, type SearchField } from '../../lib/dictionary'
-import { speak } from '../../lib/speech'
 import { playPositiveChime } from '../../lib/sound'
 import { sequence, successHaptic, tapHaptic, tickHaptic } from '../../lib/haptics'
 import type { AppSettings, ScriptMode, VocabWord } from '../../types'
@@ -46,7 +46,8 @@ import type { AppSettings, ScriptMode, VocabWord } from '../../types'
  */
 const EXPLORE_ART = {
   vocabulary: { source: require('../../assets/images/app/dict-hsk.png'), ratio: 330 / 142 },
-  characters: { source: require('../../assets/images/app/dict-characters.png'), ratio: 330 / 142 },
+  /** Recent keeps the 字 card painted for this slot (it was Characters). */
+  recent: { source: require('../../assets/images/app/dict-characters.png'), ratio: 330 / 142 },
   radicals: { source: require('../../assets/images/app/dict-radicals.png'), ratio: 330 / 134 },
   myWords: { source: require('../../assets/images/app/dict-my-words.png'), ratio: 330 / 134 },
 } as const
@@ -55,21 +56,20 @@ const EXPLORE_ART = {
 const DISCOVER_ART = { source: require('../../assets/images/app/dict-discover.png'), ratio: 498 / 206 }
 
 /** Filter row height. Every pill and the round settings button share it. */
-const PILL_HEIGHT = 44
+export const PILL_HEIGHT = 44
 
 // --- Filter row ---------------------------------------------------------------
 
 /**
- * One soft pill in the filter row.
+ * One raised pill in the filter row: the dictionary's `LiftedFace` (the Add,
+ * Stroke order and Practice buttons), standing on a shoulder and sinking onto
+ * it when pressed.
  *
- * Selection is carried by the fill *and* the border *and* the text colour, not
- * by one of them — colour alone is not enough to say which pill is on.
- *
- * The class strings vary by colour only. A `shadow-*` utility toggled on one
- * side of a conditional crashes the screen on native (see Styling in
- * CLAUDE.md), so there is none here at all.
+ * Selection is carried by the fill *and* the rim *and* the shoulder *and* the
+ * text colour, not by one of them — colour alone is not enough to say which
+ * pill is on. Plain style objects, no shadow classes (see Styling in CLAUDE.md).
  */
-function Pill({
+export function Pill({
   label,
   selected = false,
   onPress,
@@ -82,36 +82,39 @@ function Pill({
   flex: number
   accessibilityLabel?: string
 }) {
-  /*
-   * The share of the row sits on a plain wrapper, not on `PressScale`'s
-   * `style`: that lands on the animated view *inside* the Pressable, which is
-   * content-sized, so a `flex` there shares out nothing and every pill shrinks
-   * to its label.
-   */
   return (
-    <View style={{ flex, minWidth: 0 }}>
-    <PressScale
+    <PressableScale
       onPress={() => {
         tickHaptic()
         onPress()
       }}
-      style={{ height: PILL_HEIGHT }}
-      className={`items-center justify-center rounded-full border px-3 ${
-        selected ? 'border-dict-green/40 bg-dict-green-pale' : 'border-dict-border bg-dict-card'
-      }`}
-      accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={{ selected }}
+      /* The row's share goes on the wrapper; see `PressableScale`. */
+      wrapperStyle={{ flex, minWidth: 0 }}
+      scaleTo={1}
+      haptic={false}
+      accessibilityLabel={`${accessibilityLabel ?? label}${selected ? ', selected' : ''}`}
     >
-      <Text
-        numberOfLines={1}
-        className={`text-[14.5px] leading-[19px] ${
-          selected ? 'font-dict-bold text-dict-green-dark' : 'font-dict-semibold text-dict-heading'
-        }`}
+      <LiftedFace
+        height={PILL_HEIGHT}
+        fill={selected ? DICT_BG.greenPale : DICT_BG.card}
+        border={selected ? DICT_BG.green : DICT_BG.pillBorder}
+        shoulder={selected ? DICT_BG.green : DICT_BG.pillShoulder}
+        shadow={false}
       >
-        {label}
-      </Text>
-    </PressScale>
-    </View>
+        <Text
+          numberOfLines={1}
+          style={{
+            paddingHorizontal: 10,
+            fontFamily: selected ? 'NunitoBold' : 'NunitoSemiBold',
+            fontSize: 14.5,
+            lineHeight: 19,
+            color: selected ? DICT_BG.greenDark : '#18263A',
+          }}
+        >
+          {label}
+        </Text>
+      </LiftedFace>
+    </PressableScale>
   )
 }
 
@@ -154,6 +157,7 @@ export function FilterRow({
         onPress={onScript}
         accessibilityLabel={`Characters: ${script}. Tap to switch.`}
       />
+      {/* Raised like the pills, on the same shoulder, so the faces line up. */}
       <FilterButton open={panelOpen} refined={refined} size={PILL_HEIGHT} onPress={onPanel} />
     </View>
   )
@@ -223,7 +227,7 @@ export function HskLevelBar({
         />
       </View>
 
-      <FilterButton open={panelOpen} refined={refined} size={PILL_HEIGHT} raised onPress={onPanel} />
+      <FilterButton open={panelOpen} refined={refined} size={PILL_HEIGHT} onPress={onPanel} />
     </View>
   )
 }
@@ -234,6 +238,31 @@ export function HskLevelBar({
  * Always mounted — `FilterDrawer` unfolds and folds it with `open`, and keeps
  * it measured while closed so the first opening already knows its height.
  */
+/**
+ * The card a filter panel's contents sit on, inside the unfolding drawer —
+ * shared by the Dictionary and Books so both panels are the same object.
+ */
+export function FilterPanelCard({ open, children }: { open: boolean; children: ReactNode }) {
+  const shadow = useRevealedShadow(DICT_CARD_SHADOW)
+  return (
+    // Split in two: the shadow rides an `Animated.View` (`useRevealedShadow`),
+    // and NativeWind drops `className` on an `Animated.View`, so the fill,
+    // border and padding stay on a plain `View` inside it.
+    <FilterDrawer open={open}>
+      <Animated.View style={[shadow, { marginTop: 12, borderRadius: 18, backgroundColor: DICT_BG.card }]}>
+        <View className="rounded-[18px] border border-dict-border bg-dict-card p-4">{children}</View>
+      </Animated.View>
+    </FilterDrawer>
+  )
+}
+
+/** A label above a group of chips in a filter panel. */
+export function PanelLabel({ children, first = false }: { children: string; first?: boolean }) {
+  return (
+    <Text className={`${first ? '' : 'mt-4 '}mb-2.5 font-nunito-semibold text-[13px] leading-[17px] text-dict-soft`}>{children}</Text>
+  )
+}
+
 export function FilterPanel({
   open,
   hskLevel,
@@ -247,31 +276,21 @@ export function FilterPanel({
   onLevel: (level: number) => void
   onField: (field: SearchField) => void
 }) {
-  const shadow = useRevealedShadow(DICT_CARD_SHADOW)
-
   return (
-    // Split in two, like `RecentList`/`WordToDiscover` below: the shadow has
-    // to sit on an `Animated.View` to ride `useRevealedShadow`'s interpolated
-    // values, and NativeWind drops `className` entirely on an `Animated.View`
-    // — so the fill, border and padding stay on a plain `View` inside it.
-    <FilterDrawer open={open}>
-    <Animated.View style={[shadow, { marginTop: 12, borderRadius: 18, backgroundColor: DICT_BG.card }]}>
-      <View className="rounded-[18px] border border-dict-border bg-dict-card p-4">
-        <Text className="mb-2.5 font-dict-semibold text-[13px] leading-[17px] text-dict-soft">Level</Text>
-        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-          {[1, 2, 3, 4, 5, 6].map((level) => (
-            <FilterChip key={level} label={`HSK ${level}`} selected={hskLevel === level} onPress={() => onLevel(level)} />
-          ))}
-        </View>
-        <Text className="mb-2.5 mt-4 font-dict-semibold text-[13px] leading-[17px] text-dict-soft">Search in</Text>
-        <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-          {SEARCH_FIELDS.map((f) => (
-            <FilterChip key={f.value} label={f.label} selected={field === f.value} onPress={() => onField(f.value)} />
-          ))}
-        </View>
+    <FilterPanelCard open={open}>
+      <PanelLabel first>Level</PanelLabel>
+      <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+        {[1, 2, 3, 4, 5, 6].map((level) => (
+          <FilterChip key={level} label={`HSK ${level}`} selected={hskLevel === level} onPress={() => onLevel(level)} />
+        ))}
       </View>
-    </Animated.View>
-    </FilterDrawer>
+      <PanelLabel>Search in</PanelLabel>
+      <View className="flex-row flex-wrap" style={{ gap: 8 }}>
+        {SEARCH_FIELDS.map((f) => (
+          <FilterChip key={f.value} label={f.label} selected={field === f.value} onPress={() => onField(f.value)} />
+        ))}
+      </View>
+    </FilterPanelCard>
   )
 }
 
@@ -281,7 +300,7 @@ export function FilterPanel({
 export function SectionHeading({ title, onSeeAll }: { title: string; onSeeAll?: () => void }) {
   return (
     <View className="mb-3 flex-row items-end justify-between">
-      <Text className="font-lora-bold text-[23px] leading-[30px] text-dict-heading">{title}</Text>
+      <Text className="font-nunito-extrabold text-[23px] leading-[30px] text-dict-heading">{title}</Text>
       {onSeeAll && (
         <PressScale
           onPress={() => {
@@ -292,7 +311,7 @@ export function SectionHeading({ title, onSeeAll }: { title: string; onSeeAll?: 
           className="flex-row items-center gap-1 py-2.5 pl-3"
           accessibilityLabel={`See all ${title.toLowerCase()} words`}
         >
-          <Text className="font-dict-semibold text-[14.5px] leading-[19px] text-dict-body">See all</Text>
+          <Text className="font-nunito-semibold text-[14.5px] leading-[19px] text-dict-body">See all</Text>
           <ChevronRight size={17} color="#42526B" strokeWidth={ICON_STROKE} />
         </PressScale>
       )}
@@ -331,7 +350,7 @@ export function RecentList({
       <View className="overflow-hidden rounded-[18px] border border-dict-border bg-dict-card">
         {words.length === 0 ? (
           <View className="justify-center px-5" style={{ minHeight: 74 }}>
-            <Text className="font-dict-sans text-[14.5px] leading-[20px] text-dict-soft">
+            <Text className="font-sans text-[14.5px] leading-[20px] text-dict-soft">
               Words you look up will appear here.
             </Text>
           </View>
@@ -359,12 +378,12 @@ export function RecentList({
                   >
                     {hanzi}
                   </Text>
-                  <Text numberOfLines={1} className="flex-1 pr-2 font-dict-sans text-[15px] leading-[20px] text-dict-soft">
+                  <Text numberOfLines={1} className="flex-1 pr-2 font-sans text-[15px] leading-[20px] text-dict-soft">
                     {displayPinyin(word, settings.phoneticScript)}
                   </Text>
                   <Text
                     numberOfLines={1}
-                    className="pr-2 font-dict-sans text-[15px] leading-[20px] text-dict-soft"
+                    className="pr-2 font-sans text-[15px] leading-[20px] text-dict-soft"
                     style={{ flex: 1.25 }}
                   >
                     {shortGloss(word)}
@@ -411,25 +430,18 @@ function ExploreTile({
       className="pb-4"
       accessibilityLabel={`${title}. ${subtitle}`}
     >
-      {/* As in the reference: warm paper, the painting across the tile's top
-          edge to edge, and a soft jade chevron on its right. */}
+      {/* As in the reference: warm paper, the painting across the tile's top edge to edge. */}
       <View style={{ width: '100%', aspectRatio: art.ratio }}>
         <Image source={art.source} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
-        <View
-          className="items-center justify-center rounded-full"
-          style={{ position: 'absolute', right: 10, top: '42%', width: 32, height: 32, backgroundColor: playTints.jade.soft }}
-        >
-          <ChevronRight size={17} color={playTints.jade.ink} strokeWidth={2.4} />
-        </View>
       </View>
       <View className="px-4">
-      <Text numberOfLines={1} className="font-dict-bold text-[16px] leading-[21px] text-dict-heading">
+      <Text numberOfLines={1} className="font-nunito-bold text-[16px] leading-[21px] text-dict-heading">
         {title}
       </Text>
       {/* Two lines allowed: at 390pt a tile's text column is ~140pt, which
           "Meaning in every stroke" does not fit on one. The pair in a row
           stretch to the same height, so a wrap never leaves them uneven. */}
-      <Text numberOfLines={2} className="mt-0.5 font-dict-sans text-[13.5px] leading-[18px] text-dict-soft">
+      <Text numberOfLines={2} className="mt-0.5 font-sans text-[13.5px] leading-[18px] text-dict-soft">
         {subtitle}
       </Text>
       </View>
@@ -440,13 +452,13 @@ function ExploreTile({
 export function ExploreGrid({
   script,
   onVocabulary,
-  onCharacters,
+  onRecent,
   onRadicals,
   onMyWords,
 }: {
   script: ScriptMode
   onVocabulary: () => void
-  onCharacters: () => void
+  onRecent: () => void
   onRadicals: () => void
   onMyWords: () => void
 }) {
@@ -461,11 +473,11 @@ export function ExploreGrid({
           onPress={onVocabulary}
         />
         <ExploreTile
-          art={EXPLORE_ART.characters}
+          art={EXPLORE_ART.recent}
           tint={playTints.honey}
-          title="Characters"
-          subtitle="Meaning in every stroke"
-          onPress={onCharacters}
+          title="Recent"
+          subtitle="Words you've looked up"
+          onPress={onRecent}
         />
       </View>
       <View className="flex-row" style={{ gap: 12 }}>
@@ -565,7 +577,7 @@ export function WordToDiscover({
 
         <View className="flex-row items-center" style={{ gap: 8, paddingRight: 52 }}>
           <Sparkle size={16} color="#C9A23F" fill="#C9A23F" strokeWidth={1.5} />
-          <Text className="font-dict-semibold text-[14.5px] leading-[19px] text-dict-gold">Word to Discover</Text>
+          <Text className="font-nunito-semibold text-[14.5px] leading-[19px] text-dict-gold">Word to Discover</Text>
         </View>
 
         <View style={{ position: 'absolute', right: 14, top: 12 }}>
@@ -578,7 +590,7 @@ export function WordToDiscover({
               <Check size={19} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />
             </View>
           ) : (
-            <PressScale
+            <RaisedButton
               onPress={() => {
                 // Adding a word is the dictionary's one audible moment.
                 sequence([
@@ -588,12 +600,17 @@ export function WordToDiscover({
                 playPositiveChime()
                 onAdd()
               }}
-              style={[{ width: 42, height: 42 }, DICT_BUTTON_SHADOW, { borderRadius: 21, backgroundColor: DICT_BG.card }]}
-              className="items-center justify-center rounded-full border border-dict-border bg-dict-card"
               accessibilityLabel={`Add ${hanzi} to your deck`}
+              height={42}
+              width={42}
+              radius={21}
+              fill={DICT_BG.card}
+              border={DICT_BG.pillBorder}
+              shoulder={DICT_BG.pillShoulder}
+              scaleTo={0.9}
             >
               <Plus size={19} color="#42526B" strokeWidth={ICON_STROKE} />
-            </PressScale>
+            </RaisedButton>
           )}
         </View>
 
@@ -614,7 +631,7 @@ export function WordToDiscover({
                       <Text className={hanziClass} style={{ fontSize: 44, lineHeight: 47 }}>
                         {glyph}
                       </Text>
-                      <Text className="font-dict-semibold text-dict-green-dark" style={{ fontSize: 11.5, lineHeight: 14 }}>
+                      <Text className="font-nunito-semibold text-dict-green-dark" style={{ fontSize: 11.5, lineHeight: 14 }}>
                         {zhuyinPerCharacter ? syllables[i] : reading}
                       </Text>
                     </View>
@@ -626,25 +643,15 @@ export function WordToDiscover({
                 </Text>
               )}
             </PressScale>
-            <PressScale
-              onPress={() => {
-                tapHaptic()
-                speak(hanzi)
-              }}
-              scaleTo={0.95}
-              style={{ width: 40, height: 40, borderRadius: 20 }}
-              className="items-center justify-center"
-              accessibilityLabel={`Play pronunciation of ${hanzi}`}
-            >
-              <Volume2 size={22} color={ICON_GREEN_DARK} strokeWidth={ICON_STROKE} />
-            </PressScale>
+            {/* The word card's own speaker, so every word's audio button is one object. */}
+            <SpeakChip text={hanzi} size={40} />
           </View>
           {!zhuyin && (
-            <Text numberOfLines={1} className="font-dict-semibold text-[16px] leading-[21px] text-dict-heading">
+            <Text numberOfLines={1} className="font-nunito-semibold text-[16px] leading-[21px] text-dict-heading">
               {reading}
             </Text>
           )}
-          <Text numberOfLines={2} className="mt-0.5 font-dict-sans text-[14.5px] leading-[19px] text-dict-soft">
+          <Text numberOfLines={2} className="mt-0.5 font-sans text-[14.5px] leading-[19px] text-dict-soft">
             {shortGloss(word)}
           </Text>
         </View>
@@ -654,11 +661,11 @@ export function WordToDiscover({
             <View className="my-3 h-px bg-dict-border" />
             <View className="flex-row items-start" style={{ gap: 12 }}>
               <View className="mt-1 rounded-full bg-dict-green-pale px-2.5 py-1">
-                <Text className="font-dict-semibold text-[12px] leading-[15px] text-dict-green-dark">Example</Text>
+                <Text className="font-nunito-semibold text-[12px] leading-[15px] text-dict-green-dark">Example</Text>
               </View>
               <View className="flex-1">
                 <ReadingSentence text={example} term={hanzi} size="compact" />
-                <Text className="mt-1 font-dict-sans text-[13.5px] leading-[18px] text-dict-soft">
+                <Text className="mt-1 font-sans text-[13.5px] leading-[18px] text-dict-soft">
                   {word.example?.translation}
                 </Text>
               </View>

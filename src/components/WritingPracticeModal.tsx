@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { View, Text, Pressable, Modal as RNModal } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { X, RotateCw, PlayCircle, PenLine, Volume2 } from 'lucide-react-native'
+import { X, RotateCw, PlayCircle, PenLine } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
 import { HanziStage } from './HanziStage'
@@ -13,13 +13,15 @@ import { shortGloss } from '../lib/definitions'
 import { ReadingSentence } from './dictionary/ReadingSentence'
 import { PressableScale, LiftedFace } from './dashboard/parts'
 import { AnswerSheet } from './drills/parts'
+import { IconChip } from './dictionary/DictionaryControls'
 
 /**
  * Faces and shoulders for the raised buttons, from the `brand` scale in the
  * Tailwind config: each shoulder a step or two below its face.
  */
 const RAISED = {
-  strokeOrder: { fill: '#d6fae3', shoulder: '#9fe2b8' },
+  /* Dark green, in line with the app's other green buttons, by request. */
+  strokeOrder: { fill: '#3A8650', shoulder: '#2B6A3C' },
 } as const
 
 interface Props {
@@ -48,22 +50,21 @@ interface Props {
  */
 const PLAYBACK_DELAY_MS = 900
 
+/**
+ * How long after finishing the "characters written" count waits to be
+ * recorded — until the Well done sheet has risen and settled. Recording it
+ * updates the app-wide store, and that re-render took long enough (~0.6s) to
+ * hold the sheet back if it ran the moment the word was finished.
+ */
+const RECORD_AFTER_MS = 1500
+
 /** How long the last stroke of "Stroke order" stays up before the pad clears for writing. */
 const STROKE_ORDER_HOLD_MS = 700
 
 /** White circular speaker chip, as used in the reference design. */
-function SpeakChip({ text, size = 22, dim = 48 }: { text: string; size?: number; dim?: number }) {
-  return (
-    <Pressable
-      onPress={() => speak(text)}
-      accessibilityRole="button"
-      accessibilityLabel={`Play pronunciation of ${text}`}
-      style={{ width: dim, height: dim }}
-      className="items-center justify-center rounded-full bg-white shadow-card active:opacity-70"
-    >
-      <Volume2 size={size} color="#1e293b" />
-    </Pressable>
-  )
+/** The shared raised speaker (the dictionary word card's), at this modal's size. */
+function SpeakChip({ text, dim = 48 }: { text: string; size?: number; dim?: number }) {
+  return <IconChip icon="speaker" size={dim} label={`Play pronunciation of ${text}`} onPress={() => speak(text)} />
 }
 
 export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFinish = false }: Props) {
@@ -89,6 +90,28 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
    * they happen rather than handing back its own internal state.
    */
   const [completedChars, setCompletedChars] = useState<Set<number>>(() => new Set())
+
+  /*
+   * The finished word's "characters written", recorded once the sheet has
+   * settled (see `RECORD_AFTER_MS`) — or straight away if the modal closes or
+   * the word restarts first, so a finish is never lost.
+   */
+  const pendingRecord = useRef<{ characters: number; timer: ReturnType<typeof setTimeout> } | null>(null)
+  const trackRef = useRef(trackLearningEvent)
+  trackRef.current = trackLearningEvent
+  const flushRecord = () => {
+    const pending = pendingRecord.current
+    if (!pending) return
+    pendingRecord.current = null
+    clearTimeout(pending.timer)
+    trackRef.current({ type: 'WRITING_COMPLETED', characters: pending.characters })
+  }
+  const deferRecord = (count: number) => {
+    flushRecord()
+    pendingRecord.current = { characters: count, timer: setTimeout(flushRecord, RECORD_AFTER_MS) }
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => flushRecord, [])
 
   useEffect(() => {
     if (!finished || !playbackOnFinish) return
@@ -163,13 +186,14 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
   const handleComplete = () => {
     if (finished) return
     setFinished(true)
-    trackLearningEvent({ type: 'WRITING_COMPLETED', characters: characters.length })
     playCorrectSound()
     correctHaptic()
+    deferRecord(characters.length)
   }
 
   /** "Write it again" — the whole word over, from its first character. */
   const restartWord = () => {
+    flushRecord()
     playTapSound()
     tickHaptic()
     setStrokesDone(0)
@@ -194,9 +218,20 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
     return () => clearTimeout(timer)
   }, [watching, characters.length])
 
+  /* Held in a ref so a replay started during the hold isn't cut short by the
+     previous one's timer, and nothing fires after the modal closes. */
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+  }, [])
+  useEffect(() => {
+    if (watching && holdTimer.current) clearTimeout(holdTimer.current)
+  }, [watching])
+
   const handleDemoComplete = () => {
     if (!watching) return
-    setTimeout(stopWatching, STROKE_ORDER_HOLD_MS)
+    if (holdTimer.current) clearTimeout(holdTimer.current)
+    holdTimer.current = setTimeout(stopWatching, STROKE_ORDER_HOLD_MS)
   }
 
   /**
@@ -334,8 +369,8 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
               <LiftedFace height={44} fill={RAISED.strokeOrder.fill} shoulder={RAISED.strokeOrder.shoulder} shadow={false}>
                 {/* The face is content-sized, so the pill's padding lives here. */}
                 <View className="flex-row items-center" style={{ gap: 8, paddingHorizontal: 20 }}>
-                  {watching ? <PenLine size={20} color="#16a34a" /> : <PlayCircle size={20} color="#16a34a" />}
-                  <Text className="text-[18px] font-bold text-brand-700">{watching ? 'Write it' : 'Stroke order'}</Text>
+                  {watching ? <PenLine size={20} color="#ffffff" /> : <PlayCircle size={20} color="#ffffff" />}
+                  <Text className="text-[18px] font-bold text-white">{watching ? 'Write it' : 'Stroke order'}</Text>
                 </View>
               </LiftedFace>
             </PressableScale>

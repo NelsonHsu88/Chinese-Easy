@@ -12,7 +12,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { ArrowLeft, Check, ShieldCheck, X, type LucideIcon } from 'lucide-react-native'
-import { PressableScale, LiftedFace } from '../dashboard/parts'
+import { PressableScale, LiftedFace, RaisedButton } from '../dashboard/parts'
 import { subArt } from './art'
 import {
   subColors as c,
@@ -590,28 +590,19 @@ export function OutlineButton({
   accessibilityLabel?: string
 }) {
   return (
-    <PressableScale
+    <RaisedButton
       onPress={onPress}
       wrapperStyle={{ width: '100%' }}
-      scaleTo={0.985}
       accessibilityLabel={accessibilityLabel ?? label}
+      height={52}
+      fill={c.card}
+      border={c.jade}
+      shoulder={c.jade}
     >
-      <View
-        style={{
-          height: 52,
-          borderRadius: 26,
-          borderWidth: 1.8,
-          borderColor: c.jade,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: 'transparent',
-        }}
-      >
-        <Text className="font-nunito-bold" style={{ fontSize: 16.5, color: c.jadeDark }}>
-          {label}
-        </Text>
-      </View>
-    </PressableScale>
+      <Text className="font-nunito-bold" style={{ fontSize: 16.5, color: c.jadeDark }}>
+        {label}
+      </Text>
+    </RaisedButton>
   )
 }
 

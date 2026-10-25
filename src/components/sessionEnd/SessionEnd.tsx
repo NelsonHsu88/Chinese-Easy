@@ -103,13 +103,13 @@ export function SessionEnd(props: Props) {
           <Reveal from="bottom" {...beat}>
             <View style={{ paddingHorizontal: s.screen }}>
               <Text
-                className="font-lora-bold"
+                className="font-nunito-extrabold"
                 accessibilityRole="header"
                 style={{ ...scaled(t.title, k), color: c.navy, textAlign: 'center' }}
               >
                 {empty ? 'Nothing to Review' : props.timedOut ? 'Time’s Up!' : 'Session Complete!'}
               </Text>
-              <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, textAlign: 'center', marginTop: s.titleGap }}>
+              <Text className="font-nunito-semibold" style={{ ...t.subtitle, color: c.slate, textAlign: 'center', marginTop: s.titleGap }}>
                 {empty ? emptySubtitle(props.mode) : doneSubtitle(props.mode, props.reviewed)}
               </Text>
             </View>
@@ -216,7 +216,7 @@ function TipCard({ mode, artWidth }: { mode: SessionMode; artWidth: number }) {
         />
       </View>
       <Divider />
-      <Text className="font-lora" style={{ ...t.tip, color: c.slate, flex: 1, paddingHorizontal: 16 }}>
+      <Text className="font-nunito-semibold" style={{ ...t.tip, color: c.slate, flex: 1, paddingHorizontal: 16 }}>
         {emptyTip(mode)}
       </Text>
     </Panel>
@@ -324,19 +324,19 @@ function Stat({
         <Icon color={iconColor} size={30 * k} strokeWidth={2.2} fill={iconFill ?? 'none'} />
       </View>
       <View style={{ flex: 1 }} onLayout={(e) => setAvail(e.nativeEvent.layout.width)}>
-        <Text className="font-lora" numberOfLines={1} style={{ ...scaled(t.statLabel, labelK), color: c.slate }}>
+        <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...scaled(t.statLabel, labelK), color: c.slate }}>
           {label.toUpperCase()}
         </Text>
         {/* Fitted by measurement rather than with `adjustsFontSizeToFit`,
             which is iOS-only: on Android "12 days" would simply clip. */}
         <Text
-          className="font-lora-bold"
+          className="font-nunito-extrabold"
           numberOfLines={1}
           style={{ ...scaled(t.statValue, k * shrink), color: valueColor }}
         >
           {value}
         </Text>
-        <Text className="font-lora" numberOfLines={1} style={{ ...scaled(t.statNote, noteK), color: c.slate }}>
+        <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...scaled(t.statNote, noteK), color: c.slate }}>
           {note}
         </Text>
       </View>

@@ -1,5 +1,7 @@
+import { dashShoulders } from '../components/dashboard/tokens'
+import { RaisedButton } from '../components/dashboard/parts'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { View, Text, Pressable, Platform, KeyboardAvoidingView, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native'
+import { View, Text, Pressable, Platform, KeyboardAvoidingView, Animated, Easing, useWindowDimensions, type StyleProp, type ViewStyle } from 'react-native'
 import { Redirect, router, useLocalSearchParams } from 'expo-router'
 import {
   Sprout,
@@ -50,10 +52,12 @@ import {
 import { GoogleMark } from '../components/onboarding/GoogleMark'
 import { AppleSignInButton } from '../components/auth/AppleSignInButton'
 import { useCaptcha } from '../components/auth/Captcha'
+import { SCREEN_TOURS } from '../lib/screenTours'
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../lib/passwordRules'
 import { accountFor, isReturningAccount, useAuth } from '../context/AuthContext'
 import { ArtLayer } from '../components/onboarding/PageArt'
 import { CornerBranch, PageFoot, HeroArt, useClearance } from '../components/onboarding/RedesignArt'
+import { WORDS_PER_DAY_MAX, WORDS_PER_DAY_MIN, WordsPerDayWheel } from '../components/onboarding/WordsPerDayWheel'
 import { emailError as emailProblem, fieldForServerError, logInErrors, signUpErrors, type AuthField, type FieldErrors } from '../lib/authForm'
 import {
   onbColors as c,
@@ -103,7 +107,7 @@ import { AnswerReactionView, QuestionContent, QuestionMotionProvider, useQuestio
  * title and sizes, and only its scenery changed.
  */
 
-type Step = 'welcome' | 'script' | 'goal' | 'account' | 'profile' | 'notifications' | 'test' | 'ready'
+type Step = 'welcome' | 'script' | 'goal' | 'pace' | 'account' | 'profile' | 'notifications' | 'test' | 'ready'
 
 /**
  * Page order, and the single source both indicators are derived from.
@@ -112,7 +116,7 @@ type Step = 'welcome' | 'script' | 'goal' | 'account' | 'profile' | 'notificatio
  * script page was inserted after welcome and nothing else had to be renumbered
  * by hand.
  */
-const STEP_ORDER: Step[] = ['welcome', 'script', 'goal', 'account', 'profile', 'notifications', 'test', 'ready']
+const STEP_ORDER: Step[] = ['welcome', 'script', 'goal', 'pace', 'account', 'profile', 'notifications', 'test', 'ready']
 
 /** Dot index per page, for the screens that show dots. */
 const DOT_INDEX = Object.fromEntries(STEP_ORDER.map((step, i) => [step, i])) as Record<Step, number>
@@ -194,6 +198,8 @@ export function Onboarding() {
     placementResult,
     loadedUserId,
     offerTour,
+    endTour,
+    markScreenTourSeen,
   } = useApp()
   const { retake } = useLocalSearchParams<{ retake?: string }>()
 
@@ -232,6 +238,10 @@ export function Onboarding() {
   const [direction, setDirection] = useState<'forward' | 'back'>('forward')
 
   const [goal, setGoal] = useState<LearningGoal>(settings.learningGoal)
+  /** New words a day, held here until Continue commits it, like the goal. */
+  const [pace, setPace] = useState(() =>
+    Math.max(WORDS_PER_DAY_MIN, Math.min(WORDS_PER_DAY_MAX, settings.dailyNewWordLimit)),
+  )
 
   // --- Account ---------------------------------------------------------------
 
@@ -254,6 +264,8 @@ export function Onboarding() {
   const [emailError, setEmailError] = useState<string | null>(null)
   /** Set once sign-up succeeded but Supabase is waiting on the emailed link. */
   const [confirmSentTo, setConfirmSentTo] = useState<string | null>(null)
+  /** The log-in found no account for that address, so one was created. */
+  const [createdFromLogin, setCreatedFromLogin] = useState(false)
   /*
    * Seeded blank rather than from `settings.username`, whose default is the
    * literal string "Learner". Pre-filling the box with a placeholder name
@@ -389,6 +401,12 @@ export function Onboarding() {
     /* `loadedUserId` is set just before the account's data loads; `ready` says it has. */
     if (!ready || loadedUserId !== session.user.id || !isReturningAccount(session.user)) return
     sentHome.current = true
+    /* A returning Google account already knows the app: no welcome tour, no
+       screen guides. Settings → General can still replay them. */
+    if (session.user.app_metadata?.provider === 'google') {
+      endTour('completed')
+      SCREEN_TOURS.forEach((guide) => markScreenTourSeen(guide.id))
+    }
     const account = accountFor(session.user)
     updateSettings({
       ...(account.name && settings.username === DEFAULT_SETTINGS.username ? { username: account.name } : {}),
@@ -517,7 +535,9 @@ export function Onboarding() {
     if (result.needsEmailConfirmation) {
       // The app works signed out, so onboarding carries on; the session arrives
       // when the link is opened. Saying so beats a spinner that never ends.
-      updateSettings({ username: trimmedName, email: emailInput.trim() })
+      // A log-in that created the account has no name box; keep the current name.
+      updateSettings({ username: trimmedName || settings.username, email: emailInput.trim() })
+      setCreatedFromLogin(result.created === true)
       setConfirmSentTo(emailInput.trim())
       return
     }
@@ -747,23 +767,33 @@ export function Onboarding() {
           </SlideIn>
         }
       >
-        <SlideIn from="bottom" delay={0}>
-          <View className="items-center" style={{ paddingTop: s.xxxl }}>
-            {/* The room the app mark used to take, kept by request: the title
-                sat right where it was, and the page is balanced around it. */}
-            <View style={{ height: WELCOME_MARK_ROOM + s.lg }} />
-            <OnbTitle hero>Chinese Easy</OnbTitle>
+        {/*
+          As "Onboarding New UI Redesign" draws it: the app mark, the wordmark
+          and its line, standing in the landscape. Above the scene in z-order;
+          the scene rises behind them (its title patch is clear paper).
+        */}
+        <SlideIn from="bottom" delay={0} style={{ zIndex: 2 }}>
+          <View className="items-center" style={{ paddingTop: s.xxl }}>
+            <AppMark />
+            <View style={{ marginTop: s.lg }}>
+              <OnbTitle hero>Chinese Easy</OnbTitle>
+            </View>
             <OnbBody style={{ marginTop: s.sm }}>{'Learn Mandarin the natural,\nstress-free way.'}</OnbBody>
           </View>
         </SlideIn>
 
         {/*
-          Shifu at his writing desk, in the garden. The scene is the page's
-          slack: it takes whatever the header, card and footer leave, so the
-          page stays on one screen on every phone without a scroll view.
+          Shifu at his writing desk, in the garden, with the mountains and
+          pavilions either side of the subtitle. The scene is the page's slack:
+          it takes whatever the header, card and footer leave, so the page stays
+          on one screen on every phone without a scroll view.
         */}
-        <SlideIn from="bottom" delay={onbMotion.enterStagger * 2} style={{ flex: 1, minHeight: 0 }}>
-          <HeroArt piece="welcome-hero" />
+        <SlideIn
+          from="bottom"
+          delay={onbMotion.enterStagger * 2}
+          style={{ flex: 1, minHeight: 0, marginTop: -WELCOME_SCENE_RISE, zIndex: 1 }}
+        >
+          <HeroArt piece="welcome-scene" />
         </SlideIn>
 
         <SlideIn from="bottom" delay={onbMotion.enterStagger * 3}>
@@ -930,7 +960,7 @@ export function Onboarding() {
                 icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
                 onPress={() => {
                   updateSettings({ learningGoal: goal })
-                  goTo('account')
+                  goTo('pace')
                 }}
               />
               <OnbDots index={DOT_INDEX.goal!} total={DOT_TOTAL} />
@@ -967,6 +997,57 @@ export function Onboarding() {
               </OnbRise>
             )
           })}
+        </View>
+      </OnbShell>
+    )
+  }
+
+  if (step === 'pace') {
+    return (
+      <OnbShell
+        art={
+          <ArtLayer>
+            <OnbArtEnter>
+              <CornerBranch piece="reminders-branch" side="right" />
+            </OnbArtEnter>
+          </ArtLayer>
+        }
+        top={
+          <OnbRise distance={0}>
+            <OnbTopBar onBack={goBack} />
+          </OnbRise>
+        }
+        /* The wheel scrolls itself; a page that scrolled too would fight it. */
+        scroll={false}
+        footer={
+          <OnbRise index={3}>
+            <View style={{ gap: s.lg }}>
+              <OnbButton
+                label="Continue"
+                icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
+                onPress={() => {
+                  /* The same field Settings → My goal edits, so the choice is
+                     already there when the learner looks for it. */
+                  updateSettings({ dailyNewWordLimit: pace })
+                  goTo('account')
+                }}
+              />
+              <OnbDots index={DOT_INDEX.pace} total={DOT_TOTAL} />
+            </View>
+          </OnbRise>
+        }
+      >
+        <OnbRise index={0}>
+          <View style={{ paddingTop: s.xl }}>
+            <OnbTitle>Your daily pace</OnbTitle>
+            <OnbBody style={{ marginTop: s.sm }}>{'How many new words a day?\nDrag to choose — you can change it later.'}</OnbBody>
+          </View>
+        </OnbRise>
+
+        <View className="flex-1 justify-center" style={{ minHeight: 0, paddingHorizontal: s.sm }}>
+          <OnbRise index={1}>
+            <WordsPerDayWheel value={pace} onChange={setPace} />
+          </OnbRise>
         </View>
       </OnbShell>
     )
@@ -1173,7 +1254,9 @@ export function Onboarding() {
               {!compactProfile && (
               <OnbBody style={{ marginTop: s.sm }}>
                 {confirmSentTo !== null
-                  ? `We sent a link to ${confirmSentTo}.\nOpen it to finish creating your account —\nyou can keep going in the meantime.`
+                  ? createdFromLogin
+                    ? `There was no account for ${confirmSentTo}, so we made one.\nOpen the link we sent to finish —\nyou can keep going in the meantime.`
+                    : `We sent a link to ${confirmSentTo}.\nOpen it to finish creating your account —\nyou can keep going in the meantime.`
                   : viaProvider
                     ? 'Almost there — what should we\ncall you?'
                     : authMode === 'login'
@@ -1338,6 +1421,8 @@ export function Onboarding() {
               <OnbButton
                 label={remindersOn ? 'Turn on notifications' : 'Continue'}
                 icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
+                /* Turning reminders on rings its own chime. */
+                sound={!remindersOn}
                 onPress={() => {
                   if (remindersOn) {
                     updateSettings({ notificationsEnabled: true, reminderTime: slot.time })
@@ -1470,6 +1555,8 @@ export function Onboarding() {
               label={settled ? (isLastQuestion ? 'See my level' : 'Next question') : 'Confirm'}
               onPress={settled ? nextQuestion : confirm}
               disabled={!settled && picked === null}
+              /* Confirm answers with its own right/wrong sound. */
+              sound={settled}
             />
             <Text className="text-center font-nunito-bold" style={{ ...t.footnote, color: c.textMuted }}>
               Question {questionIndex + 1} of {questions.length}
@@ -1514,18 +1601,22 @@ export function Onboarding() {
                * audio, and the replay button is the whole prompt.
                */
               <View className="items-center" style={{ marginTop: s.lg, marginBottom: s.sm }}>
-                <Pressable
+                <RaisedButton
                   onPress={() => {
                     playTapSound()
                     speak(displayWord(question.word, settings.script))
                   }}
-                  accessibilityRole="button"
                   accessibilityLabel="Play the word again"
-                  className="items-center justify-center rounded-full active:opacity-80"
-                  style={{ width: 76, height: 76, backgroundColor: c.greenSoft, borderWidth: 2, borderColor: c.green }}
+                  height={76}
+                  width={76}
+                  radius={38}
+                  fill={c.greenSoft}
+                  border={c.green}
+                  shoulder={c.green}
+                  scaleTo={0.9}
                 >
                   <Volume2 size={32} color={c.greenDark} strokeWidth={2.2} />
-                </Pressable>
+                </RaisedButton>
                 <Text
                   className="font-nunito-bold"
                   style={{ ...t.footnote, color: c.textMuted, marginTop: s.sm }}
@@ -1613,17 +1704,20 @@ export function Onboarding() {
                             ? c.greenSoft
                             : c.card,
                       paddingHorizontal: s.md,
-                      paddingVertical: listening ? s.sm : s.md,
+                      paddingVertical: listening || cloze ? s.sm : s.md,
                       gap: s.md,
                     }}
                   >
                     <AnswerShimmer play={settled && chosen && isAnswer} radius={onbRadius.card} />
                     <Radio selected={chosen || showRight} size={20} color={showWrong ? c.coral : c.green} />
+                    {/* Listening and the gap both offer Chinese words, so both draw
+                        them in the same CJK face and weight — Nunito has no CJK
+                        glyphs, and the fallback it fell to was a different weight. */}
                     <Text
-                      className={listening ? 'flex-1 font-hanzi-sans-bold' : 'flex-1 font-nunito-bold'}
+                      className={listening || cloze ? 'flex-1 font-hanzi-sans-bold' : 'flex-1 font-nunito-bold'}
                       style={{
-                        fontSize: listening ? 22 : 14,
-                        lineHeight: listening ? 32 : undefined,
+                        fontSize: listening || cloze ? 22 : 14,
+                        lineHeight: listening || cloze ? 32 : undefined,
                         color: c.navy,
                       }}
                       numberOfLines={2}
@@ -1673,6 +1767,8 @@ export function Onboarding() {
               label="Start learning"
               icon={<Rocket size={19} color="#ffffff" strokeWidth={2.3} />}
               onPress={finish}
+              /* The fanfare is this press's sound. */
+              sound={false}
             />
             <Text className="text-center font-nunito-semibold" style={{ ...t.footnote, color: c.textMuted }}>
               {'You can change this anytime\nin settings.'}
@@ -1771,7 +1867,47 @@ export function Onboarding() {
 // --- Page pieces ---------------------------------------------------------------
 
 /** The height of the app mark the welcome page once opened on; its room is kept. */
-const WELCOME_MARK_ROOM = 70
+/** How far the welcome scene rises behind the subtitle — its top quarter, the cleared patch. */
+const WELCOME_SCENE_RISE = 72
+
+/** The app icon, as the welcome reference draws it: a rounded green tile, 中, a sakura bloom on its corner. */
+function AppMark() {
+  return (
+    <View accessible accessibilityRole="image" accessibilityLabel="Chinese Easy">
+      <View
+        className="items-center justify-center"
+        style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: c.green, ...onbShadow }}
+      >
+        <Text className="font-hanzi-sans-bold text-white" style={{ fontSize: 34, lineHeight: 44, includeFontPadding: false }}>
+          中
+        </Text>
+      </View>
+      <Bloom style={{ position: 'absolute', right: -8, bottom: -6 }} />
+    </View>
+  )
+}
+
+/** A five-petal sakura bloom, drawn rather than imported — it is 22pt wide. */
+function Bloom({ style }: { style?: object }) {
+  return (
+    <View pointerEvents="none" style={[{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }, style]}>
+      {[0, 72, 144, 216, 288].map((angle) => (
+        <View
+          key={angle}
+          style={{
+            position: 'absolute',
+            width: 10,
+            height: 10,
+            borderRadius: 5,
+            backgroundColor: c.bloom,
+            transform: [{ rotate: `${angle}deg` }, { translateY: -5.5 }],
+          }}
+        />
+      ))}
+      <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.bloomHeart }} />
+    </View>
+  )
+}
 
 /** "Already have an account? Log in" — a line of text with one link in it. */
 function LogInPrompt({
@@ -1791,7 +1927,7 @@ function LogInPrompt({
         {question}
       </Text>
       <Pressable onPress={onPress} accessibilityRole="button" hitSlop={10}>
-        <Text className="font-lora-bold" style={{ fontSize: 15.5, color: c.greenDark }}>
+        <Text className="font-nunito-extrabold" style={{ fontSize: 15.5, color: c.greenDark }}>
           {action}
         </Text>
       </Pressable>
@@ -1916,30 +2052,31 @@ function AuthButton({
   muted?: boolean
 }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={muted ? `Continue with ${label.toLowerCase()}` : label}
-      accessibilityState={{ disabled }}
-      className="active:opacity-90"
-      style={{ opacity: disabled ? 0.6 : 1 }}
-    >
-      <OnbCard
+    /* Raised like every button. Disabled draws the same object, faded, and takes no touch. */
+    <View style={{ opacity: disabled ? 0.6 : 1 }}>
+      <RaisedButton
+        onPress={disabled ? undefined : onPress}
+        accessibilityLabel={muted ? `Continue with ${label.toLowerCase()}` : label}
+        height={54}
         radius={24}
-        style={{ height: 54, flexDirection: 'row', alignItems: 'center', paddingLeft: s.xl, paddingRight: s.lg, gap: s.lg }}
+        fill={c.card}
+        border={c.border}
+        shoulder={dashShoulders.quiet}
+        scaleTo={0.97}
       >
-        <View style={{ width: 26, alignItems: 'center' }}>{icon}</View>
-        <Text
-          className="flex-1 font-lora-bold"
-          style={{ fontSize: 16.5, color: muted ? c.textSecondary : c.navy }}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-        <ChevronRight size={20} color={c.textSecondary} strokeWidth={2.2} />
-      </OnbCard>
-    </Pressable>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingLeft: s.xl, paddingRight: s.lg, gap: s.lg }}>
+          <View style={{ width: 26, alignItems: 'center' }}>{icon}</View>
+          <Text
+            className="flex-1 font-nunito-extrabold"
+            style={{ fontSize: 16.5, color: muted ? c.textSecondary : c.navy }}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+          <ChevronRight size={20} color={c.textSecondary} strokeWidth={2.2} />
+        </View>
+      </RaisedButton>
+    </View>
   )
 }
 
@@ -1950,9 +2087,34 @@ function AuthButton({
  * set differently on each platform and never quite land on this palette.
  */
 function Toggle({ value, label, onChange }: { value: boolean; label: string; onChange: (next: boolean) => void }) {
+  /*
+   * The knob slides across and the green fades in under it, following `value`
+   * — transform and opacity only, so both run on the native driver, with a
+   * timer that lands the end state if a browser tab stops animating.
+   */
+  const on = useRef(new Animated.Value(value ? 1 : 0)).current
+  useEffect(() => {
+    const to = value ? 1 : 0
+    const anim = Animated.timing(on, {
+      toValue: to,
+      duration: TOGGLE_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: Platform.OS !== 'web',
+    })
+    anim.start()
+    const backstop = setTimeout(() => on.setValue(to), TOGGLE_MS + 150)
+    return () => {
+      clearTimeout(backstop)
+      anim.stop()
+    }
+  }, [value, on])
+
   return (
     <Pressable
-      onPress={() => onChange(!value)}
+      onPress={() => {
+        tickHaptic()
+        onChange(!value)
+      }}
       accessibilityRole="switch"
       accessibilityLabel={label}
       accessibilityState={{ checked: value }}
@@ -1964,28 +2126,34 @@ function Toggle({ value, label, onChange }: { value: boolean; label: string; onC
           width: 52,
           height: 30,
           borderRadius: 15,
-          backgroundColor: value ? c.green : c.dotInactive,
+          backgroundColor: c.dotInactive,
           paddingHorizontal: 3,
+          overflow: 'hidden',
         }}
       >
-        <ShadowSurface shadow={onbShadow}
-          style={[{ borderRadius: 9999 }, {
-            width: 24,
-            height: 24,
-            backgroundColor: '#ffffff',
-            alignSelf: value ? 'flex-end' : 'flex-start',
-          }]}
+        <Animated.View
+          pointerEvents="none"
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.green, opacity: on }}
         />
+        <Animated.View style={{ transform: [{ translateX: on.interpolate({ inputRange: [0, 1], outputRange: [0, 52 - 6 - 24] }) }] }}>
+          <ShadowSurface shadow={onbShadow} style={{ borderRadius: 9999, width: 24, height: 24, backgroundColor: '#ffffff' }} />
+        </Animated.View>
       </View>
     </Pressable>
   )
 }
+
+/** The reminders switch's slide. */
+const TOGGLE_MS = 220
 
 const SLOT_ICON: Record<ReminderSlot, { icon: typeof Sun; color: string }> = {
   morning: { icon: Sunrise, color: c.green },
   afternoon: { icon: Sun, color: c.gold },
   evening: { icon: Moon, color: c.blue },
 }
+
+/** A reminder-time card's face height: icon, label and time with breathing room (the old card's natural height). */
+const TIME_CHIP_HEIGHT = 92
 
 /** One of the three reminder times, with a tick badge on the chosen one. */
 function TimeChip({
@@ -2005,23 +2173,18 @@ function TimeChip({
 }) {
   const { icon: Icon, color } = SLOT_ICON[slot]
   return (
-    <Pressable
+    <RaisedButton
       onPress={disabled ? undefined : onPress}
-      accessibilityRole="radio"
-      accessibilityLabel={`${label}, ${time}`}
-      accessibilityState={{ selected, disabled }}
-      className="active:opacity-90"
-      style={{ flex: 1 }}
+      accessibilityLabel={`${label}, ${time}${selected ? ', selected' : ''}`}
+      wrapperStyle={{ flex: 1 }}
+      height={TIME_CHIP_HEIGHT}
+      radius={onbRadius.cardLarge}
+      fill={selected ? c.greenSoft : c.card}
+      border={selected ? c.green : c.border}
+      shoulder={selected ? c.greenDark : dashShoulders.quiet}
+      scaleTo={0.96}
     >
-      <ShadowSurface shadow={onbShadow}
-        style={[{ alignItems: 'center' }, {
-          borderRadius: onbRadius.cardLarge,
-          borderWidth: 1.5,
-          borderColor: selected ? c.green : c.border,
-          backgroundColor: selected ? c.greenSoft : c.card,
-          paddingVertical: s.md,
-        }]}
-      >
+      <View style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
         <Icon size={24} color={color} strokeWidth={2.1} />
         <Text className="font-nunito-bold" style={{ fontSize: 14.5, color: c.navy, marginTop: 6 }}>
           {label}
@@ -2037,8 +2200,8 @@ function TimeChip({
             <Check size={12} color="#ffffff" strokeWidth={3.2} />
           </View>
         )}
-      </ShadowSurface>
-    </Pressable>
+      </View>
+    </RaisedButton>
   )
 }
 

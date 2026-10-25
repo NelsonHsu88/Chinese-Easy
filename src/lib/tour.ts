@@ -42,9 +42,7 @@ export type TourTargetId =
   | 'dictionary-discover'
   | 'word-hero'
   | 'word-save'
-  | 'word-meaning'
-  | 'word-radicals'
-  | 'settings-profile'
+  | 'word-sheet'
   | 'settings-study'
   | 'settings-app'
   | 'review-stats'
@@ -204,7 +202,7 @@ export function tourAfterAction(state: TourState, action: TourAction): TourState
 
 /** Whether a pathname is one of the screens that sit behind the tab bar. */
 export function hasTabBar(pathname: string): boolean {
-  if (pathname === '/' || pathname === '/settings' || pathname === '/lessons-tab') return true
+  if (pathname === '/' || pathname === '/profile-tab' || pathname === '/lessons-tab') return true
   return pathname.startsWith('/dictionary-tab')
 }
 

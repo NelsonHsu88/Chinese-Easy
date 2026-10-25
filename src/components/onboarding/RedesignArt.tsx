@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { Image, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
+import type { ViewInstance } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { onbSpacing as s } from './tokens'
 import { ONB_CONTENT_MAX } from './parts'
@@ -23,6 +24,8 @@ const REF_WIDTH = 941
 
 const ART = {
   'welcome-hero': { source: require('../../assets/images/onboarding/redesign/welcome-hero.png'), w: 941, h: 538 },
+  /** The welcome page's whole landscape, the title patch cleared to paper. */
+  'welcome-scene': { source: require('../../assets/images/onboarding/redesign/welcome-scene.png'), w: 941, h: 723 },
   'welcome-branch': { source: require('../../assets/images/onboarding/redesign/welcome-branch.png'), w: 335, h: 280 },
   'script-hero': { source: require('../../assets/images/onboarding/redesign/script-hero.png'), w: 941, h: 522 },
   'script-branch': { source: require('../../assets/images/onboarding/redesign/script-branch.png'), w: 470, h: 250 },
@@ -150,7 +153,7 @@ const FOOT_CLEARANCE = 8
  * always on web) the painting simply stays where the design put it.
  */
 export function useClearance() {
-  const ref = useRef<View>(null)
+  const ref = useRef<ViewInstance>(null)
   const [bottom, setBottom] = useState<number | null>(null)
   const onLayout = useCallback(() => {
     ref.current?.measureInWindow((_x, y, _width, height) => {

@@ -25,6 +25,10 @@ export const tourColors = {
   ctaShoulder: '#3A7342',
   /** Type and icons on the CTA. */
   onCta: '#FFFFFF',
+  /** "Skip" / "Maybe later": the quiet raised button beside the CTA (Home's "Not now"). */
+  quietFace: '#FFFFFF',
+  quietBorder: '#DCDDD9',
+  quietShoulder: '#E4E3DF',
   /** The dim around the spotlight: the app's navy, not black. */
   scrim: 'rgba(20, 32, 58, 0.42)',
   /** The spotlight's ring. */
@@ -84,11 +88,11 @@ export const tourCard = {
 
 /** Type — compact on purpose. Families by name: RN cannot synthesise weights. */
 export const tourType = {
-  title: { fontFamily: 'LoraBold', fontSize: 19, lineHeight: 24 },
+  title: { fontFamily: 'NunitoExtraBold', fontSize: 19, lineHeight: 24 },
   body: { fontFamily: 'NunitoSemiBold', fontSize: 14.5, lineHeight: 20 },
   button: { fontFamily: 'NunitoExtraBold', fontSize: 15 },
   quiet: { fontFamily: 'NunitoBold', fontSize: 14 },
-  toast: { fontFamily: 'LoraBold', fontSize: 16, lineHeight: 21 },
+  toast: { fontFamily: 'NunitoExtraBold', fontSize: 16, lineHeight: 21 },
 } as const
 
 /** Motion, in ms. Restrained; under Reduce Motion everything but fades is dropped. */

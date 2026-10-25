@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AccessibilityInfo, Animated, Easing, View, type StyleProp, type ViewStyle } from 'react-native'
 import {
-  raisedProgressColors as c,
+  raisedProgressColors,
   raisedProgressMotion as m,
   raisedProgressSheen as sheenOpacity,
   raisedProgressSize,
@@ -36,6 +36,7 @@ export function RaisedProgressBar({
   initialProgress,
   delayMs = 0,
   size = 'regular',
+  colors,
   accessibilityLabel,
   style,
 }: {
@@ -50,11 +51,14 @@ export function RaisedProgressBar({
   /** Waits this long before moving — e.g. until a screen has slid in. */
   delayMs?: number
   size?: Size
+  /** Recolours the bar (a tinted card's hue); anything left out stays jade. */
+  colors?: Partial<RaisedProgressColors>
   /** Read with the percentage, e.g. "Question 3 of 12". */
   accessibilityLabel?: string
   style?: StyleProp<ViewStyle>
 }) {
   const { height, depth } = raisedProgressSize[size]
+  const c = colors ? { ...raisedProgressColors, ...colors } : raisedProgressColors
   const to = clamp01(progress)
   const from = clamp01(initialProgress ?? to)
 
@@ -151,6 +155,8 @@ export function RaisedProgressBar({
     </View>
   )
 }
+
+export type RaisedProgressColors = { [K in keyof typeof raisedProgressColors]: string }
 
 function clamp01(n: number): number {
   return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0

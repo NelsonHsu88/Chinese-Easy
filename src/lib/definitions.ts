@@ -1,5 +1,6 @@
 import COMMON_ENGLISH from '../data/commonEnglish.json'
 import type { VocabWord } from '../types'
+import { senseKeys, shows, translationStems } from './senseEvidence'
 
 /*
  * Definition presentation.
@@ -162,23 +163,65 @@ export function conciseDefinition(definition: string, maxSenses = DEFAULT_MAX_SE
     .join('; ')
 }
 
-/** Convenience wrapper for the common case of glossing a word. */
+/** Every sense with its position and score, best first. */
+function rankedSenses(definition: string) {
+  return senses(definition)
+    .map((sense, position) => ({ sense, position, score: senseScore(sense, position) }))
+    .sort((a, b) => a.score - b.score || a.position - b.position)
+}
+
+/*
+ * Which sense the word's own example sentence uses, as a position in
+ * `rankedSenses` — or 0 when the example shows the best sense anyway, shows no
+ * sense, or there is no example.
+ *
+ * A card shows one sense beside one sentence, so the two have to agree. 看
+ * ranks "to look after" first, but its sentence is 看着我, "Watch me"; 月 ranks
+ * "moon" first beside "It took months". When the translation plainly shows a
+ * different listed sense and not the best one, that sense is the gloss — the
+ * card then reads "to watch" over "Watch me". Commentary senses never win.
+ */
+const exampleSenseCache = new WeakMap<VocabWord, number>()
+function exampleSenseIndex(word: VocabWord, ranked: ReturnType<typeof rankedSenses>): number {
+  const cached = exampleSenseCache.get(word)
+  if (cached !== undefined) return cached
+  let index = 0
+  const translation = word.example?.translation
+  if (translation && ranked.length > 1) {
+    const stems = translationStems(translation)
+    const fits = (entry: (typeof ranked)[number]) => shows(senseKeys(plainEnglish(entry.sense)), stems)
+    if (!fits(ranked[0])) {
+      const found = ranked.findIndex((entry) => !COMMENTARY.test(entry.sense) && fits(entry))
+      if (found > 0) index = found
+    }
+  }
+  exampleSenseCache.set(word, index)
+  return index
+}
+
+/**
+ * The gloss for a word: the clearest sense, or the sense its example sentence
+ * uses when that sentence plainly shows a different one (see
+ * `exampleSenseIndex`). `maxSenses` above one falls back to `conciseDefinition`.
+ */
 export function shortGloss(word: VocabWord, maxSenses = DEFAULT_MAX_SENSES): string {
-  return conciseDefinition(word.definition, maxSenses)
+  if (maxSenses !== 1) return conciseDefinition(word.definition, maxSenses)
+  const ranked = rankedSenses(word.definition)
+  if (ranked.length === 0) return plainEnglish(word.definition)
+  return plainEnglish(ranked[exampleSenseIndex(word, ranked)].sense)
 }
 
 /**
  * Every sense, plain-English and best-first — what the detail card lists.
  *
- * Same ranking as `shortGloss`, so the headline gloss is always the first row
- * rather than appearing twice in a different position down the list.
+ * Same ranking as `shortGloss`, with the same sense leading, so the headline
+ * gloss is always the first row rather than appearing twice down the list.
  */
 export function allSenses(word: VocabWord): string[] {
-  const all = senses(word.definition)
-  return all
-    .map((sense, position) => ({ sense, score: senseScore(sense, position), position }))
-    .sort((a, b) => a.score - b.score || a.position - b.position)
-    .map((entry) => plainEnglish(entry.sense))
+  const ranked = rankedSenses(word.definition)
+  const lead = ranked.length > 0 ? exampleSenseIndex(word, ranked) : 0
+  if (lead > 0) ranked.unshift(...ranked.splice(lead, 1))
+  return ranked.map((entry) => plainEnglish(entry.sense))
 }
 
 /**

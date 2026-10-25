@@ -124,7 +124,7 @@ export function ReadingSentence({
             {/* Faded rather than removed when readings are switched off, so
                 no character moves (see `useReadingFade`). */}
             <Animated.View style={{ opacity: fade.opacity }} accessibilityElementsHidden={fade.hidden}>
-              <Text numberOfLines={1} className={`font-inter ${reading} ${isTerm ? palette.term : palette.reading}`}>
+              <Text numberOfLines={1} className={`font-nunito-semibold ${reading} ${isTerm ? palette.term : palette.reading}`}>
                 {sound || ' '}
               </Text>
             </Animated.View>

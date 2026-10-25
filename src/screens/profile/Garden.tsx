@@ -50,12 +50,12 @@ export function Garden() {
           <View style={{ backgroundColor: c.tile, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, overflow: 'hidden', ...profShadow }}>
             <GardenScene width={width - 2} slots={slots} emptySlots />
           </View>
-          <Text className="font-lora" style={{ ...t.tag, color: c.slate, marginTop: s.sm, textAlign: 'center' }}>
+          <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.slate, marginTop: s.sm, textAlign: 'center' }}>
             {placedCount} of {GARDEN_SLOTS.length} places decorated
             {nextItem ? ` · Next: ${nextItem.name} at Level ${nextItem.unlockLevel}` : ' · Collection complete'}
           </Text>
 
-          <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, fontSize: 20, color: c.navy, marginTop: s.xl, marginBottom: s.sm }}>
+          <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.section, fontSize: 20, color: c.navy, marginTop: s.xl, marginBottom: s.sm }}>
             Your Decorations
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: s.sm, paddingVertical: 4 }} style={{ marginHorizontal: -s.screen }}>
@@ -88,7 +88,7 @@ export function Garden() {
                   {/* Two lines, centred: "Hanging Lantern" truncated to "Hanging
                       Lant…" on one. */}
                   <Text
-                    className="font-lora"
+                    className="font-nunito-semibold"
                     numberOfLines={2}
                     style={{ ...t.tileTitle, fontSize: 13, lineHeight: 16, color: c.navy, marginTop: 6, textAlign: 'center', minHeight: 32, paddingHorizontal: 4 }}
                   >
@@ -110,13 +110,13 @@ export function Garden() {
           </ScrollView>
 
           {!selected && progression.garden.unlockedItemIds.length > 0 && (
-            <Text className="font-lora" style={{ ...t.body, color: c.slate, marginTop: s.md, textAlign: 'center' }}>
+            <Text className="font-nunito-semibold" style={{ ...t.body, color: c.slate, marginTop: s.md, textAlign: 'center' }}>
               Tap a decoration to place it or take it out.
             </Text>
           )}
 
           {progression.garden.unlockedItemIds.length === 0 && (
-            <Text className="font-lora" style={{ ...t.body, color: c.slate, marginTop: s.md }}>
+            <Text className="font-nunito-semibold" style={{ ...t.body, color: c.slate, marginTop: s.md }}>
               Your first decoration, {GARDEN_ITEMS[0].name}, arrives at Level {GARDEN_ITEMS[0].unlockLevel}. You are Level {level}.
             </Text>
           )}
@@ -136,7 +136,7 @@ export function Garden() {
               }}
             >
               <PlayWash tint={playTints.honey} radius={profRadius.large - 1} />
-              <Text className="font-lora-bold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
+              <Text className="font-nunito-extrabold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
                 How your garden grows
               </Text>
               {[
@@ -152,7 +152,7 @@ export function Garden() {
                         {step.n}
                       </Text>
                     </View>
-                    <Text className="font-lora" style={{ ...t.body, flex: 1, color: c.navy }}>
+                    <Text className="font-nunito-semibold" style={{ ...t.body, flex: 1, color: c.navy }}>
                       {step.line}
                     </Text>
                   </View>
@@ -163,10 +163,10 @@ export function Garden() {
 
           {selected && (
             <View style={{ marginTop: s.lg, backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.md, ...profShadow }}>
-              <Text className="font-lora-bold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
+              <Text className="font-nunito-extrabold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
                 {gardenItemById(selected).name}
               </Text>
-              <Text className="font-lora" style={{ ...t.body, color: c.slate, marginTop: 2 }}>
+              <Text className="font-nunito-semibold" style={{ ...t.body, color: c.slate, marginTop: 2 }}>
                 {selectedSlot ? `In your garden · ${GARDEN_SLOT_NAMES[selectedSlot]}` : 'In your collection'}
               </Text>
 
@@ -196,7 +196,7 @@ export function Garden() {
 
               {choosing && (
                 <View style={{ marginTop: s.md }}>
-                  <Text className="font-lora" style={{ ...t.body, color: c.navy }}>
+                  <Text className="font-nunito-semibold" style={{ ...t.body, color: c.navy }}>
                     Every place is taken. Which should make way?
                   </Text>
                   <View style={{ gap: s.sm, marginTop: s.sm }}>
@@ -217,21 +217,21 @@ export function Garden() {
                         >
                           {occupant && <DecorationThumb item={occupant} size={40} />}
                           <View style={{ flex: 1 }}>
-                            <Text className="font-lora-bold" style={{ fontSize: 14, color: c.navy }}>
+                            <Text className="font-nunito-extrabold" style={{ fontSize: 14, color: c.navy }}>
                               {GARDEN_SLOT_NAMES[slot]}
                             </Text>
-                            <Text className="font-lora" style={{ ...t.tag, color: c.slate }}>
+                            <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.slate }}>
                               {occupant ? gardenItemById(occupant).name : 'Empty'}
                             </Text>
                           </View>
-                          <Text className="font-lora" style={{ ...t.link, color: c.jadeDark }}>
+                          <Text className="font-nunito-semibold" style={{ ...t.link, color: c.jadeDark }}>
                             Replace
                           </Text>
                         </Pressable>
                       )
                     })}
                     <Pressable onPress={() => setChoosing(false)} accessibilityRole="button" className="items-center active:opacity-60" style={{ paddingVertical: s.sm }}>
-                      <Text className="font-lora" style={{ ...t.link, color: c.slate }}>
+                      <Text className="font-nunito-semibold" style={{ ...t.link, color: c.slate }}>
                         Cancel
                       </Text>
                     </Pressable>

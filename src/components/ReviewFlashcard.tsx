@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { View, Text, Pressable, Animated, Easing, Platform, ScrollView } from 'react-native'
+import { View, Text, Pressable, Animated, Easing, Platform, ScrollView, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg'
 import {
@@ -37,6 +37,7 @@ import type { ReviewPreview } from '../lib/srs'
 import type { Grade, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 import { QuestionContent } from './motion/questionMotion'
+import { useReduceMotion } from './tour/useReduceMotion'
 
 const NATIVE = Platform.OS !== 'web'
 
@@ -112,31 +113,44 @@ export function ReviewFlashcard({
   const face = hanziFont(settings.script, 'semibold')
 
   /*
-   * The reveal is one change, not several. The whole card area — writer,
-   * answer card, buttons — dips out together, swaps while it is invisible, and
-   * comes back together with the stroke animation starting as it arrives.
+   * The reveal is a sheet rising from the bottom of the screen; nothing else moves.
    *
-   * It used to happen in pieces: the writing card snapped smaller to make room,
-   * the writer restarted, and the answer and the tiles rose in on their own
-   * timing, so the screen seemed to arrive a part at a time. Swapping while
-   * faded out means no resize is ever on screen.
+   * The answer card and the four grade tiles come up as one sheet, backed in
+   * the page colour, over the question (its card, Show Answer, "I don't
+   * know"), which holds still underneath and is hidden once covered. The tiles
+   * trail the card a little, each a beat after the last. The writer never
+   * resizes or fades — it just starts replaying the stroke order where it is.
    *
-   * `fade` is 1 at rest. RN's own Animated (Reanimated doesn't drive on web),
-   * each leg with a backstop for a stalled browser tab — and the backstop
-   * covers the swap itself, not just the value (see CLAUDE.md, Animation).
+   * The question doesn't move out of the way on purpose: two things crossing
+   * in opposite directions read as clutter, and the backing means nothing of
+   * it shows between the tiles while they settle.
    *
-   * **What fades is a veil, not the cards.** Fading the area's own opacity was
-   * janky on Android, where a parent's alpha is not applied to its children's
-   * elevation shadows or to the writer's WebView: the shadows and outlines
-   * arrived at full strength first and the cards caught up after.
-   * `needsOffscreenAlphaCompositing` was meant to cover that, but it only took
-   * effect a render after the native fade had already started. A plain view in
-   * the page's colour, laid over everything, fades the same on every platform
-   * — and on Android it carries the highest elevation in the area, which is
-   * what draws it above the shadows rather than under them.
+   * That works because the space below the writer is sized for whichever side
+   * is taller from the first frame: both layers are rendered from mount (the
+   * answer parked below the screen) and measured, and the region takes the
+   * larger height. So the reveal changes no layout at all, which is what used
+   * to force a veil over the whole screen to hide a resize.
+   *
+   * Slides only, no fades: on Android a fading parent shows its children's
+   * elevation shadows at full strength (CLAUDE.md, Animation traps). Each
+   * value is native-driven with a backstop for a stalled browser tab.
    */
-  const fade = useRef(new Animated.Value(1)).current
-  const [turning, setTurning] = useState(false)
+  const reduceMotion = useReduceMotion()
+  const { height: windowHeight } = useWindowDimensions()
+  const [questionHeight, setQuestionHeight] = useState(0)
+  const [answerHeight, setAnswerHeight] = useState(0)
+  const regionHeight = Math.max(questionHeight, answerHeight)
+  /* Far enough that the answer starts wholly below the screen. Until the
+     region is measured, a whole screen's height is the safe distance. */
+  const travel = regionHeight > 0 ? regionHeight + fcReveal.travelExtra : windowHeight
+  const measure = (set: (h: number) => void) => (e: LayoutChangeEvent) => {
+    const h = Math.ceil(e.nativeEvent.layout.height)
+    set(h)
+  }
+
+  const [covered, setCovered] = useState(false)
+  const cardIn = useRef(new Animated.Value(0)).current
+  const tilesIn = useRef(GRADE_BUTTONS.map(() => new Animated.Value(0))).current
   const revealing = useRef(false)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
@@ -147,44 +161,44 @@ export function ReviewFlashcard({
   const reveal = useCallback(() => {
     if (revealing.current) return
     revealing.current = true
-    setTurning(true)
-    let swapped = false
-    const swap = () => {
-      if (swapped) return
-      swapped = true
-      fade.setValue(0)
-      setRevealed(true)
+    setRevealed(true)
+    const settle = () => {
+      cardIn.setValue(1)
+      tilesIn.forEach((v) => v.setValue(1))
+      setCovered(true)
     }
-    Animated.timing(fade, {
-      toValue: 0,
-      duration: fcReveal.outMs,
-      easing: Easing.in(Easing.quad),
-      useNativeDriver: NATIVE,
-    }).start(swap)
-    later(swap, fcReveal.outMs + fcReveal.backstop)
-  }, [fade])
+    if (reduceMotion) {
+      settle()
+      return
+    }
+    const arrive = Easing.bezier(0.16, 1, 0.3, 1)
+    // Under the sheet once it has landed, so hiding it can't be seen.
+    later(() => setCovered(true), fcReveal.inMs)
+    Animated.parallel([
+      Animated.timing(cardIn, {
+        toValue: 1,
+        duration: fcReveal.inMs,
+        easing: arrive,
+        useNativeDriver: NATIVE,
+      }),
+      ...tilesIn.map((v, i) =>
+        Animated.timing(v, {
+          toValue: 1,
+          duration: fcReveal.inMs,
+          delay: fcReveal.tileDelay + i * fcReveal.tileStagger,
+          easing: arrive,
+          useNativeDriver: NATIVE,
+        }),
+      ),
+    ]).start()
+    const last = fcReveal.tileDelay + (tilesIn.length - 1) * fcReveal.tileStagger + fcReveal.inMs
+    later(settle, last + fcReveal.backstop)
+  }, [cardIn, tilesIn, reduceMotion])
 
-  // The second half runs once React has committed the answer layout, so what
-  // fades in is the finished screen rather than the last frame of the old one.
-  useEffect(() => {
-    if (!revealed) return
-    Animated.timing(fade, {
-      toValue: 1,
-      duration: fcReveal.inMs,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: NATIVE,
-    }).start(() => setTurning(false))
-    later(() => {
-      fade.setValue(1)
-      setTurning(false)
-    }, fcReveal.inMs + fcReveal.backstop)
-  }, [revealed, fade])
-
-  /* The answer and the tiles also rise a little as they arrive; the writer
-     only fades, so the character never drifts under the learner's eye. */
-  const riseStyle = {
-    transform: [{ translateY: fade.interpolate({ inputRange: [0, 1], outputRange: [fcReveal.rise, 0] }) }],
-  }
+  /** Rises `distance` up into place as `v` goes 0 → 1. */
+  const rise = (v: Animated.Value, distance: number) => ({
+    transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [distance, 0] }) }],
+  })
 
   /*
    * Writing the last stroke correctly *is* the answer, so there's nothing left
@@ -230,9 +244,9 @@ export function ReviewFlashcard({
           {/* Between cards only this part moves, behind a veil in the page colour
               rather than its own fade, for the same reason as the reveal's veil. */}
           <QuestionContent style={{ flexGrow: 1 }} veil={{ color: c.background, inset: { top: 6, bottom: 10, side: fcSize.pad } }}>
-          <View pointerEvents={turning ? 'none' : 'auto'} style={{ flexGrow: 1 }}>
+          <View style={{ flexGrow: 1 }}>
           <WritingCard
-            minHeight={revealed ? fcSize.writingMinRevealed : fcSize.writingMin}
+            minHeight={fcSize.writingMin}
             corner={
               <>
                 {!revealed && !hintShown && direction === 'production' && (
@@ -263,21 +277,105 @@ export function ReviewFlashcard({
             />
           </WritingCard>
 
-          {/* The answer card — or, before the reveal, the question. */}
-          {/* Plain paper: by request this card carries no painting, so nothing
-              competes with the word and its sentence. */}
-          {/* Before the reveal the question wears the sky wash (SS1017); the
-              answer turns back to paper, so the change of state reads at once. */}
+          {/* The region the reveal happens in — sized for the taller of its two
+              layers (see `reveal` above), so nothing outside it ever moves. */}
+          <View style={{ marginTop: 12, minHeight: regionHeight }}>
+          {/* The question: sky-washed card (SS1017), Show Answer, "I don't know". */}
           <Animated.View
-            style={[
-              card,
-              fcShadow,
-              { marginTop: 12 },
-              revealed ? null : { backgroundColor: playTints.sky.fill, borderColor: playTints.sky.border },
-              riseStyle,
-            ]}
+            onLayout={measure(setQuestionHeight)}
+            pointerEvents={revealed ? 'none' : 'auto'}
+            importantForAccessibility={revealed ? 'no-hide-descendants' : 'auto'}
+            accessibilityElementsHidden={revealed}
+            style={{ flexGrow: 1, opacity: covered ? 0 : 1 }}
           >
-            {revealed ? (
+            <View
+              style={[
+                card,
+                fcShadow,
+                { flexGrow: 1, backgroundColor: playTints.sky.fill, borderColor: playTints.sky.border },
+              ]}
+            >
+              <View style={{ flexGrow: 1, padding: 20, paddingBottom: 22, minHeight: 132 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                  <Text style={{ flex: 1, fontFamily: 'NunitoExtraBold', ...t.label, color: playTints.sky.text, textTransform: 'uppercase', marginTop: 6 }}>
+                    {direction === 'recognition' ? 'Recognize this' : 'Write in Chinese'}
+                  </Text>
+                  <DuePill isNew={isNew} />
+                </View>
+                {/* The prompt sits in the middle of the card, however tall the
+                    answer has made it, so the space reads as a flashcard's face. */}
+                <View style={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 10 }}>
+                  {direction === 'recognition' ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <Text className={face} style={{ ...t.word, color: c.ink, includeFontPadding: false }}>{text}</Text>
+                      <SpeakerDisc text={text} />
+                    </View>
+                  ) : (
+                    <Text style={{ fontFamily: 'NunitoExtraBold', ...t.prompt, color: c.ink, textAlign: 'center' }}>
+                      {shortGloss(word)}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            <View style={{ marginTop: 14 }}>
+              <PressableScale onPress={reveal} scaleTo={1} haptic={false} accessibilityLabel="Show answer">
+                <LiftedFace height={fcSize.button} fill={c.green} shoulder={fcShoulders.primary}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Eye size={20} color={c.onColor} />
+                    <Text style={{ fontFamily: 'NunitoExtraBold', ...t.button, color: c.onColor }}>Show Answer</Text>
+                  </View>
+                </LiftedFace>
+              </PressableScale>
+
+              {/*
+                The honest way out, before the answer. It sends the word to the
+                back of the session queue ungraded — a learner who admits they
+                don't know has told the truth, and making them grade themselves
+                "Again" to move on would score that as a miss. Not after the
+                reveal: once the answer is on screen, the learner judges
+                themselves with the four tiles, and nothing else.
+              */}
+              {onSkip && (
+                <Pressable
+                  onPress={onSkip}
+                  accessibilityRole="button"
+                  accessibilityLabel="I don't know this word"
+                  hitSlop={6}
+                  style={{ alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: 4 }}
+                >
+                  <Text style={{ fontFamily: 'NunitoSemiBold', ...t.quiet, color: c.slate }}>I don’t know</Text>
+                </Pressable>
+              )}
+            </View>
+          </Animated.View>
+
+          {/* The answer: one sheet parked below the screen until the reveal,
+              then risen into place over the question. Plain paper, no
+              painting, so nothing competes with the word and its sentence. */}
+          <Animated.View
+            onLayout={measure(setAnswerHeight)}
+            pointerEvents={revealed ? 'box-none' : 'none'}
+            importantForAccessibility={revealed ? 'auto' : 'no-hide-descendants'}
+            accessibilityElementsHidden={!revealed}
+            style={[{ position: 'absolute', top: 0, left: 0, right: 0, minHeight: regionHeight }, rise(cardIn, travel)]}
+          >
+            {/* The sheet's backing, in the page colour: it hides the question
+                between and below the tiles. It starts under the card, clear of
+                its rounded corners, and runs past the screen's foot. */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: fcSize.radius.card * 2,
+                bottom: -fcReveal.travelExtra * 2,
+                left: -fcSize.pad,
+                right: -fcSize.pad,
+                backgroundColor: c.background,
+              }}
+            />
+            <View style={[card, fcShadow, { flexGrow: 1 }]}>
               <View style={{ padding: 20, paddingBottom: 18 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
                   <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -286,48 +384,26 @@ export function ReviewFlashcard({
                   </View>
                   <DuePill isNew={isNew} />
                 </View>
-                <Text style={{ fontFamily: 'InterMedium', ...t.reading, color: c.green, marginTop: 4 }}>
+                <Text style={{ fontFamily: 'NunitoSemiBold', ...t.reading, color: c.green, marginTop: 4 }}>
                   {displayPinyin(word, settings.phoneticScript)}
                 </Text>
                 <Text style={{ fontFamily: 'NunitoSemiBold', ...t.gloss, color: c.body, marginTop: 4 }}>{shortGloss(word)}</Text>
                 {example ? (
                   <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: c.border }}>
                     <ReadingSentence text={example} term={text} tone="card" size="compact" />
-                    <Text style={{ fontFamily: 'LoraItalic', ...t.translation, color: c.slate, marginTop: 4 }}>
+                    <Text style={{ fontFamily: 'NunitoSemiBoldItalic', ...t.translation, color: c.slate, marginTop: 4 }}>
                       {word.example!.translation}
                     </Text>
                   </View>
                 ) : null}
               </View>
-            ) : (
-              <View style={{ padding: 20, paddingBottom: 22, minHeight: 132 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                  <Text style={{ flex: 1, fontFamily: 'NunitoExtraBold', ...t.label, color: playTints.sky.text, textTransform: 'uppercase', marginTop: 6 }}>
-                    {direction === 'recognition' ? 'Recognize this' : 'Write in Chinese'}
-                  </Text>
-                  <DuePill isNew={isNew} />
-                </View>
-                {direction === 'recognition' ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 }}>
-                    <Text className={face} style={{ ...t.word, color: c.ink, includeFontPadding: false }}>{text}</Text>
-                    <SpeakerDisc text={text} />
-                  </View>
-                ) : (
-                  <Text style={{ fontFamily: 'LoraBold', ...t.prompt, color: c.ink, marginTop: 10, }}>
-                    {shortGloss(word)}
-                  </Text>
-                )}
-              </View>
-            )}
-          </Animated.View>
+            </View>
 
-          {/* Show Answer, or the four grade tiles. */}
-          <Animated.View style={[{ marginTop: 14 }, riseStyle]}>
-            {revealed ? (
-              <View style={{ flexDirection: 'row', gap: fcSize.tileGap }}>
-                {GRADE_BUTTONS.map(({ grade, label: name, Icon }) => (
+            {/* The four grade tiles, trailing the card, each a beat after the last. */}
+            <View style={{ flexDirection: 'row', gap: fcSize.tileGap, marginTop: 14 }}>
+              {GRADE_BUTTONS.map(({ grade, label: name, Icon }, i) => (
+                <Animated.View key={grade} style={[{ flex: 1 }, rise(tilesIn[i], fcReveal.tileLag)]}>
                   <GradeTile
-                    key={grade}
                     grade={grade}
                     name={name}
                     Icon={Icon}
@@ -335,56 +411,11 @@ export function ReviewFlashcard({
                     width={(cardWidth - fcSize.tileGap * 3) / 4}
                     onPress={() => onGrade(grade)}
                   />
-                ))}
-              </View>
-            ) : (
-              <PressableScale onPress={reveal} scaleTo={1} haptic={false} accessibilityLabel="Show answer">
-                <LiftedFace height={fcSize.button} fill={c.green} shoulder={fcShoulders.primary}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Eye size={20} color={c.onColor} />
-                    <Text style={{ fontFamily: 'LoraBold', ...t.button, color: c.onColor }}>Show Answer</Text>
-                  </View>
-                </LiftedFace>
-              </PressableScale>
-            )}
-
-            {/*
-              The honest way out, before the answer. It sends the word to the
-              back of the session queue ungraded — a learner who admits they
-              don't know has told the truth, and making them grade themselves
-              "Again" to move on would score that as a miss. Not after the
-              reveal: once the answer is on screen, the learner judges
-              themselves with the four tiles, and nothing else.
-            */}
-            {onSkip && !revealed && (
-              <Pressable
-                onPress={onSkip}
-                accessibilityRole="button"
-                accessibilityLabel="I don't know this word"
-                hitSlop={6}
-                style={{ alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: 4 }}
-              >
-                <Text style={{ fontFamily: 'NunitoSemiBold', ...t.quiet, color: c.slate }}>I don’t know</Text>
-              </Pressable>
-            )}
+                </Animated.View>
+              ))}
+            </View>
           </Animated.View>
-
-          {/* The veil the reveal turns behind — see `fade` above. It reaches past
-              the column's padding so the cards' shadows are covered too. */}
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: -6,
-              bottom: -10,
-              left: -fcSize.pad,
-              right: -fcSize.pad,
-              backgroundColor: c.background,
-              opacity: fade.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
-              zIndex: 50,
-              elevation: 50,
-            }}
-          />
+          </View>
           </View>
           </QuestionContent>
         </View>
@@ -485,7 +516,7 @@ function GradeTile({
           </Svg>
         </View>
         <Icon size={19} color={c.onColor} strokeWidth={2} />
-        <Text style={{ fontFamily: 'LoraBold', ...t.grade, color: c.onColor }}>{name}</Text>
+        <Text style={{ fontFamily: 'NunitoExtraBold', ...t.grade, color: c.onColor }}>{name}</Text>
         {interval ? (
           <Text style={{ fontFamily: 'NunitoSemiBold', ...t.interval, color: c.onColorSoft }}>{interval}</Text>
         ) : null}

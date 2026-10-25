@@ -14,8 +14,6 @@ import {
   X,
   Volume2,
   Star,
-  SkipForward,
-  Undo2,
 } from 'lucide-react-native'
 import type { ReactNode } from 'react'
 import type { StyleProp, ViewStyle } from 'react-native'
@@ -26,11 +24,12 @@ import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { FlexGap } from '../components/FlexGap'
 import { revealedShadow, SHADOW_EASING, shadowDuration } from '../components/shadowReveal'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
-import { dashColors as c, dashShadow, dashShadowLifted, DASH_CONTENT_MAX, playTints } from '../components/dashboard/tokens'
-import { PressableScale, LiftedFace, usePressClaim } from '../components/dashboard/parts'
+import { dashColors as c, dashShadow, dashShadowLifted, DASH_CONTENT_MAX, dashShoulders } from '../components/dashboard/tokens'
+import { PressableScale, LiftedFace, usePressClaim, RaisedButton } from '../components/dashboard/parts'
 import { TourTarget } from '../components/tour/targets'
 import { useReduceMotion } from '../components/tour/useReduceMotion'
-import { speak } from '../lib/speech'
+import { SLOW_SPEECH_RATE, SPEECH_RATE, speak } from '../lib/speech'
+import { RaisedProgressBar } from '../components/progress/RaisedProgressBar'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
 import { shortGloss } from '../lib/definitions'
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
@@ -61,7 +60,7 @@ import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
  *
  * Styled with plain style objects, not `className` — on native, NativeWind was
  * dropping class-applied styles on re-render elsewhere in the app (see the
- * comment over `HeroCard`'s button row), and a card that re-renders on every
+ * comment over `DetailHero`'s button row), and a card that re-renders on every
  * Skip and Add is exactly where that would show.
  *
  * **Never pass `Pressable` a style *function* here** (`style={({ pressed }) =>
@@ -101,7 +100,8 @@ const ADD_SHOULDER = '#2B6A3C'
 const SKIP = { fill: '#FFFDFC', border: '#D8D4CB', shoulder: '#CFC8BA' } as const
 
 /** Practice: the full-width mint pill under the pair. */
-const PRACTICE = { fill: '#EAF4EC', border: '#BFDCC6', shoulder: '#A7CDB1' } as const
+/* Dark green, like Add to my words beside it, by request. */
+const PRACTICE = { fill: '#3A8650', shoulder: '#2B6A3C' } as const
 
 /**
  * A button whose look lives on a plain `View`, with the press tracked here
@@ -197,7 +197,6 @@ const GOAL_NOTE = {
 } as const
 
 const GUTTER = 20
-const TRACK = '#E9ECE8'
 
 /** The serif hanzi face per script — `hanziFont`'s semibold classes, as family names. */
 function serif(script: ScriptMode): string {
@@ -281,7 +280,8 @@ export function NewWords() {
       rise.setValue(0)
       swapping.current = false
     }
-    Animated.timing(rise, {
+    /* From the side it's coming from: the right going forward, the left going back. */
+    Animated.timing(slide, {
       toValue: 0,
       duration: arriveMs.current,
       easing: Easing.out(Easing.cubic),
@@ -320,10 +320,11 @@ export function NewWords() {
     const leave = () => {
       if (left) return
       left = true
-      // Hidden by `rise` before `slide` and `drag` come back to the middle, so nothing flashes up in place.
-      rise.setValue(1)
+      // Parked off to the side the next card comes from, where `slide` at +/-1 is transparent,
+      // in the same tick `drag` comes back to the middle, so nothing flashes up in place.
+      rise.setValue(0)
       drag.setValue(0)
-      slide.setValue(0)
+      slide.setValue(dir)
       shade.setValue(0)
       arrivePending.current = true
       commit()
@@ -683,9 +684,12 @@ export function NewWords() {
 
           {/* Today's progress towards the daily new-word goal. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2 }}>
-            <View style={{ flex: 1, height: 8, borderRadius: 4, backgroundColor: TRACK, overflow: 'hidden' }}>
-              <View style={{ width: `${progress * 100}%`, height: '100%', borderRadius: 4, backgroundColor: c.green }} />
-            </View>
+            {/* The app's raised jade bar, as on Challenges and the review sessions. */}
+            <RaisedProgressBar
+              progress={progress}
+              size="compact"
+              accessibilityLabel={`Today's new words: ${wordsLearnedToday} of ${limit}`}
+            />
             <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 19, color: c.textMuted }}>
               {wordsLearnedToday} / {limit}
             </Text>
@@ -894,9 +898,9 @@ export function NewWords() {
                 wrapperStyle={{ marginTop: 12 }}
                 accessibilityLabel="Practice writing this word"
               >
-                <LiftedFace height={BUTTON_HEIGHT} fill={PRACTICE.fill} shoulder={PRACTICE.shoulder} border={PRACTICE.border} shadow={false}>
-                  <PenLine size={20} color={c.greenDark} strokeWidth={2} />
-                  <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: c.greenDark }}>
+                <LiftedFace height={BUTTON_HEIGHT} fill={PRACTICE.fill} shoulder={PRACTICE.shoulder} shadow={false}>
+                  <PenLine size={20} color="#ffffff" strokeWidth={2} />
+                  <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: '#ffffff' }}>
                     Practice writing this word
                   </Text>
                 </LiftedFace>
@@ -953,6 +957,14 @@ function WordCard({
 }) {
   /* Claims the speaker's press from the card around it, which opens writing practice. */
   const claim = usePressClaim()
+  /* Each speaker alternates: normal, then slow, then normal again… Counts
+     start over when the card shows a different word. */
+  const plays = useRef({ wordId: word.id, word: 0, example: 0 })
+  if (plays.current.wordId !== word.id) plays.current = { wordId: word.id, word: 0, example: 0 }
+  const speakAlternating = (which: 'word' | 'example', text: string) => {
+    const n = plays.current[which]++
+    speak(text, { rate: n % 2 === 1 ? SLOW_SPEECH_RATE : SPEECH_RATE })
+  }
   const hanzi = displayWord(word, script)
   const example = word.example ? displayExample(word, script) : ''
   const size = hanziSize(hanzi)
@@ -1014,7 +1026,7 @@ function WordCard({
             onPress={() => {
               claim()
               tapHaptic()
-              speak(hanzi)
+              speakAlternating('word', hanzi)
             }}
             face={{ padding: 6 }}
             accessibilityLabel={`Play pronunciation of ${hanzi}`}
@@ -1040,7 +1052,7 @@ function WordCard({
               onPress={() => {
                 claim()
                 tapHaptic()
-                speak(example)
+                speakAlternating('example', example)
               }}
               face={{ padding: 4 }}
               accessibilityLabel="Play the example sentence"
@@ -1088,13 +1100,17 @@ function EmptyState({ onOpenSettings }: { onOpenSettings: () => void }) {
       <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 20, color: c.textSecondary, textAlign: 'center' }}>
         Raise your HSK level in Settings to keep finding new words.
       </Text>
-      <Pressable
+      <RaisedButton
         onPress={onOpenSettings}
-        accessibilityRole="button"
-        style={{ marginTop: 6, height: 46, paddingHorizontal: 22, borderRadius: 23, justifyContent: 'center', backgroundColor: c.greenDark, ...dashShadowLifted }}
+        accessibilityLabel="Open Settings"
+        wrapperStyle={{ marginTop: 6 }}
+        height={46}
+        fill={c.greenDark}
+        shoulder={dashShoulders.greenDeep}
+        shadow
       >
-        <Text style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 20, color: '#ffffff' }}>Open Settings</Text>
-      </Pressable>
+        <Text style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 20, color: '#ffffff', paddingHorizontal: 22 }}>Open Settings</Text>
+      </RaisedButton>
     </View>
   )
 }
@@ -1278,31 +1294,18 @@ function RecentWordsSheet({
  * is far — so the word on the card stays the thing being read.
  */
 function SwipeHint({ side, label, opacity }: { side: 'left' | 'right'; label: 'Skip' | 'Back'; opacity: Animated.AnimatedInterpolation<number> }) {
-  const tone = label === 'Back' ? playTints.jade : { soft: SKIP.fill, border: SKIP.border, text: c.textSecondary }
-  const Icon = label === 'Back' ? Undo2 : SkipForward
+  /* Bare text, no pill: the word alone says which way the card is going, and
+     neither direction is a judgement, so both wear the same quiet grey. */
   return (
     <Animated.View
       pointerEvents="none"
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
-      style={{ position: 'absolute', top: 0, bottom: 0, [side]: 6, justifyContent: 'center', opacity }}
+      style={{ position: 'absolute', top: 0, bottom: 0, [side]: 14, justifyContent: 'center', opacity }}
     >
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-          paddingHorizontal: 12,
-          height: 34,
-          borderRadius: 17,
-          borderWidth: 1,
-          borderColor: tone.border,
-          backgroundColor: tone.soft,
-        }}
-      >
-        <Icon size={15} color={tone.text} strokeWidth={2.4} />
-        <Text style={{ fontFamily: 'NunitoBold', fontSize: 13.5, color: tone.text, includeFontPadding: false }}>{label}</Text>
-      </View>
+      <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 16, letterSpacing: 0.2, color: c.textSecondary, includeFontPadding: false }}>
+        {label}
+      </Text>
     </Animated.View>
   )
 }

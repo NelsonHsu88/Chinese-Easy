@@ -6,7 +6,8 @@ import { hanziFont } from '../../../lib/hanzi'
 import { tickHaptic } from '../../../lib/haptics'
 import { AudioIndicator, playZh } from '../audio'
 import { BasicsPill } from '../parts'
-import { Card, Gloss, Hanzi, Reading, StepBody, StepTitle, type BasicsCtx, type StepProps } from '../lessonParts'
+import { Card, Gloss, Hanzi, RaisedTap, Reading, StepBody, StepTitle, type BasicsCtx, type StepProps } from '../lessonParts'
+import { PressableScale } from '../../dashboard/parts'
 import { basicsColors as c } from '../tokens'
 
 /*
@@ -54,9 +55,10 @@ export function CharacterExplorerStep({ step, ctx, stepId, setGate }: StepProps<
 
       <Card style={{ marginTop: 16, paddingVertical: 18 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', gap: 12 }}>
-          <Pressable
+          <PressableScale
             onPress={() => playZh(whole, `${stepId}-whole`)}
-            accessibilityRole="button"
+            scaleTo={1}
+            haptic={false}
             accessibilityLabel={`${whole}, ${step.character.gloss ?? ''}. Play`}
           >
             <View style={{ alignItems: 'center' }}>
@@ -67,44 +69,32 @@ export function CharacterExplorerStep({ step, ctx, stepId, setGate }: StepProps<
                 <AudioIndicator id={`${stepId}-whole`} size={38} />
               </View>
             </View>
-          </Pressable>
+          </PressableScale>
           <Diagram layout={step.layout} parts={step.parts} focus={focus} onPick={open} ctx={ctx} />
         </View>
 
         <View style={{ marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
           {step.parts.map((p, i) => (
-            <Pressable
+            <RaisedTap
               key={i}
               onPress={() => open(i)}
-              accessibilityRole="button"
               accessibilityLabel={`${ctx.zh(p.zh)}, ${ROLE_LABEL[p.role]}${seen.has(i) ? ', seen' : ''}`}
               accessibilityState={{ selected: focus === i }}
+              tone={focus === i ? 'selected' : 'card'}
+              radius={22}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44, paddingHorizontal: 14 }}
             >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 6,
-                  minHeight: 44,
-                  paddingHorizontal: 14,
-                  borderRadius: 22,
-                  borderWidth: focus === i ? 2 : 1,
-                  borderColor: focus === i ? c.jade : c.border,
-                  backgroundColor: focus === i ? c.sageSoft : c.card,
-                }}
-              >
-                {seen.has(i) && <Check size={13} color={c.sageDark} strokeWidth={3} />}
-                <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 22, lineHeight: 30, color: c.navy }}>
-                  {ctx.zh(p.zh)}
-                </Text>
-              </View>
-            </Pressable>
+              {seen.has(i) && <Check size={13} color={c.sageDark} strokeWidth={3} />}
+              <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 22, lineHeight: 30, color: c.navy }}>
+                {ctx.zh(p.zh)}
+              </Text>
+            </RaisedTap>
           ))}
         </View>
       </Card>
 
       {part && (
-        <View accessibilityLiveRegion="polite" style={{ marginTop: 12, borderRadius: 18, padding: 14, backgroundColor: c.sageSoft }}>
+        <View accessibilityLiveRegion="polite" style={{ marginTop: 12, borderRadius: 18, padding: 14, backgroundColor: c.card, borderWidth: 1, borderColor: c.border }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 34, lineHeight: 44, color: c.navy }}>
               {ctx.zh(part.zh)}
@@ -118,7 +108,7 @@ export function CharacterExplorerStep({ step, ctx, stepId, setGate }: StepProps<
               </Text>
             </View>
           </View>
-          <Text className="font-lora" style={{ marginTop: 6, fontSize: 15, lineHeight: 21, color: c.navy }}>
+          <Text className="font-nunito-semibold" style={{ marginTop: 6, fontSize: 15, lineHeight: 21, color: c.navy }}>
             {ctx.text(part.note)}
           </Text>
           {part.related && part.related.length > 0 && (
@@ -131,8 +121,13 @@ export function CharacterExplorerStep({ step, ctx, stepId, setGate }: StepProps<
                   const text = ctx.zh(r.zh)
                   const id = `${stepId}-rel-${focus}-${i}`
                   return (
-                    <Pressable key={i} onPress={() => playZh(text, id)} accessibilityRole="button" accessibilityLabel={`${text}, ${r.gloss ?? ''}. Play`}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 10, borderRadius: 14, backgroundColor: c.card }}>
+                    <RaisedTap
+                      key={i}
+                      onPress={() => playZh(text, id)}
+                      accessibilityLabel={`${text}, ${r.gloss ?? ''}. Play`}
+                      radius={14}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 48, paddingHorizontal: 10 }}
+                    >
                         <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 24, lineHeight: 32, color: c.navy }}>
                           {text}
                         </Text>
@@ -144,8 +139,7 @@ export function CharacterExplorerStep({ step, ctx, stepId, setGate }: StepProps<
                             </Text>
                           )}
                         </View>
-                      </View>
-                    </Pressable>
+                    </RaisedTap>
                   )
                 })}
               </View>

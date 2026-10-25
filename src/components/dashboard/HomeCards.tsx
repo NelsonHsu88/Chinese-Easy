@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { View, Text, Image } from 'react-native'
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop } from 'react-native-svg'
-import { ArrowRight, Check, ChartNoAxesColumn, ChevronRight, Lock, RotateCcw, Volume2, Waypoints } from 'lucide-react-native'
+import { ArrowRight, Check, ChartNoAxesColumn, ChevronRight, Lock, RotateCcw, Waypoints } from 'lucide-react-native'
 import { CardArt, DASH_LIFT, DashboardCard, LiftedFace, PressableScale } from './parts'
 import { homeArt, homeRefCards } from './art'
 import { homeColors as c, homeSurfaces, homeType as t, homeLayout as l } from './tokens'
@@ -9,8 +9,8 @@ import type { VocabWord, PhoneticScript, ScriptMode } from '../../types'
 import type { WeekDay } from '../../lib/progress'
 import { displayWord, displayPinyin, hanziFont } from '../../lib/hanzi'
 import { shortGloss } from '../../lib/definitions'
-import { speak } from '../../lib/speech'
 import { tapHaptic } from '../../lib/haptics'
+import { SpeakChip } from '../dictionary/DictionaryControls'
 
 /*
  * The four cards of Home, each across the full column: Review, the word on
@@ -52,7 +52,7 @@ function HomeButton({
     <LiftedFace height={l.buttonHeight} fill={fill} shoulder={shoulder} border={primary ? undefined : c.quietLine} shadow={primary}>
       {/* iOS can shrink a label that won't fit; elsewhere the button's width is planned for it. */}
       <Text
-        className="font-lora-bold"
+        className="font-nunito-extrabold"
         numberOfLines={1}
         adjustsFontSizeToFit
         minimumFontScale={0.8}
@@ -125,8 +125,6 @@ const REVIEW_COLUMN_MIN = { due: 150, done: 172 } as const
 const REVIEW_ART_GAP = 8
 /** How much of the painting's width, from its left, may lie under the faded text side. */
 const REVIEW_ART_TUCK = 0.28
-/** The resting state's painting, a touch quieter than when there is work to do. */
-const REVIEW_DONE_ART_OPACITY = 0.85
 /** The resting state keeps a little more height than its text needs, so it isn't a sliver. */
 const REVIEW_DONE_MIN = 132
 
@@ -175,7 +173,6 @@ export function ReviewCard({ dueCount, width, onPress }: { dueCount: number; wid
         ratio={REVIEW_ART_RATIO}
         width={artW}
         style={{ right: 0, bottom: 0 }}
-        opacity={due ? 1 : REVIEW_DONE_ART_OPACITY}
       />
       <View pointerEvents="none" style={{ position: 'absolute', left: artLeft, bottom: 0, width: fadeW, height: artH }}>
         <Svg width="100%" height="100%">
@@ -198,18 +195,19 @@ export function ReviewCard({ dueCount, width, onPress }: { dueCount: number; wid
               <RotateCcw size={16} color={c.coral} strokeWidth={2.4} />
             </IconDisc>
           ) : (
-            <IconDisc size={REVIEW_HEADING_H}>
-              <Check size={16} color={c.jade} strokeWidth={2.6} />
+            /* The same coral disc as the due state: a finished review stays the red card. */
+            <IconDisc size={REVIEW_HEADING_H} fill={c.tagFill}>
+              <Check size={16} color={c.coral} strokeWidth={2.6} />
             </IconDisc>
           )}
-          <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink, flexShrink: 1 }}>
+          <Text className="font-nunito-extrabold" numberOfLines={1} style={{ ...t.title, color: c.ink, flexShrink: 1 }}>
             Review
           </Text>
         </View>
 
         <View style={{ width: column }}>
           <Text
-            className="font-lora-bold"
+            className="font-nunito-extrabold"
             numberOfLines={2}
             style={{ ...t.due, color: c.ink, marginTop: REVIEW_GAP.headingToTitle }}
           >
@@ -217,7 +215,7 @@ export function ReviewCard({ dueCount, width, onPress }: { dueCount: number; wid
           </Text>
           {/* Reviews do count: grading a card registers the day's activity (AppContext `gradeCard`). */}
           <Text
-            className="font-lora"
+            className="font-nunito-semibold"
             numberOfLines={2}
             style={{ ...t.body, color: c.subtle, marginTop: REVIEW_GAP.titleToBody }}
           >
@@ -309,7 +307,7 @@ export function WordCard({
           <IconDisc size={32}>
             <Waypoints size={16} color={c.jade} strokeWidth={2.2} />
           </IconDisc>
-          <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink, flex: 1 }}>
+          <Text className="font-nunito-extrabold" numberOfLines={1} style={{ ...t.title, color: c.ink, flex: 1 }}>
             Today’s Word
           </Text>
         </View>
@@ -326,37 +324,15 @@ export function WordCard({
                 >
                   {shown}
                 </Text>
-                {/* \`speak\` stops whatever is playing first, so rapid taps never overlap. */}
-                <PressableScale
-                  onPress={() => {
-                    tapHaptic()
-                    speak(word.simplified)
-                  }}
-                  accessibilityLabel={`Play pronunciation of ${shown}`}
-                  scaleTo={0.88}
-                  hitSlop={6}
-                >
-                  <View
-                    style={{
-                      width: speaker,
-                      height: speaker,
-                      borderRadius: speaker / 2,
-                      backgroundColor: c.sageSoft,
-                      borderWidth: 1,
-                      borderColor: c.greenLine,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Volume2 size={19} color={c.jade} strokeWidth={2.3} />
-                  </View>
-                </PressableScale>
+                {/* The dictionary word card's speaker, so every word's audio button is one object. */}
+                <SpeakChip text={word.simplified} size={speaker} />
               </View>
               {/* Pinyin or zhuyin, by the learner's setting. */}
-              <Text className="font-lora" style={{ ...t.pinyin, color: c.subtle, marginTop: 4 }}>
+              <Text className="font-nunito-semibold" style={{ ...t.pinyin, color: c.subtle, marginTop: 4 }}>
                 {displayPinyin(word, phoneticScript)}
               </Text>
-              <Text className="font-lora-bold" numberOfLines={2} style={{ ...t.gloss, color: c.ink, marginTop: 2 }}>
+              {/* Regular weight, set as a style so every platform agrees. */}
+              <Text numberOfLines={2} style={{ ...t.gloss, fontFamily: 'NunitoSemiBold', color: c.ink, marginTop: 2 }}>
                 {shortGloss(word)}
               </Text>
             </>
@@ -366,10 +342,10 @@ export function WordCard({
                 <Check size={22} color={c.jade} strokeWidth={2.6} />
               </IconDisc>
               <View style={{ flex: 1 }}>
-                <Text className="font-lora-bold" style={{ ...t.pinyin, color: c.ink }}>
+                <Text className="font-nunito-extrabold" style={{ ...t.pinyin, color: c.ink }}>
                   Today’s words done
                 </Text>
-                <Text className="font-lora" style={{ ...t.body, color: c.subtle, marginTop: 2 }}>
+                <Text className="font-nunito-semibold" style={{ ...t.body, color: c.subtle, marginTop: 2 }}>
                   {wordsToday} new {wordsToday === 1 ? 'word' : 'words'} today
                 </Text>
               </View>
@@ -418,7 +394,10 @@ export type RewardState = 'locked' | 'ready' | 'claimed'
 
 const STEP_RING = 28
 const TRACK = 3
-const GIFT_WIDTH = 34
+/** The reward row's gift: the whole painting, centred on a gold-washed tile
+    shaped like it, with the same margin on every side. */
+const GIFT_WIDTH = 44
+const GIFT_PAD = 5
 
 /**
  * Four rings on one straight track, each a number until its challenge is done
@@ -468,10 +447,10 @@ export function ChallengesCard({
       <View style={{ padding: pad }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ flex: 1 }}>
-            <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
+            <Text className="font-nunito-extrabold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
               Daily Challenges
             </Text>
-            <Text className="font-lora" numberOfLines={1} style={{ ...t.body, color: c.subtle, marginTop: 2, fontVariant: ['tabular-nums'] }}>
+            <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...t.body, color: c.subtle, marginTop: 2, fontVariant: ['tabular-nums'] }}>
               {doneCount} of {steps.length} completed
             </Text>
           </View>
@@ -512,19 +491,19 @@ export function ChallengesCard({
                   {step.done ? (
                     <Check size={15} color={c.white} strokeWidth={3} />
                   ) : (
-                    <Text className="font-lora-bold" style={{ fontSize: 13, color: c.subtle }}>
+                    <Text className="font-nunito-extrabold" style={{ fontSize: 13, color: c.subtle }}>
                       {i + 1}
                     </Text>
                   )}
                 </View>
                 <Text
-                  className="font-lora-bold"
+                  className="font-nunito-extrabold"
                   numberOfLines={2}
                   style={{ ...t.label, color: step.done ? c.jade : c.ink, marginTop: 6, textAlign: 'center' }}
                 >
                   {step.verb}
                 </Text>
-                <Text className="font-lora" numberOfLines={2} style={{ ...t.label, color: c.subtle, textAlign: 'center', paddingHorizontal: 2 }}>
+                <Text className="font-nunito-semibold" numberOfLines={2} style={{ ...t.label, color: c.subtle, textAlign: 'center', paddingHorizontal: 2 }}>
                   {step.detail}
                 </Text>
               </View>
@@ -537,25 +516,31 @@ export function ChallengesCard({
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 10,
+            gap: 12,
             marginTop: 14,
             paddingTop: 12,
             borderTopWidth: 1,
             borderTopColor: homeSurfaces.challenges.border,
           }}
         >
-          <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-            <Image
-              source={homeArt.challengeGift.source}
-              style={{ width: GIFT_WIDTH, height: GIFT_WIDTH / (gift.w / gift.h), opacity: reward === 'claimed' ? 0.6 : 1 }}
-              resizeMode="contain"
-            />
+          <View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={{ opacity: reward === 'claimed' ? 0.6 : 1 }}
+          >
+            <View style={{ padding: GIFT_PAD, borderRadius: 14, backgroundColor: c.goldWash }}>
+              <Image
+                source={homeArt.challengeGift.source}
+                style={{ width: GIFT_WIDTH, height: Math.round(GIFT_WIDTH / (gift.w / gift.h)) }}
+                resizeMode="contain"
+              />
+            </View>
           </View>
           <View style={{ flex: 1 }}>
-            <Text className="font-lora-bold" numberOfLines={1} style={{ fontSize: 14.5, lineHeight: 19, color: c.ink }}>
+            <Text className="font-nunito-extrabold" numberOfLines={1} style={{ fontSize: 14.5, lineHeight: 19, color: c.ink }}>
               Daily reward
             </Text>
-            <Text className="font-lora" numberOfLines={2} style={{ ...t.label, fontSize: 12.5, color: c.subtle }}>
+            <Text className="font-nunito-semibold" numberOfLines={2} style={{ ...t.label, fontSize: 12.5, color: c.subtle }}>
               {rewardLine}
             </Text>
           </View>
@@ -591,7 +576,7 @@ function RewardChip({ state }: { state: RewardState }) {
     >
       {state === 'locked' && <Lock size={13} color={look.ink} strokeWidth={2.2} />}
       {state === 'claimed' && <Check size={14} color={look.ink} strokeWidth={2.6} />}
-      <Text className="font-lora-bold" style={{ fontSize: 13, color: look.ink }}>
+      <Text className="font-nunito-extrabold" style={{ fontSize: 13, color: look.ink }}>
         {look.label}
       </Text>
       {state === 'ready' && <ChevronRight size={14} color={look.ink} strokeWidth={2.4} />}
@@ -692,14 +677,14 @@ export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: num
           </IconDisc>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-              <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
+              <Text className="font-nunito-extrabold" numberOfLines={1} style={{ ...t.title, color: c.ink }}>
                 This Week
               </Text>
-              <Text className="font-lora" numberOfLines={1} style={{ ...t.label, color: c.muted, flexShrink: 1 }}>
+              <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...t.label, color: c.muted, flexShrink: 1 }}>
                 {range}
               </Text>
             </View>
-            <Text className="font-lora" numberOfLines={1} style={{ ...t.body, color: c.subtle, marginTop: 2 }}>
+            <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...t.body, color: c.subtle, marginTop: 2 }}>
               {activeDays} active {activeDays === 1 ? 'day' : 'days'} · {words} {words === 1 ? 'word' : 'words'} learned
             </Text>
           </View>
@@ -710,7 +695,7 @@ export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: num
           {week.map((day) => (
             <View key={day.date} style={{ width: pitch, alignItems: 'center' }}>
               <Text
-                className={day.isToday ? 'font-lora-bold' : 'font-lora'}
+                className={day.isToday ? 'font-nunito-extrabold' : 'font-nunito-semibold'}
                 style={{ ...t.label, color: day.isToday ? c.jade : c.muted }}
               >
                 {day.letter}
@@ -747,16 +732,16 @@ export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: num
               borderColor: homeSurfaces.week.border,
             }}
           >
-            <Text className="font-lora-bold" style={{ ...t.body, color: c.ink }}>
+            <Text className="font-nunito-extrabold" style={{ ...t.body, color: c.ink }}>
               No new words yet this week
             </Text>
-            <Text className="font-lora" style={{ ...t.label, fontSize: 12.5, lineHeight: 17, color: c.subtle, marginTop: 2 }}>
+            <Text className="font-nunito-semibold" style={{ ...t.label, fontSize: 12.5, lineHeight: 17, color: c.subtle, marginTop: 2 }}>
               Learn one today and your words-per-day chart starts here.
             </Text>
           </View>
         ) : (
           <>
-            <Text className="font-lora" style={{ ...t.label, color: c.muted, marginTop: 14, marginBottom: 4 }}>
+            <Text className="font-nunito-semibold" style={{ ...t.label, color: c.muted, marginTop: 14, marginBottom: 4 }}>
               Words learned per day
             </Text>
             <View pointerEvents="none" style={{ height: PLOT_H }}>
@@ -764,7 +749,7 @@ export function WeekCard({ week, width, onPress }: { week: WeekDay[]; width: num
               {ticks.map((value) => (
                 <Text
                   key={value}
-                  className="font-lora"
+                  className="font-nunito-semibold"
                   style={{
                     position: 'absolute',
                     left: 0,

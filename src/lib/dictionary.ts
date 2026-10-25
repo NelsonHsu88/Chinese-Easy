@@ -4,7 +4,9 @@ import { lookupCandidates } from '../data/lookupWords'
 import { KANGXI_RADICALS } from '../data/kangxiRadicals'
 import { RADICALS } from '../data/radicals'
 import { displayExample, displayWord, foldPinyin } from './hanzi'
-import { contentRank, isFunctionWord, isTeachableWord, senses } from './definitions'
+import { allSenses, contentRank, isFunctionWord, isTeachableWord, senses, shortGloss } from './definitions'
+import { senseKeys, shows, translationStems } from './senseEvidence'
+import { segmentText } from './textSegmentation'
 import { proficiencyFor } from './proficiency'
 import type { KangxiRadical, Radical, ScriptMode, SrsCard, VocabWord } from '../types'
 
@@ -263,6 +265,12 @@ const SCORE = {
   englishSubstring: 8,
 } as const
 
+/** Senses counted as a word's main meaning — see `rank`. */
+const PRIMARY_SENSES = 3
+
+/** Moves a coincidental pinyin match below every English rung — see `rank`. */
+const PINYIN_DEFERRED = 10
+
 /** English tier (0…3 from `englishRelevance`) → its rung on the ladder. */
 const ENGLISH_SCORES = [
   SCORE.englishExact,
@@ -401,7 +409,7 @@ function matchesQuery(word: VocabWord, q: Query, field: SearchField): boolean {
  * query. Same ordering, a fraction of the cost.
  */
 function rank(candidates: VocabWord[], q: Query, field: SearchField, limit: number): VocabWord[] {
-  return candidates
+  const scored = candidates
     .filter((word) => matchesQuery(word, q, field))
     .map((word) => {
       const fixed = fixedKeys(word)
@@ -409,7 +417,13 @@ function rank(candidates: VocabWord[], q: Query, field: SearchField, limit: numb
       return {
         word,
         score,
-        senseIndex,
+        /*
+         * CC-CEDICT's first few senses are usually synonyms of one meaning —
+         * 船 is "boat; vessel; ship" — so being third of them is no weaker an
+         * answer than being first. Bucketing them lets commonness decide, which
+         * is what puts 船 ahead of 船隻 for "ship".
+         */
+        senseIndex: senseIndex < PRIMARY_SENSES ? 0 : senseIndex,
         content: fixed.content,
         /*
          * Commonness, as the last real tiebreak. `hskLevel` is derived from a
@@ -423,6 +437,22 @@ function rank(candidates: VocabWord[], q: Query, field: SearchField, limit: numb
         length: word.traditional.length,
       }
     })
+
+  /*
+   * A query that reads as English gets English answers first. When anything
+   * glosses as the query itself, or contains it as a whole word, a pinyin
+   * match that is only a coincidence of spelling — "ship" against 視頻
+   * shìpín, 食品 shípǐn — drops below every English rung. Typed pinyin is
+   * unaffected: "shipin" has no English hits to defer to.
+   */
+  const readsAsEnglish = scored.some((e) => e.score === SCORE.englishExact || e.score === SCORE.englishWord)
+  if (readsAsEnglish) {
+    for (const e of scored) {
+      if (e.score === SCORE.pinyinPartial || e.score === SCORE.pinyinContains) e.score += PINYIN_DEFERRED
+    }
+  }
+
+  return scored
     .sort(
       (a, b) =>
         a.score - b.score ||
@@ -730,24 +760,102 @@ export interface SentenceHit {
 }
 
 /**
- * Every sentence in the bank that uses a term, easiest first.
+ * Every distinct sentence in the bank, once each.
  *
- * Capped, because the count behind it is not always small — 我 turns up in 2,259
- * of the 8,023 sentences the bank carries, and nothing good comes of building
- * two thousand rows into a modal. The caller shows the true total alongside.
+ * Several entries can carry the same sentence (the repair pass gives a word the
+ * best sentence that contains it, wherever it was filed), so listing by entry
+ * showed the same sentence two or three times on one card.
+ */
+function distinctSentences(bank: VocabWord[]): SentenceHit[] {
+  return cached(bank, 'distinct-sentences', () => {
+    const seen = new Set<string>()
+    const hits: SentenceHit[] = []
+    for (const word of bank) {
+      if (!word.example?.traditional || seen.has(word.example.traditional)) continue
+      seen.add(word.example.traditional)
+      hits.push({ word, example: word.example })
+    }
+    return hits
+  })
+}
+
+/** Easiest first: the level of the word a sentence is filed under, then length. */
+function byEase(script: ScriptMode) {
+  return (a: SentenceHit, b: SentenceHit) =>
+    a.word.hskLevel - b.word.hskLevel || displayExample(a.word, script).length - displayExample(b.word, script).length
+}
+
+/**
+ * Every sentence in the bank that contains a term's characters, easiest first —
+ * what a *character* page lists, where 大 inside 加拿大 is the point.
+ *
+ * Capped, because the count behind it is not always small — 我 turns up in
+ * thousands of the bank's sentences, and nothing good comes of building them all
+ * into a modal. The caller shows the true total alongside.
  */
 export function sentencesWith(bank: VocabWord[], term: string, script: ScriptMode, limit = 60): SentenceHit[] {
-  const hits: SentenceHit[] = []
-  for (const word of bank) {
-    if (displayExample(word, script).includes(term) && word.example) hits.push({ word, example: word.example })
-  }
-  return hits
-    .sort(
-      (a, b) =>
-        a.word.hskLevel - b.word.hskLevel ||
-        displayExample(a.word, script).length - displayExample(b.word, script).length,
-    )
+  return distinctSentences(bank)
+    .filter((hit) => displayExample(hit.word, script).includes(term))
+    .sort(byEase(script))
     .slice(0, limit)
+}
+
+/*
+ * Entry id → the distinct sentences that contain that entry *as a word*, in
+ * both scripts, segmented exactly as the app segments them. Built once per bank.
+ */
+function sentencesByWord(bank: VocabWord[]): Map<string, SentenceHit[]> {
+  return cached(bank, 'sentences-by-word', () => {
+    const index = new Map<string, SentenceHit[]>()
+    for (const hit of distinctSentences(bank)) {
+      const simplified = new Set(segmentText(hit.example.simplified, bank).map((s) => s.word?.id))
+      const ids = new Set(segmentText(hit.example.traditional, bank).map((s) => s.word?.id))
+      for (const id of ids) {
+        if (!id || !simplified.has(id)) continue
+        let list = index.get(id)
+        if (!list) index.set(id, (list = []))
+        list.push(hit)
+      }
+    }
+    return index
+  })
+}
+
+/*
+ * A word's sentences: those containing it as a word, plus always its own — the
+ * hand-written curated sentences show some words inside a compound on purpose
+ * (吃 in 吃飯), and the card's own sentence belongs on its own page regardless.
+ */
+function wordSentenceHits(bank: VocabWord[], word: VocabWord): SentenceHit[] {
+  const hits = sentencesByWord(bank).get(word.id) ?? []
+  const own = word.example
+  if (!own?.traditional || hits.some((hit) => hit.example.traditional === own.traditional)) return hits
+  return [{ word, example: own }, ...hits]
+}
+
+/**
+ * The example sentences for a *word* page: only sentences that contain the word
+ * as a word — 大 does not list 加拿大 ("Canada"), 行 does not list 銀行 — each
+ * sentence once.
+ *
+ * Ordered so the card's own sentence leads, then sentences whose translation
+ * shows the meaning the card headlines (`shortGloss`), then ones showing any of
+ * its meanings, then the rest; easiest first within each.
+ */
+export function sentencesForWord(bank: VocabWord[], word: VocabWord, script: ScriptMode, limit = 60): SentenceHit[] {
+  const hits = wordSentenceHits(bank, word)
+  const gloss = senseKeys(shortGloss(word))
+  const any = allSenses(word).map(senseKeys)
+  const own = word.example?.traditional
+  const rank = (hit: SentenceHit) => {
+    if (hit.example.traditional === own) return -1
+    const t = translationStems(hit.example.translation)
+    if (shows(gloss, t)) return 0
+    return any.some((keys) => shows(keys, t)) ? 1 : 2
+  }
+  const ranks = new Map(hits.map((hit) => [hit, rank(hit)]))
+  const ease = byEase(script)
+  return [...hits].sort((a, b) => ranks.get(a)! - ranks.get(b)! || ease(a, b)).slice(0, limit)
 }
 
 /** Words containing a term, in the same order as `wordsContaining` but many more of them. */
@@ -764,13 +872,18 @@ export function wordsWith(bank: VocabWord[], term: string, script: ScriptMode, l
  * button, so `words` applies the same `containsTerm` test `wordsWith` does
  * rather than a looser substring count of its own.
  */
-export function appearsIn(bank: VocabWord[], term: string, script: ScriptMode): { words: number; sentences: number } {
+export function appearsIn(
+  bank: VocabWord[],
+  term: string,
+  script: ScriptMode,
+  /** On a word page: count sentences the way `sentencesForWord` lists them. */
+  word?: VocabWord,
+): { words: number; sentences: number } {
   let words = 0
-  let sentences = 0
-  for (const w of bank) {
-    if (containsTerm(w, term, script)) words++
-    if (displayExample(w, script).includes(term)) sentences++
-  }
+  for (const w of bank) if (containsTerm(w, term, script)) words++
+  const sentences = word
+    ? wordSentenceHits(bank, word).length
+    : distinctSentences(bank).filter((hit) => displayExample(hit.word, script).includes(term)).length
   return { words, sentences }
 }
 

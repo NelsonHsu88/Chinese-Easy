@@ -1,6 +1,6 @@
-import { Pressable } from 'react-native'
-import { Volume2 } from 'lucide-react-native'
+import { View } from 'react-native'
 import { speak } from '../lib/speech'
+import { IconChip } from './dictionary/DictionaryControls'
 
 interface Props {
   text: string
@@ -9,16 +9,12 @@ interface Props {
   label?: string
 }
 
-/** A small speaker button that reads Chinese text aloud via text-to-speech. */
+/** A small speaker button that reads Chinese text aloud via text-to-speech. `size` is the icon's size. */
 export function SpeakButton({ text, size = 18, className = '', label = 'Play pronunciation' }: Props) {
+  /* The dictionary word card's raised speaker, so every audio button in the app is one object. */
   return (
-    <Pressable
-      onPress={() => speak(text)}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className={`items-center justify-center rounded-full bg-slate-100 p-2 dark:bg-slate-800 ${className}`}
-    >
-      <Volume2 size={size} color="#64748b" />
-    </Pressable>
+    <View className={className}>
+      <IconChip icon="speaker" size={size + 18} label={label} onPress={() => speak(text)} />
+    </View>
   )
 }

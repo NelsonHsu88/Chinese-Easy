@@ -6,9 +6,6 @@ import { ProfileSubpage, ProgressBar, Tag, PillButton, useProfileCosmetics } fro
 import { REWARD_ART } from '../../components/profile/art'
 import { profColors as c, profSpacing as s, profType as t, profRadius, profShadow } from '../../components/profile/tokens'
 import { tickHaptic } from '../../lib/haptics'
-import { playTints } from '../../components/dashboard/tokens'
-import { PlayWash } from '../../components/dashboard/playWash'
-import { REWARD_HUE } from '../../components/profile/tokens'
 
 /*
  * Profile Rewards — the three cosmetics, what each does, what level unlocks
@@ -27,25 +24,25 @@ export function ProfileRewards() {
           {PROFILE_REWARDS.map((def) => {
             const unlocked = progression.profileRewards.unlocked.includes(def.id)
             const equipped = progression.profileRewards.equipped.includes(def.id)
-            const tint = playTints[REWARD_HUE[def.id] ?? 'honey']
             return (
               <View
                 key={def.id}
                 className="flex-row"
-                style={{ backgroundColor: tint.fill, borderRadius: profRadius.large, borderWidth: 1, borderColor: tint.border, padding: s.md, gap: s.md, ...profShadow }}
+                /* Plain paper, by request — no hue wash. An equipped reward is
+                   marked by a jade border rather than a colour. */
+                style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: equipped ? 1.5 : 1, borderColor: equipped ? c.jade : c.border, padding: s.md, gap: s.md, ...profShadow }}
               >
-                <PlayWash tint={tint} radius={profRadius.large - 1} />
                 <View
                   className="items-center justify-center"
-                  style={{ width: 88, height: 88, borderRadius: profRadius.medium, backgroundColor: equipped ? tint.soft : c.card, borderWidth: 1, borderColor: tint.border }}
+                  style={{ width: 88, height: 88, borderRadius: profRadius.medium, backgroundColor: c.tile, borderWidth: 1, borderColor: c.border }}
                 >
                   <Image source={REWARD_ART[def.id]} resizeMode="contain" style={{ width: 74, height: 74, opacity: unlocked ? 1 : 0.4 }} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text className="font-lora-bold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
+                  <Text className="font-nunito-extrabold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
                     {def.name}
                   </Text>
-                  <Text className="font-lora" style={{ ...t.tileBody, fontSize: 13, lineHeight: 17, color: c.slate, marginTop: 2 }}>
+                  <Text className="font-nunito-semibold" style={{ ...t.tileBody, fontSize: 13, lineHeight: 17, color: c.slate, marginTop: 2 }}>
                     {def.description}
                   </Text>
                   <View style={{ marginTop: s.md }}>
@@ -72,7 +69,7 @@ export function ProfileRewards() {
                         <View style={{ marginTop: s.sm }}>
                           <ProgressBar fraction={level / def.unlockLevel} color={ink.bar} height={6} />
                         </View>
-                        <Text className="font-lora" style={{ ...t.tag, color: c.slate, marginTop: 4 }}>
+                        <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.slate, marginTop: 4 }}>
                           You are Level {level}
                         </Text>
                       </View>

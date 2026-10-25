@@ -69,7 +69,7 @@ export function EntryCard({
             <Text className={`${hanziFont(script)} text-[38px] leading-[48px] text-dict-heading`}>{hanzi}</Text>
             <HskBadge level={word.hskLevel} />
           </View>
-          <Text className="mt-1 font-dict-sans text-[16px] leading-[21px] text-dict-muted">{pinyin}</Text>
+          <Text className="mt-1 font-sans text-[16px] leading-[21px] text-dict-muted">{pinyin}</Text>
         </View>
 
         <View className="flex-row gap-2 pt-1">
@@ -78,7 +78,7 @@ export function EntryCard({
         </View>
       </View>
 
-      <Text className="mt-3 font-dict-sans text-[16px] leading-[22px] text-dict-body">{shortGloss(word)}</Text>
+      <Text className="mt-3 font-sans text-[16px] leading-[22px] text-dict-body">{shortGloss(word)}</Text>
 
       {example ? (
         <View className="mt-4 flex-row items-end gap-3">
@@ -93,7 +93,7 @@ export function EntryCard({
                 <ReadingSentence text={exampleText} term={hanzi} size="compact" />
               </View>
             </View>
-            <Text className="mt-1.5 font-inter text-[13px] leading-[18px] text-dict-body">{example.translation}</Text>
+            <Text className="mt-1.5 font-nunito-semibold text-[13px] leading-[18px] text-dict-body">{example.translation}</Text>
           </View>
           <DeckStateButton state={state} onAdd={onAdd} />
         </View>

@@ -75,10 +75,10 @@ export function HskJourney({ width }: { width: number }) {
       }
     >
       <View style={{ paddingHorizontal: 4, marginTop: -6 }}>
-        <Text className="font-lora" style={{ ...t.body, fontSize: 16, color: c.slate }}>
+        <Text className="font-nunito-semibold" style={{ ...t.body, fontSize: 16, color: c.slate }}>
           Current level
         </Text>
-        <Text className="font-lora-bold" style={{ fontSize: 34, lineHeight: 40, color: ink.pillInk }}>
+        <Text className="font-nunito-extrabold" style={{ fontSize: 34, lineHeight: 40, color: ink.pillInk }}>
           HSK {level}
         </Text>
       </View>
@@ -139,7 +139,7 @@ export function HskJourney({ width }: { width: number }) {
                     <Check size={14} color={c.onJade} strokeWidth={3} />
                   ) : (
                     <Text
-                      className={current ? 'font-lora-bold' : 'font-lora'}
+                      className={current ? 'font-nunito-extrabold' : 'font-nunito-semibold'}
                       style={{ fontSize: current ? 15 : 12.5, color: current ? ink.pillInk : c.lockedInk, includeFontPadding: false }}
                     >
                       {n}
@@ -148,7 +148,7 @@ export function HskJourney({ width }: { width: number }) {
                 </View>
               </View>
               <Text
-                className={current ? 'font-lora-bold' : 'font-lora'}
+                className={current ? 'font-nunito-extrabold' : 'font-nunito-semibold'}
                 style={{ ...t.tag, marginTop: 6, color: done || current ? ink.pillInk : c.lockedInk }}
               >
                 HSK {n}
@@ -160,7 +160,7 @@ export function HskJourney({ width }: { width: number }) {
 
       <View style={{ marginTop: s.md, paddingHorizontal: 4 }}>
         <ProgressBar fraction={share} color={ink.bar} height={6} />
-        <Text className="font-lora" style={{ ...t.body, color: c.slate, marginTop: s.sm }}>
+        <Text className="font-nunito-semibold" style={{ ...t.body, color: c.slate, marginTop: s.sm }}>
           {atTop
             ? 'You’ve reached HSK 6. Keep studying to master the rarer words.'
             : remaining === 0

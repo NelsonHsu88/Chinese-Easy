@@ -236,13 +236,13 @@ export function BookCover({
           >
             {forScript(story.title, script)}
           </Text>
-          <Text style={{ fontFamily: 'Lora', fontSize: 17 * k, lineHeight: 24 * k, color: c.cream, marginTop: 4, ...shadow }}>{displayTitleReading(story.titlePinyin, phoneticScript)}</Text>
+          <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 17 * k, lineHeight: 24 * k, color: c.cream, marginTop: 4, ...shadow }}>{displayTitleReading(story.titlePinyin, phoneticScript)}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 8 * k }}>
             <View style={{ width: 44 * k, height: 1, backgroundColor: c.brass }} />
             <View style={{ width: 6, height: 6, borderWidth: 1, borderColor: c.brass, transform: [{ rotate: '45deg' }] }} />
             <View style={{ width: 44 * k, height: 1, backgroundColor: c.brass }} />
           </View>
-          <Text style={{ fontFamily: 'LoraItalic', fontSize: 18 * k, lineHeight: 25 * k, color: c.cream, textAlign: 'center', ...shadow }}>
+          <Text style={{ fontFamily: 'NunitoSemiBoldItalic', fontSize: 18 * k, lineHeight: 25 * k, color: c.cream, textAlign: 'center', ...shadow }}>
             {story.titleEnglish}
           </Text>
         </View>
@@ -258,7 +258,7 @@ export function BookCover({
               {forScript(story.title, script)}
             </Text>
             <View style={{ width: 28, height: 1, backgroundColor: c.hairline, marginVertical: 8 }} />
-            <Text style={{ fontFamily: 'LoraItalic', fontSize: 11, color: c.inkSoft, textAlign: 'center' }}>{story.titleEnglish}</Text>
+            <Text style={{ fontFamily: 'NunitoSemiBoldItalic', fontSize: 11, color: c.inkSoft, textAlign: 'center' }}>{story.titleEnglish}</Text>
             <LinearGradient
               colors={['rgba(92,66,34,0.22)', 'rgba(92,66,34,0)']}
               start={{ x: 0, y: 0.5 }}
@@ -302,12 +302,12 @@ export function BookCover({
           style={{ position: 'absolute', left: 0, right: 0, top: Y(ROOM.stats) - lift - 11, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }}
         >
           <BookOpen size={16} color={c.cream} strokeWidth={2} />
-          <Text style={{ fontFamily: 'InterSemiBold', fontSize: 14, lineHeight: 22, color: c.cream, marginLeft: 7, ...shadow }}>
+          <Text style={{ fontFamily: 'NunitoBold', fontSize: 14, lineHeight: 22, color: c.cream, marginLeft: 7, ...shadow }}>
             {formatCount(story.wordCount)} words
           </Text>
           <View style={{ width: 1, height: 16, backgroundColor: c.creamFaint, marginHorizontal: 16 }} />
           <BarChart3 size={16} color={c.cream} strokeWidth={2} />
-          <Text style={{ fontFamily: 'InterSemiBold', fontSize: 14, lineHeight: 22, color: c.cream, marginLeft: 7, ...shadow }}>
+          <Text style={{ fontFamily: 'NunitoBold', fontSize: 14, lineHeight: 22, color: c.cream, marginLeft: 7, ...shadow }}>
             HSK {story.hskLevel} · {band.en}
           </Text>
         </View>
@@ -319,7 +319,7 @@ export function BookCover({
             left: 24,
             right: 24,
             top: Y(ROOM.blurb) - lift - 11,
-            fontFamily: 'Lora',
+            fontFamily: 'NunitoSemiBold',
             fontSize: 14.5,
             lineHeight: 21,
             color: c.cream,

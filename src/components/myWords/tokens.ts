@@ -32,6 +32,16 @@ export const mwColors = {
   backgroundClear: 'rgba(255,255,255,0)',
   /** Text and icons on the jade chip. */
   onJade: '#FFFFFF',
+  /**
+   * A selected filter chip, as the Dictionary draws its filters: a pale green
+   * face, a green rim and shoulder, dark green ink — not a solid fill.
+   */
+  chipOnFill: '#EAF5E8',
+  chipOnRim: '#4AA54B',
+  chipOnInk: '#2F7D43',
+  /** The raised chips' shoulders: one step down from the jade, and from the neutral field. */
+  jadeShoulder: '#2E6544',
+  fieldShoulder: '#DCD6CA',
 
   /** The search field and the neutral chips. */
   field: '#FDFCF9',
@@ -119,10 +129,10 @@ export const mwType = {
   subtitle: PAGE_SUBTITLE,
   search: { fontSize: 16, lineHeight: 20 },
   chip: { fontSize: 14.5, lineHeight: 19 },
-  /** Lora Bold, a stat's number. */
-  statValue: { fontSize: 26, lineHeight: 31 },
+  /** Lora Bold, a stat's number, beside its icon. */
+  statValue: { fontSize: 21, lineHeight: 26 },
   /** Nunito Regular, under it. */
-  statLabel: { fontSize: 14, lineHeight: 18 },
+  statLabel: { fontSize: 13, lineHeight: 17 },
   /** Nunito Regular — the pinyin and the gloss. */
   reading: { fontSize: 16.5, lineHeight: 21 },
   gloss: { fontSize: 16, lineHeight: 21 },

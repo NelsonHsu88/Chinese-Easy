@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { View, Text, Pressable, ScrollView, Image, Animated, useWindowDimensions } from 'react-native'
+import { View, Text, ScrollView, Image, Animated, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
 import { ArrowLeft, ChevronRight } from 'lucide-react-native'
@@ -10,7 +10,7 @@ import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { Modal } from '../components/Modal'
 import { SpeakButton } from '../components/SpeakButton'
 import { CATEGORY_META } from '../lib/categories'
-import { PressableScale } from '../components/dashboard/parts'
+import { PressableScale, RaisedButton } from '../components/dashboard/parts'
 import { ReviewButton } from '../components/review/parts'
 import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { ShadowRevealProvider, ShadowSurface, useShadowReveal } from '../components/shadowReveal'
@@ -73,31 +73,27 @@ export function DueWords() {
         <ShadowRevealProvider value={shadowArrival}>
           <View style={{ width: column, flexGrow: 1, paddingHorizontal: s.screen }}>
             <View style={{ paddingTop: s.sm }}>
-              <Pressable
+              <RaisedButton
                 onPress={() => (router.canGoBack() ? router.back() : router.replace('/review-tab'))}
-                accessibilityRole="button"
                 accessibilityLabel="Back"
                 hitSlop={10}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: playTints.jade.fill,
-                  borderWidth: 1,
-                  borderColor: playTints.jade.border,
-                }}
+                height={40}
+                width={40}
+                radius={20}
+                fill={playTints.jade.fill}
+                border={playTints.jade.border}
+                shoulder={playTints.jade.border}
+                scaleTo={0.9}
               >
                 <ArrowLeft size={20} color={playTints.jade.text} strokeWidth={2.4} />
-              </Pressable>
+              </RaisedButton>
             </View>
 
             <Animated.View style={head}>
-              <Text className="font-lora-bold" accessibilityRole="header" style={{ ...PAGE_TITLE, marginTop: s.md, color: c.navy }}>
+              <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...PAGE_TITLE, marginTop: s.md, color: c.navy }}>
                 Due today
               </Text>
-              <Text className="font-lora" style={{ ...PAGE_SUBTITLE, marginTop: 4, color: c.slate }}>
+              <Text className="font-nunito-semibold" style={{ ...PAGE_SUBTITLE, marginTop: 4, color: c.slate }}>
                 {dueCards.length === 0 ? 'Nothing waiting for you.' : 'A little review keeps every word fresh.'}
               </Text>
 
@@ -120,10 +116,10 @@ export function DueWords() {
                   </View>
                   <View style={{ padding: s.lg, paddingRight: bannerArt }}>
                     <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                      <Text className="font-lora-bold" style={{ fontSize: 40, lineHeight: 46, color: playTints.sky.text }}>
+                      <Text className="font-nunito-extrabold" style={{ fontSize: 40, lineHeight: 46, color: playTints.sky.text }}>
                         {dueCards.length}
                       </Text>
-                      <Text className="font-lora-bold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
+                      <Text className="font-nunito-extrabold" style={{ fontSize: 17, lineHeight: 22, color: c.navy }}>
                         {dueCards.length === 1 ? 'word ready' : 'words ready'}
                       </Text>
                     </View>
@@ -144,7 +140,7 @@ export function DueWords() {
             {dueCards.length === 0 ? (
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: s.md, paddingVertical: s.xxl }}>
                 <Image source={EMPTY_ART.source} resizeMode="contain" style={{ width: 200, height: 170 }} />
-                <Text className="font-lora" style={{ fontSize: 16, lineHeight: 22, color: c.slate, textAlign: 'center' }}>
+                <Text className="font-nunito-semibold" style={{ fontSize: 16, lineHeight: 22, color: c.slate, textAlign: 'center' }}>
                   All caught up. New words you save{'\n'}will show up here when they're due.
                 </Text>
               </View>
@@ -201,7 +197,7 @@ export function DueWords() {
                           <Text numberOfLines={1} className="font-nunito-semibold" style={{ fontSize: 14.5, lineHeight: 19, color: c.slate }}>
                             {displayPinyin(word, settings.phoneticScript)}
                           </Text>
-                          <Text numberOfLines={1} className="font-lora-bold" style={{ fontSize: 15.5, lineHeight: 21, color: c.navy }}>
+                          <Text numberOfLines={1} className="font-nunito-extrabold" style={{ fontSize: 15.5, lineHeight: 21, color: c.navy }}>
                             {shortGloss(word)}
                           </Text>
                         </View>
@@ -263,7 +259,7 @@ export function DueWords() {
             <Text className="font-nunito-semibold" style={{ fontSize: 18, lineHeight: 24, color: c.slate }}>
               {displayPinyin(selected, settings.phoneticScript)}
             </Text>
-            <Text className="font-lora-bold" style={{ fontSize: 20, lineHeight: 26, color: c.navy }}>
+            <Text className="font-nunito-extrabold" style={{ fontSize: 20, lineHeight: 26, color: c.navy }}>
               {shortGloss(selected)}
             </Text>
             {selected.example && displayExample(selected, settings.script) && (
@@ -274,7 +270,7 @@ export function DueWords() {
                   tone="card"
                   size="compact"
                 />
-                <Text className="font-lora" style={{ fontSize: 14, lineHeight: 20, color: c.slate, fontStyle: 'italic' }}>
+                <Text className="font-nunito-semibold" style={{ fontSize: 14, lineHeight: 20, color: c.slate, fontStyle: 'italic' }}>
                   {selected.example.translation}
                 </Text>
               </View>

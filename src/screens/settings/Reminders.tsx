@@ -1,5 +1,7 @@
+import { playTints } from '../../components/dashboard/tokens'
+import { RaisedButton } from '../../components/dashboard/parts'
 import { useState } from 'react'
-import { View, Text, Platform, Pressable } from 'react-native'
+import { View, Text, Platform } from 'react-native'
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker'
 import { Clock } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
@@ -115,27 +117,24 @@ function TimeField({ value, onChange }: { value: string; onChange: (time: string
 
   return (
     <View className="flex-row items-center justify-between" style={{ gap: s.md }}>
-      <Pressable
+      <RaisedButton
         onPress={() => {
           tickHaptic()
           setShowPicker(true)
         }}
-        accessibilityRole="button"
         accessibilityLabel={`Reminder time, currently ${formatTime(value)}`}
-        className="flex-row items-center active:opacity-70"
-        style={{
-          gap: s.sm,
-          paddingHorizontal: s.lg,
-          paddingVertical: s.md,
-          borderRadius: setRadius.inner,
-          backgroundColor: c.greenSoft,
-        }}
+        height={46}
+        radius={setRadius.inner}
+        fill={c.greenSoft}
+        shoulder={playTints.jade.border}
       >
-        <Clock size={17} color={c.greenDark} strokeWidth={2.4} />
-        <Text className="font-nunito-extrabold" style={{ fontSize: 17, color: c.greenDark }}>
-          {formatTime(value)}
-        </Text>
-      </Pressable>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: s.sm, paddingHorizontal: s.lg }}>
+          <Clock size={17} color={c.greenDark} strokeWidth={2.4} />
+          <Text className="font-nunito-extrabold" style={{ fontSize: 17, color: c.greenDark }}>
+            {formatTime(value)}
+          </Text>
+        </View>
+      </RaisedButton>
 
       {(showPicker || Platform.OS === 'ios') && (
         <DateTimePicker

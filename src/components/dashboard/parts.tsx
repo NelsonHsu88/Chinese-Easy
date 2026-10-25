@@ -9,6 +9,7 @@ import {
   type StyleProp,
   type ViewStyle,
   type ImageStyle,
+  type AccessibilityState,
 } from 'react-native'
 import { ArrowRight } from 'lucide-react-native'
 import {
@@ -104,6 +105,8 @@ export function PressableScale({
   style,
   wrapperStyle,
   accessibilityLabel,
+  accessibilityHint,
+  accessibilityState,
   accessibilityRole = 'button',
   haptic = true,
   scaleTo = dashMotion.pressScale,
@@ -125,6 +128,8 @@ export function PressableScale({
    */
   wrapperStyle?: StyleProp<ViewStyle>
   accessibilityLabel?: string
+  accessibilityHint?: string
+  accessibilityState?: AccessibilityState
   /**
    * `'none'` for a card that is itself a tap target *and* holds further real
    * buttons inside it (see `NewWordCard`) — react-native-web renders
@@ -214,6 +219,8 @@ export function PressableScale({
         onPressOut={up}
         accessibilityRole={accessibilityRole}
         accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
+        accessibilityState={accessibilityState}
         accessible={accessible}
         hitSlop={hitSlop}
         style={style}
@@ -338,7 +345,7 @@ export function CardArt({
    * `style` that must survive — the `scaleX: -1` on the mirrored pieces — has to
    * be composed into the reveal's own transform, not left here.
    */
-  animatedStyle?: Animated.WithAnimatedObject<ViewStyle>
+  animatedStyle?: Animated.WithAnimatedValue<ViewStyle>
 }) {
   return (
     <Animated.View pointerEvents="none" style={[{ position: 'absolute', opacity }, style, animatedStyle]}>
@@ -609,6 +616,72 @@ export function LiftedFace({
 }
 
 /**
+ * The app's one button object: a `LiftedFace` inside a `PressableScale`. The
+ * face sinks onto its shoulder and squashes a touch on press, then springs
+ * back with a small overshoot on release — every button in the app moves the
+ * same way.
+ *
+ * `width` fixes the button's width (a round button passes its `height` and
+ * `radius = height / 2`); without it the button is as wide as its content, or
+ * as `wrapperStyle` makes it (`flex: 1`, `alignSelf: 'stretch'`). With no
+ * `onPress` it draws the same object but takes no touches.
+ */
+export function RaisedButton({
+  onPress,
+  height,
+  fill,
+  shoulder,
+  border,
+  radius,
+  width,
+  shadow = false,
+  scaleTo = 0.95,
+  haptic = false,
+  wrapperStyle,
+  hitSlop,
+  accessibilityLabel,
+  children,
+}: {
+  onPress?: () => void
+  height: number
+  fill: string
+  shoulder: string
+  border?: string
+  radius?: number
+  width?: number
+  shadow?: boolean
+  scaleTo?: number
+  haptic?: boolean
+  wrapperStyle?: StyleProp<ViewStyle>
+  hitSlop?: number
+  accessibilityLabel?: string
+  children: ReactNode
+}) {
+  return (
+    <PressableScale
+      onPress={onPress}
+      scaleTo={scaleTo}
+      haptic={haptic}
+      wrapperStyle={wrapperStyle}
+      hitSlop={hitSlop}
+      accessibilityLabel={accessibilityLabel}
+    >
+      <LiftedFace
+        height={height}
+        fill={fill}
+        shoulder={shoulder}
+        border={border}
+        radius={radius}
+        shadow={shadow}
+        style={width !== undefined ? { width } : undefined}
+      >
+        {children}
+      </LiftedFace>
+    </PressableScale>
+  )
+}
+
+/**
  * A filled pill call to action.
  *
  * `width` is optional because the two places these appear want different
@@ -714,10 +787,10 @@ export function StreakPill({ streak, icon, onPress }: { streak: number; icon: nu
         }]}
       >
         <Image source={icon} style={{ width: 21, height: 21 }} resizeMode="contain" />
-        <Text className="font-lora-bold" style={{ fontSize: 17, color: c.navy }}>
+        <Text className="font-nunito-extrabold" style={{ fontSize: 17, color: c.navy }}>
           {streak}
         </Text>
-        <Text className="font-lora" style={{ fontSize: 15, color: homeColors.subtle }}>
+        <Text className="font-nunito-semibold" style={{ fontSize: 15, color: homeColors.subtle }}>
           Streak
         </Text>
       </ShadowSurface>

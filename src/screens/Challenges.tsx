@@ -344,9 +344,10 @@ export function Challenges() {
 
   const claim = useCallback(
     (instanceId: string, reward: number) => {
+      // A repeated tap claims nothing, so it gets no chime either.
+      if (!claimChallenge(instanceId, reward)) return
       playPositiveChime()
       celebrateHaptic()
-      claimChallenge(instanceId, reward)
     },
     [claimChallenge],
   )
@@ -603,10 +604,10 @@ export function Challenges() {
 
             {rows.length === 0 && (
               <View style={{ alignItems: 'center', paddingVertical: s.xxl }}>
-                <Text className="font-lora-bold" style={{ fontSize: 18, color: p.ink }}>
+                <Text className="font-nunito-extrabold" style={{ fontSize: 18, color: p.ink }}>
                   Nothing here yet
                 </Text>
-                <Text className="font-lora" style={{ marginTop: 4, fontSize: 14, color: p.slate }}>
+                <Text className="font-nunito-semibold" style={{ marginTop: 4, fontSize: 14, color: p.slate }}>
                   A fresh set arrives soon.
                 </Text>
               </View>

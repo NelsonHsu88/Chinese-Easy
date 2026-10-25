@@ -1,569 +1,143 @@
-import { Fragment } from 'react'
-import { View, Text } from 'react-native'
-import { PlayCircle, PencilLine, ChevronRight, BookOpen, FileText } from 'lucide-react-native'
-import { PressScale } from './PressScale'
+import { Fragment, type ReactNode } from 'react'
+import { View, Text, useWindowDimensions } from 'react-native'
+import { PlayCircle, PencilLine } from 'lucide-react-native'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
-import { ReadingSentence } from './ReadingSentence'
-import { DetailCard, CardTitle } from './DetailShell'
-import { AddCircleButton, ICON_GREEN, ICON_STROKE, SpeakChip } from './DictionaryControls'
-import { DICT_BG, DICT_BUTTON_SHADOW } from './shadows'
-import { allSenses, shortGloss } from '../../lib/definitions'
-import { tapHaptic } from '../../lib/haptics'
-import { displayWord, hanziFont } from '../../lib/hanzi'
+import { ICON_GREEN, ICON_STROKE, SpeakChip } from './DictionaryControls'
+import { DICT_BG } from './shadows'
+import { hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
-import type { RadicalInfo } from '../../lib/dictionary'
-import type { KangxiRadical, VocabWord } from '../../types'
 
 /** The hero card's two action buttons' face height — see the comment above their row for why nothing there is a class. */
 const HERO_BUTTON_HEIGHT = 50
-const HERO_LABEL = { fontFamily: 'NunitoSansBold', fontSize: 15 } as const
+const HERO_LABEL = { fontFamily: 'NunitoBold', fontSize: 15 } as const
 
-/** One cell of the hero card's fact strip. `hanzi` renders its value in the serif face. */
-export interface HeroStat {
-  label: string
-  value: string
-  hanzi?: boolean
+/** One fact under the meaning ("8 strokes", "HSK 2"). `green` marks the level. */
+export interface HeroFact {
+  text: string
   green?: boolean
 }
 
+/** Room the hero needs besides the glyph: reading, meaning, facts, buttons, Add/Star. */
+const HERO_FIXED = 236
+const HERO_SAVE_ROW = 58
+
 /**
- * The top card: the glyph itself, how to say it, the facts worth knowing at a
- * glance, and the two things you can do with it.
+ * The focused top of a detail page: the glyph, how to say it, what it means,
+ * the facts worth a glance, the two things to do with it and, for an entry,
+ * Add and Star.
  *
- * Both actions are offered for every entry. They used to be hidden for
- * characters missing from the bundled `hanziData.json`, which was too cautious:
- * `HanziStage` falls back to the hanzi-writer CDN for anything not bundled, so
- * hiding the buttons denied stroke practice on words that can perfectly well
- * animate. For the rare glyph with no data anywhere, the stage says so — an
- * honest empty state beats a silently missing feature.
+ * Sized from the height it is given, so every control fits without scrolling:
+ * the glyph takes what is left, capped by length so a phrase still fits across.
+ *
+ * Both actions are offered for every entry — `HanziStage` falls back to the
+ * hanzi-writer CDN for anything not bundled, and says so when even that fails.
  */
-export function HeroCard({
+export function DetailHero({
   glyph,
-  pinyin,
-  stats,
+  reading,
+  meaning,
+  facts,
+  availableHeight,
   onWatch,
   onPractice,
+  save,
 }: {
   glyph: string
-  pinyin: string
-  stats: HeroStat[]
+  reading: string
+  meaning?: string
+  facts: HeroFact[]
+  availableHeight: number
   onWatch: () => void
   onPractice: () => void
+  /** Add / Star, when there is an entry to save. */
+  save?: ReactNode
 }) {
-  // A single character can carry the full display size; a phrase has to come down
-  // or it wraps out of the card.
-  const length = [...glyph].length
-  const size = length <= 1 ? 128 : length === 2 ? 88 : length === 3 ? 66 : 52
   const face = hanziFont(useApp().settings.script)
+  const { width: windowWidth } = useWindowDimensions()
+  const length = Math.max(1, [...glyph].length)
+  const column = Math.min(windowWidth, 430) - 40
+  const cap = length === 1 ? 112 : length === 2 ? 96 : length === 3 ? 80 : 64
+  const byWidth = (column / length) * 0.9
+  const byHeight = (availableHeight - HERO_FIXED - (save ? HERO_SAVE_ROW : 0)) / 1.2
+  const size = Math.round(Math.max(40, Math.min(cap, byWidth, byHeight)))
 
   return (
-    <DetailCard>
-      <View className="items-center pb-2 pt-3">
-        <Text
-          style={{ fontSize: size, lineHeight: size * 1.18 }}
-          className={`${face} text-dict-heading`}
-        >
-          {glyph}
-        </Text>
-        <View className="mt-3 flex-row items-center gap-3">
-          <Text className="font-dict-semibold text-[24px] leading-[30px] text-dict-green">{pinyin}</Text>
-          <SpeakChip text={glyph} size={36} />
-        </View>
+    <View style={{ alignItems: 'center' }}>
+      <Text
+        numberOfLines={1}
+        style={{ fontSize: size, lineHeight: Math.round(size * 1.2), includeFontPadding: false }}
+        className={`${face} text-dict-heading`}
+        accessibilityRole="header"
+      >
+        {glyph}
+      </Text>
+
+      <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        {reading.length > 0 && (
+          <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 22, lineHeight: 28, color: DICT_BG.green, includeFontPadding: false }}>
+            {reading}
+          </Text>
+        )}
+        <SpeakChip text={glyph} size={34} />
       </View>
 
-      {stats.length > 0 && (
-        <View className="mt-4 flex-row items-stretch rounded-dict-sm border border-dict-line">
-          {stats.map((stat, i) => (
-            <Fragment key={stat.label}>
-              {i > 0 && <View className="w-px bg-dict-line" />}
-              <View className="flex-1 items-center px-2 py-3">
-                <Text className="font-inter text-[12px] leading-[16px] text-dict-muted">{stat.label}</Text>
-                <Text
-                  className={`mt-0.5 text-[17px] leading-[23px] ${
-                    stat.hanzi ? face : 'font-dict-semibold'
-                  } ${stat.green ? 'text-dict-green-dark' : 'text-dict-heading'}`}
-                >
-                  {stat.value}
-                </Text>
-              </View>
+      {meaning ? (
+        <Text
+          numberOfLines={2}
+          style={{ marginTop: 8, textAlign: 'center', fontFamily: 'Nunito', fontSize: 17, lineHeight: 23, color: '#42526B' }}
+        >
+          {meaning}
+        </Text>
+      ) : null}
+
+      {facts.length > 0 && (
+        <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+          {facts.map((fact, i) => (
+            <Fragment key={fact.text}>
+              {i > 0 && <Text style={HERO_FACT}>  ·  </Text>}
+              <Text style={[HERO_FACT, fact.green ? { color: DICT_BG.greenDark, fontFamily: 'NunitoSemiBold' } : null]}>
+                {fact.text}
+              </Text>
             </Fragment>
           ))}
         </View>
       )}
 
       {/*
-        Two halves of one row, so both labels have to fit half a phone.
-        "Watch stroke order" did not: at 16px beside a 20px icon it needs about
-        158pt against the ~125pt a 390pt screen leaves inside the button, so the
-        tail ran under the edge. It is trimmed to the words that carry the
-        meaning and set a step smaller, with `numberOfLines` so any future
-        overrun shows as an ellipsis rather than silently disappearing —
-        `adjustsFontSizeToFit` is iOS-only and would have fixed nothing on
-        Android. The full phrase stays as the accessibility label.
-
-        **No NativeWind anywhere in this row — every style is a plain object.**
-        On Android, tapping Add (which re-renders this card and swaps
-        `DeckStateButton` below from a Pressable to a View) left these two
-        buttons without their class-derived padding, their labels blank, and
-        the card behind them shorter than its content — styles NativeWind had
-        applied simply stopped applying. It never reproduced on web, which is
-        why an earlier fix that moved only the label text off `className`
-        looked correct in a browser and still failed on a phone. Plain style
-        objects are applied by React Native itself, so there is nothing left
-        here for that layer to drop. `DeckStateButton` and `DetailCard` got the
-        same treatment for the same reason.
+        No NativeWind in this row — plain style objects. On Android, adding a
+        word re-renders this block and NativeWind-applied padding was dropped,
+        leaving the buttons blank; React Native applies plain objects itself.
       */}
-      <View style={{ marginTop: 16, flexDirection: 'row', gap: 12 }}>
-          {/* Raised 3D buttons — the Dashboard's `LiftedFace`, sinking onto
-              their shoulder on press, so they read as the same object as
-              Start Review rather than a second idea of a button. */}
-          <PressableScale
-            onPress={onWatch}
-            wrapperStyle={{ flex: 1 }}
-            scaleTo={1}
-            haptic={false}
-            accessibilityLabel="Watch stroke order"
-          >
-            <LiftedFace height={HERO_BUTTON_HEIGHT} radius={14} fill={DICT_BG.greenDark} shoulder={DICT_BG.greenDarkShoulder}>
-              <PlayCircle size={18} color="#ffffff" strokeWidth={ICON_STROKE} />
-              <Text numberOfLines={1} style={[HERO_LABEL, { color: '#ffffff' }]}>
-                Stroke order
-              </Text>
-            </LiftedFace>
-          </PressableScale>
-          <PressableScale
-            onPress={onPractice}
-            wrapperStyle={{ flex: 1 }}
-            scaleTo={1}
-            haptic={false}
-            accessibilityLabel="Practice writing"
-          >
-            <LiftedFace
-              height={HERO_BUTTON_HEIGHT}
-              radius={14}
-              fill={DICT_BG.card}
-              border={DICT_BG.green}
-              shoulder={DICT_BG.green}
-              shadow={false}
-            >
-              <PencilLine size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-              <Text numberOfLines={1} style={[HERO_LABEL, { color: DICT_BG.greenDark }]}>
-                Practice
-              </Text>
-            </LiftedFace>
-          </PressableScale>
-      </View>
-    </DetailCard>
-  )
-}
-
-/**
- * "Meaning" — the one clearest sense, with the rest listed under it.
- *
- * The other senses used to be dumped back as CC-CEDICT's raw semicolon run,
- * which put the thing the headline gloss was chosen to avoid — seven meanings in
- * one breath — directly beneath the headline gloss. One per line is the same
- * information at a glance instead of in a paragraph.
- */
-export function MeaningCard({ word }: { word: VocabWord }) {
-  const [gloss, ...others] = allSenses(word)
-
-  return (
-    <DetailCard>
-      <CardTitle>Meaning</CardTitle>
-      <Text className="mt-2 font-dict-sans text-[17px] leading-[24px] text-dict-body">{gloss ?? word.definition}</Text>
-
-      {others.length > 0 && (
-        <View className="mt-3 border-t border-dict-line pt-3">
-          <Text className="font-inter text-[13px] leading-[17px] text-dict-muted">
-            Also means {others.length === 1 ? '' : `(${others.length})`}
-          </Text>
-          <View className="mt-1.5 gap-1">
-            {others.map((sense, i) => (
-              <View key={`${sense}-${i}`} className="flex-row gap-2">
-                <Text className="font-inter text-[14px] leading-[21px] text-dict-muted">·</Text>
-                <Text className="flex-1 font-inter text-[14px] leading-[21px] text-dict-muted">{sense}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-    </DetailCard>
-  )
-}
-
-/**
- * Rows of words built from a character, each addable in place.
- *
- * Always rendered, even empty. A missing section reads as a bug — "why does this
- * entry have fewer parts than the last one?" — where an empty one answers the
- * question the section poses. The empty case is genuinely rare: it takes a
- * character that no other word in a 20,000-entry bank uses.
- */
-export function WordsContainingCard({
-  character,
-  words,
-  isAdded,
-  onOpen,
-  onAdd,
-  onViewAll,
-  totalCount,
-}: {
-  character: string
-  words: VocabWord[]
-  isAdded: (wordId: string) => boolean
-  onOpen: (word: VocabWord) => void
-  onAdd: (wordId: string) => void
-  onViewAll: () => void
-  totalCount: number
-}) {
-  const script = useApp().settings.script
-  const face = hanziFont(script)
-  return (
-    <DetailCard>
-      <View className="flex-row items-center gap-1.5">
-        <CardTitle>Words containing</CardTitle>
-        <Text className={`${face} text-[19px] leading-[25px] text-dict-green`}>{character}</Text>
-      </View>
-
-      {words.length === 0 && (
-        <Text className="mt-2 font-dict-sans text-[15px] leading-[21px] text-dict-body">
-          No other word in the dictionary is built from {character}.
-        </Text>
-      )}
-
-      <View className="mt-2">
-        {words.map((w, i) => (
-          <View
-            key={w.id}
-            className={`flex-row items-center gap-3 py-3 ${i > 0 ? 'border-t border-dict-line' : ''}`}
-          >
-            <PressScale
-              onPress={() => onOpen(w)}
-              outerClassName="flex-1"
-              className="flex-row items-center gap-3"
-              accessibilityLabel={`Open ${displayWord(w, script)}`}
-            >
-              <Text className={`${face} text-[30px] leading-[38px] text-dict-heading`}>{displayWord(w, script)}</Text>
-              <View className="flex-1">
-                <Text className="font-dict-semibold text-[15px] leading-[20px] text-dict-green">{w.pinyin}</Text>
-                <Text numberOfLines={1} className="font-dict-sans text-[14px] leading-[19px] text-dict-muted">
-                  {shortGloss(w)}
-                </Text>
-              </View>
-            </PressScale>
-            <AddCircleButton added={isAdded(w.id)} onAdd={() => onAdd(w.id)} />
-          </View>
-        ))}
-      </View>
-
-      {totalCount > words.length && (
-        <PressScale
-          onPress={() => {
-            tapHaptic()
-            onViewAll()
-          }}
-          outerClassName="w-full"
-          className="mt-1 flex-row items-center justify-between border-t border-dict-line pt-3"
-          accessibilityLabel={`View all words containing ${character}`}
-        >
-          <Text className="font-dict-semibold text-[15px] text-dict-green">
-            View all {totalCount} words containing {character}
-          </Text>
-          <ChevronRight size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-        </PressScale>
-      )}
-    </DetailCard>
-  )
-}
-
-/**
- * The example sentence, word by word.
- *
- * Every word the bank knows is its own tap target, so an unfamiliar word in the
- * sentence is a lookup rather than a dead end — the same move the story reader
- * offers, which is where a learner will already have met it. The word being
- * viewed is tinted instead of tappable: it's the page you're on.
- *
- * Laid out as a wrapping row of boxes rather than one `Text` with nested
- * pressables, so each word gets a real hit target instead of a hairline of
- * baseline.
- */
-export function ExampleCard({
-  sentence,
-  term,
-  translation,
-  onOpenWord,
-}: {
-  sentence: string
-  term: string
-  translation: string
-  onOpenWord: (word: VocabWord) => void
-}) {
-  return (
-    <DetailCard>
-      <View className="flex-row items-center justify-between gap-3">
-        <CardTitle>Example</CardTitle>
-        <Text className="font-inter text-[12px] leading-[16px] text-dict-muted">Tap a word to look it up</Text>
-      </View>
-
-      <View className="mt-3">
-        <ReadingSentence text={sentence} term={term} onPressWord={onOpenWord} />
-      </View>
-
-      {/*
-       * No sentence-level pinyin line any more. `ReadingSentence` puts a reading
-       * over every word it knows, in whichever script the learner has chosen —
-       * a second romanised copy of the whole sentence underneath would repeat it
-       * in the wrong script for half the audience.
-       */}
-      <Text className="mt-2 font-inter text-[14px] leading-[20px] text-dict-body">{translation}</Text>
-    </DetailCard>
-  )
-}
-
-/** "Kangxi radical 85 · also written 氵" — the identity line under the radical's name. */
-function radicalSubtitle(radical: KangxiRadical): string {
-  const variants = radical.variants ?? []
-  const written = variants.length > 0 ? ` · also written ${variants.join(' ')}` : ''
-  return `Kangxi radical ${radical.number}${written}`
-}
-
-/**
- * The radical a character is filed under.
- *
- * Always rendered, because every character has one — `characterRadicals.json`
- * files the whole word bank. Three shapes, in descending order of what the app
- * knows: a radical the Radicals screen teaches (name plus its explanation), one
- * it only names, and the character that *is* a radical, which is filed under
- * itself and gets told so rather than shown a circular lookup.
- *
- * There is still no component-decomposition dataset here, so this names the
- * radical and shows its neighbours — it doesn't draw a breakdown diagram.
- */
-export function RadicalCard({
-  character,
-  info,
-  related,
-  onOpenCharacter,
-}: {
-  character: string
-  info: RadicalInfo | null
-  related: string[]
-  onOpenCharacter: (character: string) => void
-}) {
-  if (!info) {
-    return (
-      <DetailCard>
-        <CardTitle>Radical</CardTitle>
-        <Text className="mt-2 font-dict-sans text-[15px] leading-[21px] text-dict-body">
-          {character} sits outside the bundled dictionary, so we can't say which radical it's filed under.
-        </Text>
-      </DetailCard>
-    )
-  }
-
-  const { radical, curated, isSelf } = info
-  const face = hanziFont(useApp().settings.script)
-
-  return (
-    <DetailCard>
-      <CardTitle>Radical</CardTitle>
-
-      <View className="mt-3 flex-row items-center gap-4">
-        {/*
-          Traditional regardless of the learner's script, unlike everything else
-          on these cards: a Kangxi radical is a fixed reference glyph from
-          KANGXI_RADICALS, not a word out of the bank that has two forms.
-        */}
-        <View className="h-[76px] w-[76px] items-center justify-center rounded-full bg-dict-green-pale">
-          <Text className="font-hanzi-tc-regular text-[36px] leading-[44px] text-dict-heading">{radical.character}</Text>
-        </View>
-        <View className="flex-1">
-          <Text className="font-dict-semibold text-[17px] leading-[22px] text-dict-heading">
-            {radical.pinyin} · {radical.meaning}
-          </Text>
-          <Text className="mt-0.5 font-inter text-[13px] leading-[18px] text-dict-muted">
-            {radicalSubtitle(radical)}
-          </Text>
-          {isSelf && (
-            <Text className="mt-1.5 font-dict-sans text-[15px] leading-[21px] text-dict-body">
-              {character} is a radical in its own right — one of the 214 parts every other character is filed under,
-              rather than a character filed under one.
+      <View style={{ marginTop: 20, flexDirection: 'row', gap: 12, alignSelf: 'stretch' }}>
+        {/* The Dashboard's raised `LiftedFace` buttons, sinking onto their shoulder on press. */}
+        <PressableScale onPress={onWatch} wrapperStyle={{ flex: 1 }} scaleTo={1} haptic={false} accessibilityLabel="Watch stroke order">
+          <LiftedFace height={HERO_BUTTON_HEIGHT} radius={14} fill={DICT_BG.greenDark} shoulder={DICT_BG.greenDarkShoulder}>
+            <PlayCircle size={18} color="#ffffff" strokeWidth={ICON_STROKE} />
+            <Text numberOfLines={1} style={[HERO_LABEL, { color: '#ffffff' }]}>
+              Stroke order
             </Text>
-          )}
-          {curated && (
-            <Text className="mt-1.5 font-dict-sans text-[15px] leading-[21px] text-dict-body">
-              {curated.explanation}
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {related.length > 0 && (
-        <View className="mt-4 border-t border-dict-line pt-3">
-          <Text className="font-inter text-[13px] leading-[17px] text-dict-muted">
-            {isSelf ? 'Characters filed under it' : 'Other characters with this radical'}
-          </Text>
-          <View className="mt-2 flex-row flex-wrap gap-2">
-            {related.map((char) => (
-              <PressScale
-                key={char}
-                onPress={() => onOpenCharacter(char)}
-                className="h-11 w-11 items-center justify-center rounded-dict-sm bg-dict-page"
-                accessibilityLabel={`Open ${char}`}
-              >
-                <Text className={`${face} text-[22px] leading-[28px] text-dict-heading`}>{char}</Text>
-              </PressScale>
-            ))}
-          </View>
-        </View>
-      )}
-    </DetailCard>
-  )
-}
-
-/** "12 strokes · Kangxi radical 85", dropping whatever isn't known. */
-function characterSubtitle(character: string, info: RadicalInfo | null, strokes: number | null): string {
-  const parts: string[] = []
-  if (strokes !== null) parts.push(`${strokes} strokes`)
-  if (info) parts.push(info.isSelf ? `${character} is itself a radical` : `Kangxi radical ${info.radical.number}`)
-  return parts.join(' · ')
-}
-
-/**
- * A multi-character word's characters, each with the radical it's filed under.
- *
- * A word doesn't have a radical — its characters do — so this is a summary that
- * drills into the per-character screen rather than a copy of `RadicalCard`.
- * Single-character words skip it and get the full card instead.
- */
-export function WordRadicalsCard({
-  characters,
-  onOpenCharacter,
-}: {
-  characters: { character: string; info: RadicalInfo | null; strokes: number | null }[]
-  onOpenCharacter: (character: string) => void
-}) {
-  const face = hanziFont(useApp().settings.script)
-  return (
-    <DetailCard>
-      <CardTitle>Characters and radicals</CardTitle>
-
-      <View className="mt-1">
-        {characters.map(({ character, info, strokes }, i) => (
-          <PressScale
-            key={`${character}-${i}`}
-            onPress={() => onOpenCharacter(character)}
-            outerClassName="w-full"
-            className={`flex-row items-center gap-3 py-3 ${i > 0 ? 'border-t border-dict-line' : ''}`}
-            accessibilityLabel={`Open character ${character}`}
+          </LiftedFace>
+        </PressableScale>
+        <PressableScale onPress={onPractice} wrapperStyle={{ flex: 1 }} scaleTo={1} haptic={false} accessibilityLabel="Practice writing">
+          <LiftedFace
+            height={HERO_BUTTON_HEIGHT}
+            radius={14}
+            fill={DICT_BG.card}
+            border={DICT_BG.green}
+            shoulder={DICT_BG.green}
+            shadow={false}
           >
-            <Text className={`${face} text-[30px] leading-[38px] text-dict-heading`}>{character}</Text>
-            {info ? (
-              <>
-                <View className="h-11 w-11 items-center justify-center rounded-full bg-dict-green-pale">
-                  <Text className="font-hanzi-tc-regular text-[22px] leading-[28px] text-dict-heading">
-                    {info.radical.character}
-                  </Text>
-                </View>
-                <View className="flex-1">
-                  <Text className="font-dict-semibold text-[15px] leading-[20px] text-dict-heading">
-                    {info.radical.pinyin} · {info.radical.meaning}
-                  </Text>
-                  <Text numberOfLines={1} className="font-inter text-[13px] leading-[17px] text-dict-muted">
-                    {characterSubtitle(character, info, strokes)}
-                  </Text>
-                </View>
-              </>
-            ) : (
-              <View className="flex-1">
-                <Text className="font-dict-sans text-[15px] leading-[20px] text-dict-muted">
-                  Radical unknown — this character isn't in the bundled dictionary
-                </Text>
-                {strokes !== null && (
-                  <Text className="font-inter text-[13px] leading-[17px] text-dict-muted">{strokes} strokes</Text>
-                )}
-              </View>
-            )}
-            <ChevronRight size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-          </PressScale>
-        ))}
+            <PencilLine size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
+            <Text numberOfLines={1} style={[HERO_LABEL, { color: DICT_BG.greenDark }]}>
+              Practice
+            </Text>
+          </LiftedFace>
+        </PressableScale>
       </View>
-    </DetailCard>
+
+      {save ? <View style={{ marginTop: 14 }}>{save}</View> : null}
+    </View>
   )
 }
 
-/** One half of "Appears in": a counted fact you can open. */
-function AppearsInButton({
-  icon: Icon,
-  label,
-  count,
-  onPress,
-}: {
-  icon: typeof BookOpen
-  label: string
-  count: number
-  onPress: () => void
-}) {
-  // Nothing to list, so nothing to open. Still shown — a zero is an answer, and
-  // hiding the half would leave the card lopsided.
-  const empty = count === 0
-
-  return (
-    <PressScale
-      onPress={() => {
-        tapHaptic()
-        onPress()
-      }}
-      disabled={empty}
-      outerClassName="flex-1"
-      className="flex-row items-center gap-2.5 rounded-dict-sm bg-dict-page px-3 py-3"
-      accessibilityLabel={empty ? `${label}: none` : `See all ${count} ${label.toLowerCase()}`}
-    >
-      <View className="h-9 w-9 items-center justify-center rounded-full bg-dict-green-pale">
-        <Icon size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-      </View>
-      {/* Two lines allowed: at 390pt "Example sentences" does not fit one, and it
-          must never end in "…". */}
-      <View className="flex-1">
-        <Text numberOfLines={2} className="font-dict-sans text-[14px] leading-[18px] text-dict-body">
-          {label}
-        </Text>
-        <View className="flex-row items-center gap-1">
-          <Text className="font-dict-bold text-[18px] leading-[24px] text-dict-green-dark">{count}</Text>
-          {!empty && <ChevronRight size={15} color={ICON_GREEN} strokeWidth={ICON_STROKE} />}
-        </View>
-      </View>
-    </PressScale>
-  )
-}
-
-/**
- * "Appears in" — two counted facts, both read off the bundled corpus, and both
- * a way in to what was counted.
- *
- * The counts come from `appearsIn`, which applies exactly the tests the two
- * modals list by, so the number on a button is the number of rows behind it.
- */
-export function AppearsInCard({
-  words,
-  sentences,
-  onOpenWords,
-  onOpenSentences,
-}: {
-  words: number
-  sentences: number
-  onOpenWords: () => void
-  onOpenSentences: () => void
-}) {
-  return (
-    <DetailCard>
-      <CardTitle>Appears in</CardTitle>
-      <View className="mt-3 flex-row items-stretch gap-2">
-        <AppearsInButton icon={BookOpen} label="Common words" count={words} onPress={onOpenWords} />
-        <AppearsInButton icon={FileText} label="Example sentences" count={sentences} onPress={onOpenSentences} />
-      </View>
-    </DetailCard>
-  )
-}
+const HERO_FACT = { fontFamily: 'Nunito', fontSize: 14, lineHeight: 20, color: '#8290A6' } as const

@@ -20,7 +20,7 @@ import {
   RefreshCw,
   Trophy,
 } from 'lucide-react-native'
-import { PressableScale, LiftedFace } from '../dashboard/parts'
+import { PressableScale, LiftedFace, RaisedButton } from '../dashboard/parts'
 import { useReveal } from '../dashboard/entrance'
 import { useApp } from '../../context/AppContext'
 import { hanziFont } from '../../lib/hanzi'
@@ -95,10 +95,10 @@ export function ProfileHero({ column, run }: { column: number; run: number }) {
     <View style={{ minHeight: refY(PROFILE_CARD_TOP_REF, column) }}>
       <RefHero source={profArt.appHero} ratio={760 / 266} column={column} left={-s.screen} animatedStyle={shifu} />
       <Animated.View style={[text, { paddingTop: s.md, paddingBottom: s.lg }]}>
-        <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.title, color: c.navy }}>
+        <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.title, color: c.navy }}>
           Profile
         </Text>
-        <Text className="font-lora" style={{ ...t.subtitle, fontSize: 14, lineHeight: 19.5, color: c.slate, marginTop: s.xs, maxWidth: column * 0.46 }}>
+        <Text className="font-nunito-semibold" style={{ ...t.subtitle, fontSize: 14, lineHeight: 19.5, color: c.slate, marginTop: s.xs, maxWidth: column * 0.46 }}>
           Track your growth and{'\n'}celebrate your learning.
         </Text>
       </Animated.View>
@@ -151,7 +151,7 @@ export function Avatar({
         {photo ? (
           <Image source={{ uri: photo }} style={{ width: size, height: size }} resizeMode="cover" accessibilityIgnoresInvertColors />
         ) : (
-          <Text className="font-lora-bold" style={{ fontSize: size * 0.46, lineHeight: size * 0.58, color: c.onJade }}>
+          <Text className="font-nunito-extrabold" style={{ fontSize: size * 0.46, lineHeight: size * 0.58, color: c.onJade }}>
             {initial}
           </Text>
         )}
@@ -249,7 +249,7 @@ export function ProfileCard({
           <Avatar name={name} photo={photo} sakura={sakura} />
           <View style={{ flex: 1, marginLeft: s.xs }}>
             <View className="flex-row items-center" style={{ gap: s.sm, paddingRight: EDIT_MARK }}>
-              <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.name, color: c.navy, flexShrink: 1 }}>
+              <Text className="font-nunito-extrabold" numberOfLines={1} style={{ ...t.name, color: c.navy, flexShrink: 1 }}>
                 {name || 'Learner'}
               </Text>
               {/* Jade Ink's calligraphic touch: a small seal beside the name. */}
@@ -269,11 +269,11 @@ export function ProfileCard({
               style={{ marginTop: s.sm, gap: 6, backgroundColor: ink.pill, borderRadius: profRadius.pill, paddingHorizontal: s.md, paddingVertical: 5 }}
             >
               <GraduationCap size={17} color={ink.pillInk} strokeWidth={2} />
-              <Text className="font-lora" style={{ ...t.pill, color: ink.pillInk }}>
+              <Text className="font-nunito-semibold" style={{ ...t.pill, color: ink.pillInk }}>
                 Level {level} {title}
               </Text>
             </View>
-            <Text className="font-lora" style={{ ...t.xp, color: c.slate, marginTop: s.sm }}>
+            <Text className="font-nunito-semibold" style={{ ...t.xp, color: c.slate, marginTop: s.sm }}>
               <Text style={{ color: c.navy }}>{xpInto}</Text> / {xpNeeded} XP to Level {level + 1}
             </Text>
             <View style={{ marginTop: 6 }}>
@@ -367,10 +367,10 @@ function Stat({ value, label, disc, icon }: { value: number; label: string; disc
         {icon}
       </View>
       <View style={{ flexShrink: 1 }}>
-        <Text className="font-lora-bold" style={{ ...t.statValue, color: c.navy }}>
+        <Text className="font-nunito-extrabold" style={{ ...t.statValue, color: c.navy }}>
           {value}
         </Text>
-        <Text className="font-lora" numberOfLines={1} style={{ ...t.statLabel, color: c.slate }}>
+        <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...t.statLabel, color: c.slate }}>
           {label}
         </Text>
       </View>
@@ -404,7 +404,7 @@ export function SectionCard({
         </View>
       )}
       <View className="flex-row items-center justify-between" style={{ marginBottom: s.md, paddingLeft: 4 }}>
-        <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, color: c.navy, flexShrink: 1 }}>
+        <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.section, color: c.navy, flexShrink: 1 }}>
           {title}
         </Text>
         {action && (
@@ -417,7 +417,7 @@ export function SectionCard({
             style={{ gap: 2 }}
           >
             {typeof action.label === 'string' ? (
-              <Text className="font-lora" style={{ ...t.link, color: c.slate }}>
+              <Text className="font-nunito-semibold" style={{ ...t.link, color: c.slate }}>
                 {action.label}
               </Text>
             ) : (
@@ -451,7 +451,7 @@ export function Tag({ tone, children }: { tone: 'on' | 'off' | 'locked'; childre
     >
       {tone === 'locked' && <Lock size={11} color={ink} strokeWidth={2.2} />}
       {tone === 'on' && <Check size={12} color={ink} strokeWidth={2.6} />}
-      <Text className="font-lora" style={{ ...t.tag, color: ink }}>
+      <Text className="font-nunito-semibold" style={{ ...t.tag, color: ink }}>
         {children}
       </Text>
     </View>
@@ -803,7 +803,7 @@ export function ProfileButton({
       >
         <View className="flex-row items-center" style={{ gap: s.sm, paddingHorizontal: s.md }}>
           {Icon && <Icon size={19} color={primary ? c.onJade : c.slate} strokeWidth={2} />}
-          <Text className="font-lora" numberOfLines={1} style={{ ...t.button, color: ink }}>
+          <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...t.button, color: ink }}>
             {label}
           </Text>
           {trailing && <ChevronRight size={18} color={ink} strokeWidth={2} />}
@@ -821,23 +821,18 @@ export function ProfileButton({
 export function PillButton({ label, tone, onPress, accessibilityLabel }: { label: string; tone: 'primary' | 'quiet'; onPress: () => void; accessibilityLabel?: string }) {
   const primary = tone === 'primary'
   return (
-    <PressableScale onPress={onPress} scaleTo={0.95} accessibilityLabel={accessibilityLabel ?? label}>
-      <View
-        className="items-center justify-center"
-        style={{
-          height: 34,
-          paddingHorizontal: s.lg,
-          borderRadius: profRadius.pill,
-          backgroundColor: primary ? c.jade : c.card,
-          borderWidth: 1,
-          borderColor: primary ? c.jade : c.quietShoulder,
-        }}
-      >
-        <Text className="font-lora" style={{ ...t.tag, fontSize: 13.5, lineHeight: 17, color: primary ? c.onJade : c.navy }}>
-          {label}
-        </Text>
-      </View>
-    </PressableScale>
+    <RaisedButton
+      onPress={onPress}
+      accessibilityLabel={accessibilityLabel ?? label}
+      height={34}
+      fill={primary ? c.jade : c.card}
+      border={primary ? undefined : c.quietShoulder}
+      shoulder={primary ? c.jadeDark : c.quietShoulder}
+    >
+      <Text className="font-nunito-semibold" style={{ ...t.tag, fontSize: 13.5, lineHeight: 17, color: primary ? c.onJade : c.navy, paddingHorizontal: s.lg }}>
+        {label}
+      </Text>
+    </RaisedButton>
   )
 }
 
@@ -875,7 +870,7 @@ export function ProfileSubpage({
       >
         <View style={{ width: column, paddingHorizontal: s.screen }}>
           <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile' as Href))}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile-tab' as Href))}
             accessibilityRole="button"
             accessibilityLabel="Back"
             hitSlop={12}
@@ -896,10 +891,10 @@ export function ProfileSubpage({
               style={{ width: SUBPAGE_ART_HEIGHT * profHero.artRatio, height: SUBPAGE_ART_HEIGHT, opacity: 0.9 }}
             />
           </View>
-          <Text className="font-lora-bold" accessibilityRole="header" style={{ fontSize: 34, lineHeight: 40, color: c.navy }}>
+          <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ fontSize: 34, lineHeight: 40, color: c.navy }}>
             {title}
           </Text>
-          <Text className="font-lora" style={{ ...t.subtitle, color: c.slate, marginTop: s.xs, marginBottom: s.xl, maxWidth: '78%' }}>
+          <Text className="font-nunito-semibold" style={{ ...t.subtitle, color: c.slate, marginTop: s.xs, marginBottom: s.xl, maxWidth: '78%' }}>
             {subtitle}
           </Text>
           {children(column - s.screen * 2)}

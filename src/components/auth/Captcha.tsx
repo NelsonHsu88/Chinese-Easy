@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ComponentRef, type ReactNode } from 'react'
 import { Platform, View } from 'react-native'
+import type { ViewInstance } from 'react-native'
 import type { WebView as WebViewType, WebViewMessageEvent } from 'react-native-webview'
 
 /*
@@ -61,7 +62,7 @@ function loadTurnstileScript(): Promise<void> {
 }
 
 function WebWidget({ onToken, resetKey }: { onToken: (token: string | undefined) => void; resetKey: number }) {
-  const hostRef = useRef<View>(null)
+  const hostRef = useRef<ViewInstance>(null)
   const widgetId = useRef<string | null>(null)
 
   useEffect(() => {
@@ -108,7 +109,7 @@ window.__id=turnstile.render('#w',{sitekey:${JSON.stringify(SITE_KEY)},callback:
 go();</script></body></html>`
 
 function NativeWidget({ onToken, resetKey }: { onToken: (token: string | undefined) => void; resetKey: number }) {
-  const ref = useRef<WebViewType>(null)
+  const ref = useRef<ComponentRef<typeof WebViewType>>(null)
   // Required lazily, as speechRecognition does: keeps the web bundle free of it.
   const { WebView } = require('react-native-webview') as typeof import('react-native-webview')
 

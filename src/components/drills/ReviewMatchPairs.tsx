@@ -17,6 +17,9 @@ import type { VocabWord } from '../../types'
 
 type Side = 'hanzi' | 'gloss'
 
+/** The finished board's chime, slightly quieter than the other drills' "correct". */
+const MATCH_DONE_VOLUME = 0.75
+
 /**
  * Match the Pairs, built to the Beta 2.1 reference (`SS 102 Match the
  * Pairs.png`): five words from My Words down the left, their meanings shuffled
@@ -80,10 +83,12 @@ export function ReviewMatchPairs({
     if (hanziId === glossId) {
       const next = new Set(matched).add(hanziId)
       setMatched(next)
-      /* Every pair rings, so each match feels earned; the last one lands harder in the hand. */
-      playCorrectSound()
-      if (next.size === words.length) correctHaptic()
-      else tapHaptic()
+      /* Each pair is a light buzz in the hand; only the finished board rings,
+         a little under full volume, with the fuller two-strike haptic. */
+      if (next.size === words.length) {
+        playCorrectSound({ volume: MATCH_DONE_VOLUME })
+        correctHaptic()
+      } else tapHaptic()
       return
     }
 

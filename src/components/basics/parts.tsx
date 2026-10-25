@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react-native'
 import { DASH_LIFT, LiftedFace, PressableScale, usePressProgress } from '../dashboard/parts'
 import { basicsColors as c, basicsSpacing as sp, basicsType as t } from './tokens'
 import type { PlayTint } from '../dashboard/tokens'
+import { RaisedProgressBar } from '../progress/RaisedProgressBar'
 
 /*
  * The small pieces Chinese Basics' three screens share. Everything here is
@@ -33,8 +34,10 @@ export function BasicsBackRow({ fallback, right }: { fallback: string; right?: R
 }
 
 /**
- * The reference's thin bar. Untinted it is sage on a warm grey track; on a
- * tinted card (SS1017) it takes the card's hue — `ink` on `soft`.
+ * The app's raised progress bar (`RaisedProgressBar`), slim on cards and full
+ * height in a lesson. Untinted it is the usual jade; on a tinted card (SS1017)
+ * it takes the card's hue — a `badge` face on an `ink` edge, in a `soft`
+ * groove with a darker lip. It steps forward when `done` changes.
  */
 export function BasicsProgressBar({
   done,
@@ -49,10 +52,21 @@ export function BasicsProgressBar({
 }) {
   const share = total > 0 ? Math.min(1, done / total) : 0
   return (
-    <View style={{ flex: 1, height, borderRadius: height / 2, backgroundColor: tint?.soft ?? c.track, overflow: 'hidden' }}>
-      <View style={{ width: `${share * 100}%`, height: '100%', borderRadius: height / 2, backgroundColor: tint?.ink ?? c.sage }} />
-    </View>
+    <RaisedProgressBar
+      progress={share}
+      size={height <= 6 ? 'compact' : 'regular'}
+      colors={tint ? { track: tint.soft, trackEdge: shade(tint.soft, 0.12), fill: tint.badge, fillEdge: tint.ink } : undefined}
+      accessibilityLabel={`${done} of ${total}`}
+      style={{ flex: 1 }}
+    />
   )
+}
+
+/** `hex` darkened toward black by `amount` (0–1): a groove's lower lip from its face. */
+export function shade(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  const ch = (shift: number) => Math.round(((n >> shift) & 255) * (1 - amount))
+  return `#${[16, 8, 0].map((sh) => ch(sh).toString(16).padStart(2, '0')).join('')}`
 }
 
 /** The soft round chevron at a tile's foot — decoration, never its own button. */
@@ -126,7 +140,7 @@ export function BasicsButton({
       <LiftedFace height={50} fill={fill} shoulder={shoulder} shadow={solid && !disabled}>
         <View style={{ paddingHorizontal: sp.xl, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
           <Text
-            className={hub ? 'font-lora-bold' : 'font-nunito-bold'}
+            className={hub ? 'font-nunito-extrabold' : 'font-nunito-bold'}
             numberOfLines={1}
             style={{ ...(hub ? t.hubButton : t.lessonButton), color: ink }}
           >
@@ -150,6 +164,7 @@ export function BasicsRaised({
   border,
   borderWidth = 1.5,
   radius,
+  corners,
   style,
   underlay,
   children,
@@ -159,6 +174,8 @@ export function BasicsRaised({
   border?: string
   borderWidth?: number
   radius: number
+  /** Per-corner overrides, for shapes like a speech bubble's tail corner. */
+  corners?: { borderTopLeftRadius?: number; borderTopRightRadius?: number }
   /** Drawn on the face beneath its contents — an answer's highlight sweep. */
   underlay?: React.ReactNode
   /** Padding and layout for the face's contents. */
@@ -171,11 +188,12 @@ export function BasicsRaised({
   return (
     <View style={{ paddingBottom: DASH_LIFT }}>
       <View
-        style={{ position: 'absolute', top: DASH_LIFT, left: 0, right: 0, bottom: 0, borderRadius: radius, backgroundColor: shoulder }}
+        style={{ position: 'absolute', top: DASH_LIFT, left: 0, right: 0, bottom: 0, borderRadius: radius, ...corners, backgroundColor: shoulder }}
       />
       <Animated.View
         style={{
           borderRadius: radius,
+          ...corners,
           backgroundColor: fill,
           ...(border ? { borderWidth, borderColor: border } : null),
           transform: [{ translateY: sink }],

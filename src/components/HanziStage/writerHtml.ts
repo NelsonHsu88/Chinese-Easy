@@ -3,8 +3,7 @@ import { HANZI_WRITER_ENGINE_JS } from './hanziWriterEngine'
 /**
  * Static HTML loaded into each glyph's WebView. hanzi-writer draws into real
  * SVG/DOM, which only exists inside the WebView — everything from creating the
- * writer to the quiz/demo lifecycle and the "first stroke" hint overlay for
- * blind quiz mode runs in here. The RN side only sends an `init` (with this
+ * writer to the quiz/demo lifecycle runs in here. The RN side only sends an `init` (with this
  * glyph's stroke data, looked up on the RN side) and a `start` message, and
  * listens for the handful of events posted back — see HanziStage.tsx.
  */
@@ -17,7 +16,6 @@ export const WRITER_HTML = `<!doctype html>
   html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
   #guides { position: absolute; inset: 0; pointer-events: none; }
   #target { position: absolute; inset: 0; }
-  #hint { position: absolute; inset: 0; pointer-events: none; }
 
   /*
    * hanzi-writer parses strokeColor as a real colour (it interpolates it during
@@ -85,7 +83,6 @@ export const WRITER_HTML = `<!doctype html>
 <body>
 <svg id="guides"></svg>
 <div id="target"></div>
-<svg id="hint" style="display:none"><path id="hint-path" fill="#22c55e" fill-opacity="0.32" /></svg>
 <svg width="0" height="0" style="position:absolute">
   <defs>
     <!-- Top-lit jade gradient: light crest, saturated body, dark underside. -->
@@ -106,7 +103,6 @@ export const WRITER_HTML = `<!doctype html>
 (function () {
   var writer = null;
   var mode = 'demo';
-  var hintShown = false;
   // hanzi-writer doesn't expose how far through a quiz you are, so we count
   // correct strokes ourselves to know which one a hint should highlight.
   var strokeIndex = 0;
@@ -191,25 +187,6 @@ export const WRITER_HTML = `<!doctype html>
     for (var i = 0; i < fresh.length; i++) fresh[i].classList.remove('ink-fresh');
   }
 
-  function showHint(size, padding, firstStrokePath) {
-    var svg = document.getElementById('hint');
-    var path = document.getElementById('hint-path');
-    var transform = HanziWriter.getScalingTransform(size, size, padding).transform;
-    svg.setAttribute('width', size);
-    svg.setAttribute('height', size);
-    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
-    path.setAttribute('transform', transform);
-    path.setAttribute('d', firstStrokePath);
-    svg.style.display = 'block';
-    hintShown = true;
-  }
-
-  function hideHint() {
-    if (!hintShown) return;
-    document.getElementById('hint').style.display = 'none';
-    hintShown = false;
-  }
-
   /** Draws the 米字格 practice grid — centre cross plus both diagonals — behind the glyph. */
   function drawGuides(size) {
     var svg = document.getElementById('guides');
@@ -254,7 +231,6 @@ export const WRITER_HTML = `<!doctype html>
       holdOnComplete = !!msg.holdCharacterOnComplete;
       document.body.classList.toggle('quiz', mode === 'quiz');
       document.getElementById('target').innerHTML = '';
-      hideHint();
       if (msg.showGuides) drawGuides(msg.size);
 
       writer = HanziWriter.create('target', msg.char, {
@@ -300,9 +276,9 @@ export const WRITER_HTML = `<!doctype html>
         leniency: 2.2,
         onLoadCharDataSuccess: function (data) {
           if (initGen !== generation) return;
-          if (msg.showStartHint && data.strokes[0]) {
-            showHint(msg.size, msg.padding, data.strokes[0]);
-          }
+          // No first-stroke overlay here: it was cleared again by the quiz's
+          // start a frame later, so all it ever did was flash the next card's
+          // first stroke as the card arrived. Hints are asked for, not given.
           post({ type: 'loadSuccess' });
         },
         onLoadCharDataError: function () {
@@ -336,7 +312,6 @@ export const WRITER_HTML = `<!doctype html>
         });
       } else {
         strokeIndex = 0;
-        hideHint();
         clearInk();
         // A restart calls into the exact same writer.quiz() a fresh start
         // does -- hanzi-writer clears its own drawn strokes and mistake count
@@ -357,7 +332,6 @@ export const WRITER_HTML = `<!doctype html>
           },
           onCorrectStroke: function (strokeData) {
             if (runGen !== generation) return;
-            hideHint();
             strokeIndex += 1;
             // Deferred a frame: hanzi-writer appends the finished stroke's path
             // during this callback, so querying synchronously can still find the

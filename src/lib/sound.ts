@@ -78,7 +78,7 @@ export function setSoundEnabled(value: boolean): void {
  * whose source hasn't finished loading — must still fall through to `play()`,
  * because a player in that state is already at zero and has nothing to rewind.
  */
-async function play(key: keyof typeof sources) {
+async function play(key: keyof typeof sources, volume = 1) {
   if (!enabled) return
 
   let player: AudioPlayer
@@ -97,6 +97,9 @@ async function play(key: keyof typeof sources) {
   }
 
   try {
+    // Players are shared, so every play sets its own volume — a quiet play
+    // must not leave the next caller quiet too.
+    player.volume = volume
     player.play()
   } catch {
     // playback unavailable — fail silently
@@ -117,8 +120,8 @@ export function playPositiveChime(): void {
  * A bright, ringing two-note "ding-ding" — a checked answer in the drills came
  * back right. Pair it with `correctHaptic`, which lands on the same two strikes.
  */
-export function playCorrectSound(): void {
-  void play('correct')
+export function playCorrectSound({ volume = 1 }: { volume?: number } = {}): void {
+  void play('correct', volume)
 }
 
 /** Soft, low downward tone — grading a card Again or Hard. Not punishing, just distinct. */

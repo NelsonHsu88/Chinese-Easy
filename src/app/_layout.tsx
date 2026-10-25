@@ -1,6 +1,7 @@
 import '../global.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { InteractionManager, StyleSheet, View } from 'react-native'
+import { StyleSheet, View } from 'react-native'
+import { runAfterInteractions } from '../lib/afterInteractions'
 import { prewarmDictionary } from '../lib/dictionary'
 import { prefetchArt } from '../lib/prefetchArt'
 import { warmLookup } from '../data/lookupWords'
@@ -26,13 +27,10 @@ import { useFonts } from 'expo-font'
  */
 import { Nunito_400Regular } from '@expo-google-fonts/nunito/400Regular'
 import { Nunito_600SemiBold } from '@expo-google-fonts/nunito/600SemiBold'
+import { Nunito_600SemiBold_Italic } from '@expo-google-fonts/nunito/600SemiBold_Italic'
 import { Nunito_700Bold } from '@expo-google-fonts/nunito/700Bold'
 import { Nunito_800ExtraBold } from '@expo-google-fonts/nunito/800ExtraBold'
 import { Nunito_900Black } from '@expo-google-fonts/nunito/900Black'
-import { NunitoSans_400Regular } from '@expo-google-fonts/nunito-sans/400Regular'
-import { NunitoSans_600SemiBold } from '@expo-google-fonts/nunito-sans/600SemiBold'
-import { NunitoSans_700Bold } from '@expo-google-fonts/nunito-sans/700Bold'
-import { NunitoSans_800ExtraBold } from '@expo-google-fonts/nunito-sans/800ExtraBold'
 import { Caveat_500Medium } from '@expo-google-fonts/caveat/500Medium'
 import { Caveat_700Bold } from '@expo-google-fonts/caveat/700Bold'
 import { Kalam_700Bold } from '@expo-google-fonts/kalam/700Bold'
@@ -59,13 +57,6 @@ const NotoSansTC_700Bold = require('../assets/fonts/NotoSansTC_700Bold.ttf')
 const NotoSerifTC_400Regular = require('../assets/fonts/NotoSerifTC_400Regular.ttf')
 const NotoSerifTC_500Medium = require('../assets/fonts/NotoSerifTC_500Medium.ttf')
 const NotoSerifTC_600SemiBold = require('../assets/fonts/NotoSerifTC_600SemiBold.ttf')
-import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular'
-import { Inter_500Medium } from '@expo-google-fonts/inter/500Medium'
-import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold'
-import { Inter_700Bold } from '@expo-google-fonts/inter/700Bold'
-import { Lora_400Regular } from '@expo-google-fonts/lora/400Regular'
-import { Lora_400Regular_Italic } from '@expo-google-fonts/lora/400Regular_Italic'
-import { Lora_700Bold } from '@expo-google-fonts/lora/700Bold'
 import { AppProvider, useApp } from '../context/AppContext'
 import { AuthProvider, useAuth } from '../context/AuthContext'
 import { AdsProvider } from '../context/AdsContext'
@@ -95,22 +86,17 @@ const APP_FONTS = {
   // different family, so each one is registered separately — see the
   // `fontFamily` block in tailwind.config.js for the class names these back.
   NunitoSemiBold: Nunito_600SemiBold,
+  // Example-sentence translations, set in italic.
+  NunitoSemiBoldItalic: Nunito_600SemiBold_Italic,
   NunitoBold: Nunito_700Bold,
   // The Challenges screen's headings. Its spec asks for ExtraBold on titles
   // and Black nowhere — 900 is heavy enough that everything important stops
   // looking important.
   NunitoExtraBold: Nunito_800ExtraBold,
   NunitoBlack: Nunito_900Black,
-  Inter: Inter_400Regular,
-  InterMedium: Inter_500Medium,
-  InterSemiBold: Inter_600SemiBold,
-  InterBold: Inter_700Bold,
-  Lora: Lora_400Regular,
   // The dictionary's editorial headings ("Dictionary", "Recent", "Explore")
   // and its one italic aside. A real bold, because a synthesised one does not
   // exist on native.
-  LoraItalic: Lora_400Regular_Italic,
-  LoraBold: Lora_700Bold,
   // Noto *Sans* TC — the writing guide sets its Chinese UI text (part labels,
   // radical examples) in a sans to sit with Nunito, where the reader and
   // dictionary use the serif. A different typeface, so registered separately.
@@ -136,10 +122,6 @@ const APP_FONTS = {
   // Dictionary faces. Nunito *Sans*, not the rounded Nunito the rest of the app
   // uses — a separate typeface, registered per weight for the same reason as
   // everything above.
-  NunitoSans: NunitoSans_400Regular,
-  NunitoSansSemiBold: NunitoSans_600SemiBold,
-  NunitoSansBold: NunitoSans_700Bold,
-  NunitoSansExtraBold: NunitoSans_800ExtraBold,
 }
 
 function RootNavigator() {
@@ -155,7 +137,7 @@ function RootNavigator() {
     if (!ready || prewarmed.current) return
     prewarmed.current = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    const task = InteractionManager.runAfterInteractions(() => {
+    const task = runAfterInteractions(() => {
       timer = setTimeout(() => {
         prefetchArt()
         prewarmDictionary(wordBank, settings.hskLevel, todayISO(), warmLookup)

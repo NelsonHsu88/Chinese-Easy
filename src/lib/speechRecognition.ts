@@ -132,6 +132,9 @@ export interface ListenSession {
  */
 const MAX_LISTEN_MS = 8000
 
+/** How long a stopped engine gets to deliver its final result and `end` before the session closes anyway. */
+const STOP_GRACE_MS = 2000
+
 /** Whether the current device/browser can do speech recognition at all. */
 export function isSpeechRecognitionAvailable(): boolean {
   try {
@@ -229,6 +232,9 @@ export async function startListening(handlers: ListenHandlers): Promise<ListenSe
       else if (event.error === 'not-allowed' || event.error === 'service-not-allowed')
         handlers.onFailure('permission', 'Microphone access is needed to check your pronunciation.')
       else handlers.onFailure('error', event.message || 'The microphone stopped unexpectedly.')
+      // Some engines send no `end` after an error. Closing here makes sure the
+      // caller hears one; a late `end` finds the session already closed.
+      close()
     }),
     speech.addListener('end', () => close()),
   ]
@@ -259,22 +265,25 @@ export async function startListening(handlers: ListenHandlers): Promise<ListenSe
     return null
   }
 
-  timer = setTimeout(() => {
+  /*
+   * Asks the engine to stop, and closes the session ourselves if it never says
+   * it has. An engine that has already died quietly ignores `stop()` and sends
+   * no `end`, which left the mic screen on "Listening…" for good.
+   */
+  const requestStop = () => {
     try {
       speech.stop()
     } catch {
       close()
+      return
     }
-  }, MAX_LISTEN_MS)
+    setTimeout(close, STOP_GRACE_MS)
+  }
+
+  timer = setTimeout(requestStop, MAX_LISTEN_MS)
 
   return {
-    stop: () => {
-      try {
-        speech.stop()
-      } catch {
-        close()
-      }
-    },
+    stop: requestStop,
     cancel: () => {
       try {
         speech.abort()

@@ -1,3 +1,4 @@
+import { RaisedButton } from '../components/dashboard/parts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -189,14 +190,27 @@ export function StoryReader() {
     }).start()
   }, [sheetWordId, sheetProgress])
 
+  /*
+   * Unmounts on whichever of the animation and its backstop lands first. It
+   * used to wait for `finished`, which react-native-web can report as false for
+   * a fall that did finish, and which a hidden tab never reports at all — and
+   * the sheet's full-screen backdrop, faded out but still mounted, then ate
+   * the next tap on the page.
+   */
   const closeSheet = useCallback(() => {
+    let closed = false
+    const close = () => {
+      if (closed) return
+      closed = true
+      sheetProgress.setValue(0)
+      setSheetWordId(null)
+    }
     Animated.timing(sheetProgress, {
       toValue: 0,
       ...SHEET_FALL,
       useNativeDriver: USE_NATIVE_DRIVER,
-    }).start(({ finished }) => {
-      if (finished) setSheetWordId(null)
-    })
+    }).start(close)
+    setTimeout(close, SHEET_FALL.duration + 120)
   }, [sheetProgress])
 
   const sheetTranslateY = sheetProgress.interpolate({
@@ -316,16 +330,23 @@ export function StoryReader() {
   // the learner opens next.
   useEffect(() => () => stopSpeaking(), [])
 
+  /*
+   * Opening a word pauses the narrator, keeping its place. Left running, the
+   * sheet's own speaker stopped the narrating voice mid-page — and web reports
+   * a stopped utterance as a finished one, so the book turned the page and read
+   * on over the word the learner had asked to hear.
+   */
   const openWord = useCallback((word: VocabWord) => {
     playTapSound()
     tapHaptic()
+    setRequest(null)
     setSheetWordId(word.id)
   }, [])
 
   if (!story || screens.length === 0) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center px-6" style={{ backgroundColor: c.backdrop }}>
-        <Text className="font-inter" style={{ color: c.inkFaint }}>
+        <Text className="font-nunito-semibold" style={{ color: c.inkFaint }}>
           Story not found.
         </Text>
       </SafeAreaView>
@@ -571,7 +592,7 @@ export function StoryReader() {
                   alignItems: 'center',
                 }}
               >
-                <Text style={{ fontFamily: 'LoraBold', fontSize: 14, color: c.ink, includeFontPadding: false }}>
+                <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 14, color: c.ink, includeFontPadding: false }}>
                   {readingsOption(settings.showReadings ? settings.phoneticScript : 'hidden').label}
                 </Text>
                 <ChevronDown size={16} color={c.ink} strokeWidth={2.4} style={{ marginLeft: 4 }} />
@@ -684,7 +705,7 @@ export function StoryReader() {
               </Text>
 
               <View className="mt-1 flex-row items-center gap-2">
-                <Text className="font-inter text-[15px]" style={{ color: '#66636a' }}>
+                <Text className="font-nunito-semibold text-[15px]" style={{ color: '#66636a' }}>
                   {displayPinyin(sheetWord, settings.phoneticScript)}
                 </Text>
                 <Pressable
@@ -697,7 +718,7 @@ export function StoryReader() {
                 </Pressable>
               </View>
 
-              <Text className="mt-2 font-lora text-[15px]" style={{ color: '#303038', lineHeight: 23 }}>
+              <Text className="mt-2 font-nunito-semibold text-[15px]" style={{ color: '#303038', lineHeight: 23 }}>
                 {shortGloss(sheetWord)}
               </Text>
 
@@ -730,28 +751,31 @@ export function StoryReader() {
                       <Volume2 size={15} color="#96928e" />
                     </Pressable>
                   </View>
-                  <Text className="mt-1 font-lora text-[13.5px]" style={{ color: '#4a4952', lineHeight: 20 }}>
+                  <Text className="mt-1 font-nunito-semibold text-[13.5px]" style={{ color: '#4a4952', lineHeight: 20 }}>
                     {sheetWord.example.translation}
                   </Text>
                 </View>
               )}
 
               <View className="mt-6 flex-row gap-3">
-                <Pressable
+                <RaisedButton
                   onPress={() => {
                     const id = sheetWord.id
                     closeSheet()
                     setPracticeWordId(id)
                   }}
-                  accessibilityRole="button"
-                  className="h-[52px] flex-1 flex-row items-center justify-center gap-2 rounded-full shadow-glow-paper active:opacity-80"
-                  style={{ backgroundColor: '#ffffff', borderWidth: 1, borderColor: '#e7e1d7' }}
+                  accessibilityLabel="Practice writing"
+                  wrapperStyle={{ flex: 1 }}
+                  height={52}
+                  fill="#ffffff"
+                  border="#e7e1d7"
+                  shoulder={c.paperShoulder}
                 >
                   <PenLine size={18} color="#292936" />
-                  <Text className="font-inter-semibold text-[15px]" style={{ color: '#292936' }}>
+                  <Text className="font-nunito-bold text-[15px]" style={{ color: '#292936' }}>
                     Practice writing
                   </Text>
-                </Pressable>
+                </RaisedButton>
 
                 {alreadyAdded ? (
                   <View
@@ -759,25 +783,27 @@ export function StoryReader() {
                     style={{ backgroundColor: c.tealSoft }}
                   >
                     <Check size={18} color={c.teal} />
-                    <Text className="font-inter-semibold text-[15px]" style={{ color: c.teal }}>
+                    <Text className="font-nunito-bold text-[15px]" style={{ color: c.teal }}>
                       In My Words
                     </Text>
                   </View>
                 ) : (
-                  <Pressable
+                  <RaisedButton
                     onPress={() => {
                       addWordFromBook(sheetWord.id)
                       closeSheet()
                     }}
-                    accessibilityRole="button"
-                    className="h-[52px] flex-1 flex-row items-center justify-center gap-2 rounded-full active:opacity-80"
-                    style={{ backgroundColor: c.teal }}
+                    accessibilityLabel="Add to My Words"
+                    wrapperStyle={{ flex: 1 }}
+                    height={52}
+                    fill={c.teal}
+                    shoulder={c.tealShoulder}
                   >
                     <Plus size={18} color="#ffffff" />
-                    <Text className="font-inter-semibold text-[15px]" style={{ color: '#ffffff' }}>
+                    <Text className="font-nunito-bold text-[15px]" style={{ color: '#ffffff' }}>
                       Add to My Words
                     </Text>
-                  </Pressable>
+                  </RaisedButton>
                 )}
               </View>
             </View>
@@ -894,8 +920,8 @@ function ReadingsMenu({
                   {picked && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.narratorDisc }} />}
                 </View>
                 <View style={{ marginLeft: 12 }}>
-                  <Text style={{ fontFamily: 'LoraBold', fontSize: 15, lineHeight: 19, color: c.ink }}>{o.label}</Text>
-                  <Text style={{ fontFamily: 'Lora', fontSize: 12.5, lineHeight: 16, color: c.inkSoft }}>{o.hint}</Text>
+                  <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 15, lineHeight: 19, color: c.ink }}>{o.label}</Text>
+                  <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 12.5, lineHeight: 16, color: c.inkSoft }}>{o.hint}</Text>
                 </View>
               </View>
             </Pressable>

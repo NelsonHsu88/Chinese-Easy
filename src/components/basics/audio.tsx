@@ -1,5 +1,6 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
-import { ActivityIndicator, Pressable, Text, View } from 'react-native'
+import { DASH_LIFT, RaisedButton, usePressProgress } from '../dashboard/parts'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { ActivityIndicator, Animated, Text, View } from 'react-native'
 import { Snail, Volume2 } from 'lucide-react-native'
 import { hasMandarinVoice, SLOW_SPEECH_RATE, speakTracked, stopSpeaking } from '../../lib/speech'
 import { basicsColors as c } from './tokens'
@@ -145,16 +146,28 @@ export function AudioButton({
 }) {
   const key = slow ? `${id}:slow` : id
   const phase = useAudioPhase(key)
+  const active = phase !== 'idle'
+  const Icon = slow ? Snail : Volume2
+  /* Raised like every button; the face goes jade while it plays, as `AudioIndicator` does. */
   return (
-    <Pressable
+    <RaisedButton
       onPress={() => playZh(text, key, { slow })}
-      accessibilityRole="button"
       accessibilityLabel={label ?? (slow ? `Play ${text} slowly` : `Play ${text}`)}
-      accessibilityState={{ busy: phase === 'loading' }}
       hitSlop={6}
+      height={size}
+      width={size}
+      radius={size / 2}
+      fill={active ? c.jade : soft ? c.sageSoft : c.card}
+      border={active || soft ? undefined : c.border}
+      shoulder={active ? c.shoulder.jade : soft ? c.shoulder.sage : c.shoulder.quiet}
+      scaleTo={0.9}
     >
-      <AudioIndicator id={key} size={size} slow={slow} soft={soft} />
-    </Pressable>
+      {phase === 'loading' ? (
+        <ActivityIndicator size="small" color={c.onSolid} />
+      ) : (
+        <Icon size={Math.round(size * 0.46)} color={active ? c.onSolid : c.sageDark} strokeWidth={2.1} />
+      )}
+    </RaisedButton>
   )
 }
 
@@ -166,24 +179,36 @@ export function AudioIndicator({ id, size = 44, slow = false, soft = true }: { i
   const phase = useAudioPhase(id)
   const Icon = slow ? Snail : Volume2
   const active = phase !== 'idle'
+  /* Raised like every button: the disc stands on a darker shoulder and sinks
+     onto it while whatever it sits in is pressed (`usePressProgress`). */
+  const resting = useRef(new Animated.Value(0)).current
+  const press = usePressProgress() ?? resting
+  const sink = press.interpolate({ inputRange: [0, 1], outputRange: [0, DASH_LIFT] })
+  const shoulder = active ? c.shoulder.jade : soft ? c.shoulder.sage : c.shoulder.quiet
   return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: active ? c.jade : soft ? c.sageSoft : c.card,
-        borderWidth: soft ? 0 : 1,
-        borderColor: c.border,
-      }}
-    >
-      {phase === 'loading' ? (
-        <ActivityIndicator size="small" color={c.onSolid} />
-      ) : (
-        <Icon size={Math.round(size * 0.46)} color={active ? c.onSolid : c.sageDark} strokeWidth={2.1} />
-      )}
+    <View style={{ width: size, height: size + DASH_LIFT }}>
+      <View
+        style={{ position: 'absolute', top: DASH_LIFT, width: size, height: size, borderRadius: size / 2, backgroundColor: shoulder }}
+      />
+      <Animated.View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: active ? c.jade : soft ? c.sageSoft : c.card,
+          borderWidth: soft ? 0 : 1,
+          borderColor: c.border,
+          transform: [{ translateY: sink }],
+        }}
+      >
+        {phase === 'loading' ? (
+          <ActivityIndicator size="small" color={c.onSolid} />
+        ) : (
+          <Icon size={Math.round(size * 0.46)} color={active ? c.onSolid : c.sageDark} strokeWidth={2.1} />
+        )}
+      </Animated.View>
     </View>
   )
 }

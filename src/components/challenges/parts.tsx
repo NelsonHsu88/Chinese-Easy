@@ -68,10 +68,10 @@ export function ChallengesHero({ column, run }: { column: number; run: number })
       </Animated.View>
 
       <Animated.View style={[text, { paddingBottom: s.xxl }]}>
-        <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.title, color: p.ink, marginTop: s.xs }}>
+        <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.title, color: p.ink, marginTop: s.xs }}>
           Challenges
         </Text>
-        <Text className="font-lora" style={{ ...t.subtitle, fontSize: 15.5, lineHeight: 21, color: p.slate, marginTop: s.xs, maxWidth: '58%' }}>
+        <Text className="font-nunito-semibold" style={{ ...t.subtitle, fontSize: 15.5, lineHeight: 21, color: p.slate, marginTop: s.xs, maxWidth: '58%' }}>
           Build consistent habits{'\n'}and make progress together.
         </Text>
         {/* Room for the painting's lower half, which is where the pagoda
@@ -117,10 +117,10 @@ export function StreakCard({ streak, week }: { streak: number; week: WeekDay[] }
         <Image source={chalArt.fire} style={{ width: 26 * FIRE_RATIO, height: 26 }} resizeMode="contain" />
       </View>
       <View style={{ flex: 1 }}>
-        <Text className="font-lora-bold" style={{ ...t.streakTitle, color: p.ink }}>
+        <Text className="font-nunito-extrabold" style={{ ...t.streakTitle, color: p.ink }}>
           {streak} day streak
         </Text>
-        <Text className="font-lora" style={{ ...t.streakSub, color: p.slate, marginTop: 2 }}>
+        <Text className="font-nunito-semibold" style={{ ...t.streakSub, color: p.slate, marginTop: 2 }}>
           {note}
         </Text>
       </View>
@@ -162,7 +162,7 @@ export function ShelfTabs<T extends string>({
               border={active ? undefined : p.border}
               shadow={false}
             >
-              <Text className="font-lora-bold" style={{ ...t.tab, color: active ? p.onJade : p.ink }}>
+              <Text className="font-nunito-extrabold" style={{ ...t.tab, color: active ? p.onJade : p.ink }}>
                 {option.label}
               </Text>
             </LiftedFace>
@@ -179,13 +179,13 @@ export function ShelfTabs<T extends string>({
 export function SectionHeading({ title, resets }: { title: string; resets?: string }) {
   return (
     <View className="flex-row items-center justify-between" style={{ gap: s.md }}>
-      <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, color: p.ink, flexShrink: 1 }}>
+      <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.section, color: p.ink, flexShrink: 1 }}>
         {title}
       </Text>
       {resets && (
         <View className="flex-row items-center" style={{ gap: 6 }}>
           <Clock size={16} color={p.slate} strokeWidth={1.8} />
-          <Text className="font-lora" style={{ ...t.resets, color: p.slate }}>
+          <Text className="font-nunito-semibold" style={{ ...t.resets, color: p.slate }}>
             {resets}
           </Text>
         </View>
@@ -266,10 +266,10 @@ export function ChallengeCard({
                 line rather than ending in "…". A phone narrower than the design
                 column, or a learner with larger system text, truncated
                 "Listening Practice" and "Writing Practice". */}
-            <Text className="font-lora-bold" style={{ ...t.cardTitle, color: p.ink }}>
+            <Text className="font-nunito-extrabold" style={{ ...t.cardTitle, color: p.ink }}>
               {title}
             </Text>
-            <Text className="font-lora" numberOfLines={2} style={{ ...t.cardBody, color: p.slate, marginTop: 2 }}>
+            <Text className="font-nunito-semibold" numberOfLines={2} style={{ ...t.cardBody, color: p.slate, marginTop: 2 }}>
               {description}
             </Text>
             {/* The count sits at the end of its own bar rather than beside the
@@ -278,7 +278,7 @@ export function ChallengeCard({
             <View className="flex-row items-center" style={{ marginTop: 6, gap: s.sm }}>
               {/* The compact raised bar: a card holds it, so it's slimmer than a session header's. */}
               <RaisedProgressBar progress={fraction} size="compact" accessibilityLabel={`${title}: ${current} of ${target}`} />
-              <Text className="font-lora" style={{ ...t.count, color: p.ink, minWidth: 46, textAlign: 'right' }}>
+              <Text className="font-nunito-semibold" style={{ ...t.count, color: p.ink, minWidth: 46, textAlign: 'right' }}>
                 {current} / {target}
               </Text>
             </View>
@@ -349,7 +349,7 @@ export function RewardPill({
           <View style={{ minWidth: 60, paddingHorizontal: s.md - 2, alignItems: 'center' }}>
             {/* "Claim" alone: the amount was on the gold pill a moment ago, and
                 "Claim +10" is wide enough to truncate the card's title. */}
-            <Text className="font-lora-bold" style={{ ...t.reward, color: p.onJade }}>
+            <Text className="font-nunito-extrabold" style={{ ...t.reward, color: p.onJade }}>
               Claim
             </Text>
           </View>
@@ -362,7 +362,7 @@ export function RewardPill({
     return (
       <Pill fill={p.track}>
         <Check size={15} color={p.slate} strokeWidth={2.6} />
-        <Text className="font-lora-bold" style={{ ...t.reward, color: p.slate }}>
+        <Text className="font-nunito-extrabold" style={{ ...t.reward, color: p.slate }}>
           +{xp}
         </Text>
       </Pill>
@@ -372,7 +372,7 @@ export function RewardPill({
   return (
     <Pill fill={p.goldWash}>
       <Star size={17} color={p.star} fill={p.star} strokeWidth={1.5} />
-      <Text className="font-lora-bold" style={{ ...t.reward, color: p.goldInk }}>
+      <Text className="font-nunito-extrabold" style={{ ...t.reward, color: p.goldInk }}>
         +{xp}
       </Text>
     </Pill>
@@ -434,10 +434,10 @@ export function CompletionRewardCard({
         </View>
 
         <View style={{ flex: 1, marginLeft: giftWidth * (1 - chalCard.textOverlap), paddingVertical: s.md }}>
-          <Text className="font-lora" style={{ ...t.rewardTitle, color: p.ink }}>
+          <Text className="font-nunito-semibold" style={{ ...t.rewardTitle, color: p.ink }}>
             {title}
           </Text>
-          <Text className="font-lora" style={{ ...t.cardBody, color: p.slate, marginTop: 3 }}>
+          <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: p.slate, marginTop: 3 }}>
             {description}
           </Text>
         </View>

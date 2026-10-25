@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Animated, Easing, Platform, StyleSheet, View, type LayoutChangeEvent } from 'react-native'
 import { SlidersHorizontal } from 'lucide-react-native'
-import { PressScale } from './PressScale'
 import { ICON_GREEN_DARK } from './DictionaryControls'
-import { DICT_BG, DICT_BUTTON_SHADOW } from './shadows'
+import { DICT_BG } from './shadows'
+import { DASH_LIFT, PressableScale, usePressProgress } from '../dashboard/parts'
 import { useReduceMotion } from '../tour/useReduceMotion'
 import { tickHaptic } from '../../lib/haptics'
 
@@ -164,22 +164,23 @@ const BORDER_ACTIVE = 'rgba(74,165,75,0.4)'
 const ICON_IDLE = '#18263A'
 
 /**
- * The round sliders button. Its jade fill, border and icon ink ease in and out
- * with the drawer; opening also gives the icon a small 0.96 → 1 settle.
+ * The round sliders button, raised like every button: its face stands on a
+ * shoulder and sinks onto it when pressed (`PressableScale` + the press
+ * progress, the way `LiftedFace` does), springing back on release. Its jade
+ * fill, border, shoulder and icon ink ease in and out with the drawer; opening
+ * also gives the icon a small 0.96 → 1 settle. It stands `DASH_LIFT` taller
+ * than `size`, like the pills beside it.
  */
 export function FilterButton({
   open,
   refined,
   size,
-  raised = false,
   onPress,
 }: {
   open: boolean
   /** Something inside the panel differs from its default — marked with a dot. */
   refined: boolean
   size: number
-  /** Carries the button shadow (the HSK shelf's bar). */
-  raised?: boolean
   onPress: () => void
 }) {
   const reduceMotion = useReduceMotion()
@@ -223,46 +224,82 @@ export function FilterButton({
     }
   }, [open, reduceMotion, active, pop])
 
-  const radius = size / 2
-
   return (
-    <PressScale
+    <PressableScale
       onPress={() => {
         tickHaptic()
         onPress()
       }}
-      style={[{ width: size, height: size }, raised && [DICT_BUTTON_SHADOW, { borderRadius: radius, backgroundColor: DICT_BG.card }]]}
-      className="items-center justify-center rounded-full"
+      scaleTo={0.92}
+      haptic={false}
       accessibilityLabel={open ? 'Close filters' : 'More filters'}
-      accessibilityState={{ expanded: open }}
     >
+      <FilterFace size={size} active={active} pop={pop} refined={refined} />
+    </PressableScale>
+  )
+}
+
+/** The filter button's face and shoulder. A child of the `PressableScale`, so it can read the press. */
+function FilterFace({
+  size,
+  active,
+  pop,
+  refined,
+}: {
+  size: number
+  active: Animated.Value
+  pop: Animated.Value
+  refined: boolean
+}) {
+  const resting = useRef(new Animated.Value(0)).current
+  const press = usePressProgress() ?? resting
+  const sink = press.interpolate({ inputRange: [0, 1], outputRange: [0, DASH_LIFT] })
+  const radius = size / 2
+
+  return (
+    <View style={{ width: size, height: size + DASH_LIFT }}>
+      {/* The shoulder: warm grey at rest, green while the panel is open. Colour only (JS). */}
       <Animated.View
         pointerEvents="none"
-        style={[
-          StyleSheet.absoluteFill,
-          {
-            borderRadius: radius,
-            borderWidth: 1,
-            borderColor: active.interpolate({ inputRange: [0, 1], outputRange: [BORDER_IDLE, BORDER_ACTIVE] }),
-            backgroundColor: active.interpolate({ inputRange: [0, 1], outputRange: [DICT_BG.card, DICT_BG.greenPale] }),
-          },
-        ]}
+        style={{
+          position: 'absolute',
+          top: DASH_LIFT,
+          width: size,
+          height: size,
+          borderRadius: radius,
+          backgroundColor: active.interpolate({ inputRange: [0, 1], outputRange: [DICT_BG.pillShoulder, DICT_BG.green] }),
+        }}
       />
-      <Animated.View style={{ transform: [{ scale: pop }] }}>
-        <Animated.View style={{ opacity: active.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }}>
-          <SlidersHorizontal size={19} color={ICON_IDLE} strokeWidth={1.8} />
-        </Animated.View>
-        <Animated.View style={[StyleSheet.absoluteFill, { opacity: active }]}>
-          <SlidersHorizontal size={19} color={ICON_GREEN_DARK} strokeWidth={1.8} />
-        </Animated.View>
-      </Animated.View>
-      {refined && (
-        <View
+      {/* The face: transform only on this view (the press can run on the native driver). */}
+      <Animated.View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center', transform: [{ translateY: sink }] }}>
+        <Animated.View
           pointerEvents="none"
-          className="absolute rounded-full bg-dict-green"
-          style={{ top: 10, right: 10, width: 7, height: 7 }}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              borderRadius: radius,
+              borderWidth: 1.5,
+              borderColor: active.interpolate({ inputRange: [0, 1], outputRange: [BORDER_IDLE, BORDER_ACTIVE] }),
+              backgroundColor: active.interpolate({ inputRange: [0, 1], outputRange: [DICT_BG.card, DICT_BG.greenPale] }),
+            },
+          ]}
         />
-      )}
-    </PressScale>
+        <Animated.View style={{ transform: [{ scale: pop }] }}>
+          <Animated.View style={{ opacity: active.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }}>
+            <SlidersHorizontal size={19} color={ICON_IDLE} strokeWidth={1.8} />
+          </Animated.View>
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity: active }]}>
+            <SlidersHorizontal size={19} color={ICON_GREEN_DARK} strokeWidth={1.8} />
+          </Animated.View>
+        </Animated.View>
+        {refined && (
+          <View
+            pointerEvents="none"
+            className="absolute rounded-full bg-dict-green"
+            style={{ top: 10, right: 10, width: 7, height: 7 }}
+          />
+        )}
+      </Animated.View>
+    </View>
   )
 }

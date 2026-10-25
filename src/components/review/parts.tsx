@@ -123,7 +123,7 @@ export function ReviewHero({
       <Animated.View style={text} needsOffscreenAlphaCompositing>
         <ShadowReveal at={revEntrance.at} duration={revEntrance.for} run={run}>
         <Text
-          className="font-lora-bold"
+          className="font-nunito-extrabold"
           accessibilityRole="header"
           style={{ ...t.title, color: c.navy, marginTop: PAGE_TITLE_TOP + 10 }}
         >
@@ -235,21 +235,34 @@ export function Stat({
   icon: ReactNode
   onPress?: () => void
 }) {
+  /*
+   * Icon and number on one line, the label centred under them across the
+   * column's full width. Beside the icon, the label only had what was left of
+   * a third of the panel, and on a narrow phone "Weak words" ran out of room.
+   * Every column is laid out the same way, so the three line up.
+   * `maxFontSizeMultiplier` keeps a large system text size from pushing it
+   * out again.
+   */
   const body = (
-    <View className="flex-row items-center" style={{ paddingLeft: s.sm + 2, paddingRight: s.xs, gap: 6 }}>
-      {icon}
-      {/* `flex: 1`, not `flexShrink`: a shrinkable text column is measured at its
-          min-content width on web, which broke "Due today" over two lines. */}
-      <View style={{ flex: 1 }}>
-        <Text className="font-lora-bold" style={{ ...t.statValue, color: c.navy }}>
+    <View style={{ alignItems: 'center', paddingHorizontal: s.xs }}>
+      <View className="flex-row items-center" style={{ gap: 6 }}>
+        {icon}
+        <Text
+          className="font-nunito-extrabold"
+          maxFontSizeMultiplier={1.3}
+          style={{ ...t.statValue, color: c.navy, includeFontPadding: false }}
+        >
           {value}
         </Text>
-        {/* Regular weight, and one line: a two-line "Due today" is what made
-            the panel tall. */}
-        <Text className="font-sans" numberOfLines={1} style={{ ...t.statLabel, color: c.navy }}>
-          {label}
-        </Text>
       </View>
+      <Text
+        className="font-sans"
+        numberOfLines={1}
+        maxFontSizeMultiplier={1.15}
+        style={{ ...t.statLabel, color: c.navy, marginTop: 2, textAlign: 'center', alignSelf: 'stretch' }}
+      >
+        {label}
+      </Text>
     </View>
   )
 
@@ -370,7 +383,7 @@ export function ReviewModeCard({
             }}
           >
             <Text
-              className="font-lora-bold"
+              className="font-nunito-extrabold"
               numberOfLines={1}
               style={{ ...t.cardTitle, fontSize: titleSize, lineHeight: titleSize * 1.22, color: c.navy }}
             >
@@ -381,11 +394,11 @@ export function ReviewModeCard({
             </Text>
           </View>
 
-          {/* The reference's right column: the count on top, a round chevron under it. */}
+          {/* The reference's right column: the count on top, a bare chevron under it. */}
           <View style={{ alignItems: 'flex-end', gap: s.sm, marginLeft: s.sm, paddingRight: revCard.paddingRight }}>
-            <DuePill count={count} label={countLabel} tint={tint} />
-            <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: tint.soft, marginRight: 6 }}>
-              <ChevronRight size={20} color={tint.ink} strokeWidth={2.4} />
+            <DuePill count={count} label={countLabel} />
+            <View style={{ width: 38, height: 38, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>
+              <ChevronRight size={20} color={c.slate} strokeWidth={2.4} />
             </View>
           </View>
         </View>
@@ -395,18 +408,13 @@ export function ReviewModeCard({
 }
 
 /**
- * "12 due", as a quiet pill in a hue that sets it apart from its card (blossom
- * on Flashcards, honey on Mixed, sky on Mistakes, as in SS1017) and never
- * competes with the title. Zero reads "None" on a neutral tint — a bold 0 reads
- * as a broken counter, where "None" is the truth and is not a failure.
+ * "12 due", coloured by how much is waiting, the same on every card: honey
+ * under 10, blossom from 10 up. Zero reads "None" on a neutral tint — a bold 0
+ * reads as a broken counter, where "None" is the truth and is not a failure.
  */
-const PILL_FOR: Record<string, PlayTint> = {
-  [playTints.sky.fill]: playTints.blossom,
-  [playTints.jade.fill]: playTints.honey,
-  [playTints.blossom.fill]: playTints.sky,
-}
-function DuePill({ count, label, tint }: { count: number; label: string; tint: PlayTint }) {
-  const hue = PILL_FOR[tint.fill] ?? tint
+const DUE_PILL_BUSY = 10
+function DuePill({ count, label }: { count: number; label: string }) {
+  const hue = count >= DUE_PILL_BUSY ? playTints.blossom : playTints.honey
   const empty = count === 0
   return (
     <View
@@ -472,7 +480,7 @@ export function ReviewButton({
           <View className="flex-row items-center" style={{ gap: 6, paddingHorizontal: s.sm, maxWidth: '100%' }}>
             {Icon && <Icon color={c.slate} size={16} strokeWidth={2} />}
             <Text
-              className="font-lora-bold"
+              className="font-nunito-extrabold"
               numberOfLines={1}
               style={{ ...t.cta, fontSize: 13.5, color: ink, flexShrink: 1 }}
             >
@@ -504,7 +512,7 @@ export function ReviewButton({
       >
         <View className="flex-row items-center" style={{ gap: s.md, paddingHorizontal: 40 }}>
           {Icon && <Icon color={c.slate} size={21} strokeWidth={2} />}
-          <Text className="font-lora-bold" numberOfLines={1} style={{ ...t.cta, color: ink }}>
+          <Text className="font-nunito-extrabold" numberOfLines={1} style={{ ...t.cta, color: ink }}>
             {label}
           </Text>
         </View>

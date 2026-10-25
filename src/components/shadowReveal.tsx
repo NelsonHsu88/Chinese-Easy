@@ -103,10 +103,13 @@ export function revealedShadow<T extends { shadowOpacity: number; elevation: num
   shadow: T,
   progress: Animated.Value | Animated.AnimatedInterpolation<number>,
 ): Revealed<T> {
+  // Both node kinds interpolate identically; RN 0.88's types just can't call
+  // `interpolate` through the union, so pick one signature.
+  const p = progress as Animated.Value
   return {
     ...shadow,
-    shadowOpacity: progress.interpolate({ inputRange: [0, 1], outputRange: [0, shadow.shadowOpacity] }),
-    elevation: progress.interpolate({ inputRange: [0, 1], outputRange: [0, shadow.elevation] }),
+    shadowOpacity: p.interpolate({ inputRange: [0, 1], outputRange: [0, shadow.shadowOpacity] }),
+    elevation: p.interpolate({ inputRange: [0, 1], outputRange: [0, shadow.elevation] }),
   }
 }
 

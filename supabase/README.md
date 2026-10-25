@@ -20,6 +20,7 @@ Chinese Easy behaves today.
 | `migrations/0004_row_limits.sql` | Per-account row-count caps (one statement-level trigger per table) |
 | `migrations/0005_lock_rls_auto_enable.sql` | Revokes API access to Supabase's `rls_auto_enable()` (advisor lints 0028/0029) |
 | `migrations/0006_rls_initplan.sql` | Policies use `(select auth.uid())` — evaluated once per query, not per row |
+| `migrations/0007_least_privilege_grants.sql` | Drops `TRUNCATE`/`TRIGGER`/`REFERENCES` from the API roles and every grant from `anon` (TRUNCATE ignores RLS). **Written 2026-10-25, not yet applied to the hosted project** |
 | `functions/delete-account/` | Edge Function behind Settings → General → Delete account |
 
 `0003` is the answer to a question `0002` does not address. RLS decides *whose*

@@ -1,10 +1,14 @@
+import { DICT_BG } from './shadows'
+import { RaisedButton } from '../dashboard/parts'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { View, Text, Pressable, ScrollView, Modal, useWindowDimensions } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import type { ScrollViewInstance } from 'react-native'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
+import { tabBarHeight } from '../../lib/tabBar'
+import { InfoSheet, SHEET_PEEK, type SheetTab } from './InfoSheet'
 import { router, usePathname } from 'expo-router'
 import { ChevronLeft, X, Play, Pause, RotateCcw } from 'lucide-react-native'
 import { HanziStage, type HanziStageSpeed } from '../HanziStage'
-import { PressScale } from './PressScale'
 import { StrokeSpeedToggle } from '../StrokeSpeedToggle'
 import { ICON_GREEN, ICON_MUTED, ICON_STROKE } from './DictionaryControls'
 import { tapHaptic } from '../../lib/haptics'
@@ -49,12 +53,39 @@ export function openCharacterDetail(character: string, inTab: boolean) {
   else router.push(`/character/${ch}`)
 }
 
-export function DetailShell({ title, children }: { title: string; children: ReactNode }) {
+/** Back arrow and centred title, shared by both detail layouts. */
+function DetailNavBar({ title }: { title: string }) {
   const inTab = useInDictionaryTab()
+  return (
+    <View className="flex-row items-center border-b border-dict-line bg-dict-page px-3 py-2.5">
+      <Pressable
+        onPress={() => {
+          tapHaptic()
+          // Falls back to the Dictionary *tab* rather than the standalone
+          // `/dictionary` route, so a deep-linked detail screen lands
+          // somewhere with the tab bar still under it.
+          if (router.canGoBack()) router.back()
+          else router.replace(inTab ? '/dictionary-tab' : '/my-words')
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Back"
+        className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
+      >
+        <ChevronLeft size={26} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
+      </Pressable>
+      <Text className="flex-1 text-center font-nunito-bold text-[20px] leading-[26px] text-dict-heading">{title}</Text>
+      {/* Balances the back button so the title sits truly centred. */}
+      <View className="h-10 w-10" />
+    </View>
+  )
+}
+
+/** The plain scrolling frame, still used for the "not found" states. */
+export function DetailShell({ title, children }: { title: string; children: ReactNode }) {
   /* Shifu's word-card guide can ask for a scroll to reach a card below the
      fold. The offset is tracked rather than read back, which a ScrollView
      cannot do — the same arrangement as the Dashboard's. */
-  const scroll = useRef<ScrollView>(null)
+  const scroll = useRef<ScrollViewInstance>(null)
   const scrollY = useRef(0)
   const tourScrollBy = useMemo(
     () => (dy: number) => scroll.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true }),
@@ -66,26 +97,7 @@ export function DetailShell({ title, children }: { title: string; children: Reac
       className="flex-1 bg-dict-page"
       style={{ borderTopLeftRadius: 20, borderTopRightRadius: 20, overflow: 'hidden' }}
     >
-      <View className="flex-row items-center border-b border-dict-line bg-dict-page px-3 py-2.5">
-        <Pressable
-          onPress={() => {
-            tapHaptic()
-            // Falls back to the Dictionary *tab* rather than the standalone
-            // `/dictionary` route, so a deep-linked detail screen lands
-            // somewhere with the tab bar still under it.
-            if (router.canGoBack()) router.back()
-            else router.replace(inTab ? '/dictionary-tab' : '/my-words')
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
-        >
-          <ChevronLeft size={26} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-        </Pressable>
-        <Text className="flex-1 text-center font-dict-bold text-[20px] leading-[26px] text-dict-heading">{title}</Text>
-        {/* Balances the back button so the title sits truly centred. */}
-        <View className="h-10 w-10" />
-      </View>
+      <DetailNavBar title={title} />
 
       <ScrollView
         ref={scroll}
@@ -107,13 +119,102 @@ export function DetailShell({ title, children }: { title: string; children: Reac
  *
  * Plain styles, not classes: on native, adding a word re-renders the hero
  * card, and its class-derived padding was being dropped — the card came out
- * shorter than the buttons inside it (see the comment over `HeroCard`'s
+ * shorter than the buttons inside it (see the comment over `DetailHero`'s
  * button row). The shadow is also now one Android actually draws: the old
  * `shadow-dict` class compiles to iOS shadow props only, so this card was flat
  * on Android all along.
  */
 export function DetailCard({ children }: { children: ReactNode }) {
   return <View style={DETAIL_CARD}>{children}</View>
+}
+
+/** Height of the nav bar above: 10 + 40 + 10 padding/button plus its hairline. */
+const NAV_BAR_HEIGHT = 61
+/** Every dictionary column caps here and centres, like the rest of the app. */
+export const DETAIL_CONTENT_MAX = 430
+
+/**
+ * The redesigned detail page: a focused learning area (`hero`) with the
+ * draggable information sheet over its lower edge.
+ *
+ * The body's height comes from `onLayout`, with an estimate from the window
+ * until (or if, on web) that arrives, so the sheet always has a size.
+ */
+export function DetailSheetShell({
+  title,
+  hero,
+  sheetLabel,
+  sheetHints,
+  sheetHeader,
+  tabs,
+  children,
+}: {
+  title: string
+  /** Rendered with the height it may use, so it can size itself to fit. */
+  hero: (availableHeight: number) => ReactNode
+  sheetLabel: string
+  sheetHints: string[]
+  /** The word block at the top of the open sheet. */
+  sheetHeader: ReactNode
+  tabs: SheetTab[]
+  /** Modals and overlays. */
+  children?: ReactNode
+}) {
+  const inTab = useInDictionaryTab()
+  const insets = useSafeAreaInsets()
+  const { height: windowHeight } = useWindowDimensions()
+  /* The whole page under the status bar: nav bar + body. */
+  const estimate = windowHeight - insets.top - (inTab ? tabBarHeight(insets.bottom) : 0)
+  /* Keyed on the window height: a resize that doesn't re-fire onLayout falls back to the estimate. */
+  const [measured, setMeasured] = useState<{ height: number; window: number } | null>(null)
+  const pageHeight = measured && measured.window === windowHeight ? measured.height : estimate
+  const bodyHeight = pageHeight - NAV_BAR_HEIGHT
+
+  /* In the tab the tab bar owns the bottom edge; standalone, the home indicator does. */
+  const bottomInset = inTab ? 0 : insets.bottom
+  const peek = SHEET_PEEK + bottomInset
+  /* Open, the sheet covers the whole page, nav bar included; its tab closes it. */
+  const expandedHeight = Math.max(peek + 160, pageHeight)
+
+  return (
+    <SafeAreaView edges={['top']} className="flex-1 bg-dict-page">
+      <View
+        style={{ flex: 1 }}
+        onLayout={(e) => {
+          const height = Math.round(e.nativeEvent.layout.height)
+          if (height > 0) setMeasured({ height, window: windowHeight })
+        }}
+      >
+        <DetailNavBar title={title} />
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingTop: 12, paddingBottom: peek + 12 }}
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={{ width: '100%', maxWidth: DETAIL_CONTENT_MAX, alignSelf: 'center' }}>
+            {hero(bodyHeight - peek - 24)}
+          </View>
+        </ScrollView>
+
+        <InfoSheet
+          expandedHeight={expandedHeight}
+          bottomInset={bottomInset}
+          label={sheetLabel}
+          hints={sheetHints}
+          header={sheetHeader}
+          tabs={tabs}
+          onBack={() => {
+            tapHaptic()
+            if (router.canGoBack()) router.back()
+            else router.replace(inTab ? '/dictionary-tab' : '/my-words')
+          }}
+          contentMaxWidth={DETAIL_CONTENT_MAX}
+        />
+      </View>
+      {children}
+    </SafeAreaView>
+  )
 }
 
 /** `rounded-dict bg-dict-card p-5 shadow-dict`, spelled out. */
@@ -129,7 +230,7 @@ const DETAIL_CARD = {
 } as const
 
 export function CardTitle({ children }: { children: ReactNode }) {
-  return <Text className="font-dict-bold text-[19px] leading-[25px] text-dict-heading">{children}</Text>
+  return <Text className="font-nunito-bold text-[19px] leading-[25px] text-dict-heading">{children}</Text>
 }
 
 /**
@@ -185,14 +286,20 @@ export function StrokeOrderModal({ characters, onClose }: { characters: string; 
     <Modal visible transparent={false} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView className="flex-1 bg-dict-page">
         <View className="flex-row items-center justify-between px-4 py-3">
-          <Text className="font-dict-bold text-[19px] text-dict-heading">Stroke order</Text>
-          <PressScale
+          <Text className="font-nunito-bold text-[19px] text-dict-heading">Stroke order</Text>
+          <RaisedButton
             onPress={onClose}
-            className="h-10 w-10 items-center justify-center rounded-full border border-dict-line bg-dict-card"
             accessibilityLabel="Close stroke order"
+            height={40}
+            width={40}
+            radius={20}
+            fill={DICT_BG.card}
+            border={DICT_BG.pillBorder}
+            shoulder={DICT_BG.pillShoulder}
+            scaleTo={0.9}
           >
             <X size={18} color={ICON_MUTED} strokeWidth={ICON_STROKE} />
-          </PressScale>
+          </RaisedButton>
         </View>
 
         <View className="mx-4 flex-1 rounded-dict border border-dict-line bg-dict-card">
@@ -248,7 +355,7 @@ export function StrokeOrderModal({ characters, onClose }: { characters: string; 
             }}
           />
 
-          <PressScale
+          <RaisedButton
             onPress={() => {
               tapHaptic()
               setFinished(false)
@@ -261,8 +368,11 @@ export function StrokeOrderModal({ characters, onClose }: { characters: string; 
              * fails to load. Leaving the button live means a press always
              * restarts the animation, so there is no state you can get stuck in.
              */
-            outerClassName="w-full"
-            className="flex-row items-center justify-center gap-2 rounded-dict-sm bg-dict-green-dark py-4"
+            wrapperStyle={{ alignSelf: 'stretch' }}
+            height={56}
+            radius={14}
+            fill={DICT_BG.greenDark}
+            shoulder={DICT_BG.greenDarkShoulder}
             accessibilityLabel={play === 0 ? 'View stroke order' : 'View stroke order again'}
           >
             {playing ? (
@@ -272,10 +382,10 @@ export function StrokeOrderModal({ characters, onClose }: { characters: string; 
             ) : (
               <RotateCcw size={20} color="#ffffff" strokeWidth={ICON_STROKE} />
             )}
-            <Text className="font-dict-bold text-[17px] text-white">
+            <Text className="font-nunito-bold text-[17px] text-white">
               {playing ? 'Playing… tap to restart' : play === 0 ? 'View' : 'View again'}
             </Text>
-          </PressScale>
+          </RaisedButton>
         </View>
       </SafeAreaView>
     </Modal>

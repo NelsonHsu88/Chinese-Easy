@@ -180,7 +180,8 @@ export const subHero = {
    * `onLayout` does not fire for every view under react-native-web anyway, so a
    * hero waiting to be told its height would draw no artwork at all.
    */
-  contentBelow: { purchase: 559, active: 472 },
+  /* Purchase includes the "Maybe later" button under the CTA (52 + lift + gap). */
+  contentBelow: { purchase: 627, active: 472 },
   /** Shifu's height as a share of the hero. He is the tallest thing in it. */
   shifuShare: 0.72,
   /** And on the subscribed screen, where he stands a little larger. */

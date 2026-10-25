@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
-import { View, Text, Pressable, Image, useWindowDimensions } from 'react-native'
+import { View, Text, Image, useWindowDimensions } from 'react-native'
 import { ChevronLeft, Timer } from 'lucide-react-native'
 import { onbVerdict } from '../onboarding/tokens'
 import type { PlayTint } from '../dashboard/tokens'
 import { RaisedProgressBar } from '../progress/RaisedProgressBar'
 import { useSessionProgressStart } from '../progress/sessionProgress'
 import { fcArt } from './art'
+import { RaisedButton } from '../dashboard/parts'
+import { dashShoulders } from '../dashboard/tokens'
 import {
   fcColors as c,
   fcShadow,
@@ -70,9 +72,20 @@ export function DiscButton({
   tint?: PlayTint
 }) {
   return (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={6}>
-      <View style={[disc, fcShadow, tint ? { backgroundColor: tint.soft, borderColor: tint.border } : null]}>{children}</View>
-    </Pressable>
+    <RaisedButton
+      onPress={onPress}
+      accessibilityLabel={label}
+      hitSlop={6}
+      height={disc.height}
+      width={disc.width}
+      radius={disc.borderRadius}
+      fill={tint ? tint.soft : disc.backgroundColor}
+      border={tint ? tint.border : disc.borderColor}
+      shoulder={tint ? tint.border : dashShoulders.quiet}
+      scaleTo={0.9}
+    >
+      {children}
+    </RaisedButton>
   )
 }
 
@@ -96,7 +109,13 @@ export function FlashcardHeader({
   const left = Math.max(0, total - step)
   /* Reps count within one word, not the session, so only cards share the session's memory. */
   const sessionFrom = useSessionProgressStart(unit === 'card' ? step : -1, unit === 'card' ? total : -1)
-  const from = unit === 'card' ? sessionFrom : step - 1
+  /*
+   * Cards show what's been finished, not the card on screen: 0 / 10 on the
+   * first card, and the bar only moves once a card is done (it steps forward
+   * as the next one arrives). Reps keep counting the rep being written.
+   */
+  const shownCount = unit === 'card' ? step - 1 : step
+  const from = unit === 'card' ? Math.max(0, sessionFrom - 1) : step - 1
   const urgent = secondsLeft != null && secondsLeft <= 30
   return (
     <>
@@ -106,7 +125,7 @@ export function FlashcardHeader({
         </DiscButton>
         {/* The header mounts per card, so the bar opens on the previous card's progress and steps forward. */}
         <RaisedProgressBar
-          progress={step / safeTotal}
+          progress={shownCount / safeTotal}
           initialProgress={from / safeTotal}
           accessibilityLabel={`${unit === 'rep' ? 'Rep' : 'Card'} ${step} of ${total}`}
         />
@@ -115,7 +134,7 @@ export function FlashcardHeader({
           accessibilityElementsHidden
           style={{ fontFamily: 'NunitoBold', ...t.counter, color: c.slate }}
         >
-          {step} / {total}
+          {shownCount} / {total}
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 10 }}>

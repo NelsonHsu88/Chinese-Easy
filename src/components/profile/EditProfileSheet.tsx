@@ -136,7 +136,7 @@ export function EditProfileSheet({ visible, onClose }: { visible: boolean; onClo
           >
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: s.xl }} bounces={false}>
               <View className="flex-row items-center justify-between">
-                <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, color: c.navy }}>
+                <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.section, color: c.navy }}>
                   Edit Profile
                 </Text>
                 <Pressable onPress={cancel} hitSlop={12} accessibilityRole="button" accessibilityLabel="Cancel" className="active:opacity-60">
@@ -154,26 +154,26 @@ export function EditProfileSheet({ visible, onClose }: { visible: boolean; onClo
                 />
                 <View className="flex-row items-center" style={{ gap: s.lg, marginTop: s.xs }}>
                   <Pressable onPress={choosePhoto} hitSlop={8} accessibilityRole="button" className="active:opacity-60">
-                    <Text className="font-lora" style={{ ...t.link, color: c.jadeDark }}>
+                    <Text className="font-nunito-semibold" style={{ ...t.link, color: c.jadeDark }}>
                       {picking ? 'Opening photos…' : photo ? 'Change photo' : 'Choose photo'}
                     </Text>
                   </Pressable>
                   {photo && !picking && (
                     <Pressable onPress={clearPhoto} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove profile photo" className="active:opacity-60">
-                      <Text className="font-lora" style={{ ...t.link, color: c.slate }}>
+                      <Text className="font-nunito-semibold" style={{ ...t.link, color: c.slate }}>
                         Remove
                       </Text>
                     </Pressable>
                   )}
                 </View>
                 {photoNote && (
-                  <Text className="font-lora" style={{ ...t.tag, color: c.coralDark, marginTop: s.sm, textAlign: 'center' }}>
+                  <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.coralDark, marginTop: s.sm, textAlign: 'center' }}>
                     {photoNote}
                   </Text>
                 )}
               </View>
 
-              <Text className="font-lora-bold" style={{ ...t.link, color: c.navy, marginTop: s.xl, marginBottom: 6 }}>
+              <Text className="font-nunito-extrabold" style={{ ...t.link, color: c.navy, marginTop: s.xl, marginBottom: 6 }}>
                 Display name
               </Text>
               <TextInput
@@ -183,14 +183,14 @@ export function EditProfileSheet({ visible, onClose }: { visible: boolean; onClo
                 placeholder="Your name"
                 placeholderTextColor={c.textMuted}
                 accessibilityLabel="Display name"
-                className="font-lora"
+                className="font-nunito-semibold"
                 style={input}
               />
-              <Text className="font-lora" style={{ ...t.tag, color: c.slate, marginTop: 6 }}>
+              <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.slate, marginTop: 6 }}>
                 Shown on your profile and Dashboard. Up to {NAME_MAX} characters.
               </Text>
 
-              <Text className="font-lora-bold" style={{ ...t.link, color: c.navy, marginTop: s.lg, marginBottom: 6 }}>
+              <Text className="font-nunito-extrabold" style={{ ...t.link, color: c.navy, marginTop: s.lg, marginBottom: 6 }}>
                 Email
               </Text>
               <TextInput
@@ -202,10 +202,10 @@ export function EditProfileSheet({ visible, onClose }: { visible: boolean; onClo
                 placeholder="you@example.com"
                 placeholderTextColor={c.textMuted}
                 accessibilityLabel="Email address"
-                className="font-lora"
+                className="font-nunito-semibold"
                 style={[input, !emailOk && { borderColor: c.coral }]}
               />
-              <Text className="font-lora" style={{ ...t.tag, color: emailOk ? c.slate : c.coralDark, marginTop: 6 }}>
+              <Text className="font-nunito-semibold" style={{ ...t.tag, color: emailOk ? c.slate : c.coralDark, marginTop: 6 }}>
                 {emailOk ? 'From the account you signed in with. Never shared.' : 'That doesn’t look like an email address.'}
               </Text>
 

@@ -1,11 +1,12 @@
 import { PlayWash } from '../dashboard/playWash'
-import { useMemo, useRef, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ComponentType, type ReactNode } from 'react'
 import {
   View,
   Text,
   Pressable,
   ScrollView,
   Animated,
+  Easing,
   Platform,
   Image,
   useWindowDimensions,
@@ -28,9 +29,10 @@ import {
   SET_CONTENT_MAX,
 } from './tokens'
 import { tapHaptic, tickHaptic } from '../../lib/haptics'
-import { playTints, type PlayHue } from '../dashboard/tokens'
+import { playTints, type PlayHue, dashShoulders } from '../dashboard/tokens'
 import { useScrollToTopOnFocus } from '../useScrollToTopOnFocus'
 import { TourScrollContext } from '../tour/targets'
+import { DASH_LIFT, PressableScale, RaisedButton, usePressProgress } from '../dashboard/parts'
 
 /*
  * The Settings screen's building blocks.
@@ -138,7 +140,7 @@ export function SettingsShell({
    * only. The ivory page and the tab bar stay put — that is what makes opening
    * a category read as this screen rearranging rather than as a page turn.
    */
-  transitionStyle?: Animated.WithAnimatedObject<ViewStyle>
+  transitionStyle?: Animated.WithAnimatedValue<ViewStyle>
   /** `useScreenTransition`'s shadow value — the cards' shadows settle in on it. */
   shadow?: Animated.Value
   /** Decoration that ends the page (the foot range), pushed to the bottom on a tall screen. */
@@ -237,24 +239,22 @@ export function DetailShell({ title, children }: { title: string; children: Reac
                 the hub it came from rather than reading as a bare form. */}
             <SakuraCorner width={column * DETAIL_SAKURA_SHARE} />
             <View className="flex-row items-center" style={{ paddingTop: s.md, gap: s.md }}>
-              <Pressable
+              <RaisedButton
                 onPress={() =>
                   leave(() => (router.canGoBack() ? router.back() : router.replace('/settings')))
                 }
-                accessibilityRole="button"
                 accessibilityLabel="Back to Settings"
                 hitSlop={10}
-                className="items-center justify-center rounded-full active:opacity-60"
-                style={{
-                  width: 40,
-                  height: 40,
-                  backgroundColor: playTints.jade.fill,
-                  borderWidth: 1,
-                  borderColor: playTints.jade.border,
-                }}
+                height={40}
+                width={40}
+                radius={20}
+                fill={playTints.jade.fill}
+                border={playTints.jade.border}
+                shoulder={playTints.jade.border}
+                scaleTo={0.9}
               >
                 <ArrowLeft size={20} color={playTints.jade.text} strokeWidth={2.4} />
-              </Pressable>
+              </RaisedButton>
               <Text className="font-nunito-extrabold" style={{ ...t.detailTitle, color: c.navy }}>
                 {title}
               </Text>
@@ -328,7 +328,7 @@ export function FootRange() {
 /** "Study", "Account & App". Aligned to the same margin as the cards under it. */
 export function SectionHeading({ children }: { children: ReactNode }) {
   return (
-    <Text className="font-lora-bold" accessibilityRole="header" style={{ ...t.section, fontFamily: 'LoraBold', color: c.navy }}>
+    <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...t.section, fontFamily: 'NunitoExtraBold', color: c.navy }}>
       {children}
     </Text>
   )
@@ -498,9 +498,9 @@ export function NavRow({
           applied by React Native itself. */}
       <View style={{ flex: 1, marginRight: s.sm }}>
         <Text
-          className="font-lora-bold"
+          className="font-nunito-extrabold"
           numberOfLines={1}
-          style={{ ...t.rowTitle, fontFamily: 'LoraBold', color: c.navy }}
+          style={{ ...t.rowTitle, fontFamily: 'NunitoExtraBold', color: c.navy }}
         >
           {title}
         </Text>
@@ -623,63 +623,117 @@ export function ChoiceList<T extends string>({
       {options.map((option) => {
         const selected = option.value === value
         return (
-          <Pressable
+          <PressableScale
             key={option.value}
             onPress={() => {
               tickHaptic()
               onChange(option.value)
             }}
-            accessibilityRole="radio"
+            haptic={false}
+            scaleTo={0.985}
             accessibilityState={{ selected }}
             accessibilityLabel={option.label}
-            className="flex-row items-center active:opacity-70"
-            style={{
-              paddingVertical: s.md,
-              paddingHorizontal: s.lg,
-              borderRadius: setRadius.inner,
-              borderWidth: 1.5,
-              borderColor: selected ? c.green : c.border,
-              backgroundColor: selected ? c.greenSoft : c.background,
-              gap: s.md,
-            }}
           >
-            <View style={{ flex: 1 }}>
-              <Text
-                className={selected ? 'font-nunito-extrabold' : 'font-nunito-semibold'}
-                style={{ fontSize: 15, lineHeight: 20, color: selected ? c.greenDark : c.navy }}
-              >
-                {option.label}
-              </Text>
-              {option.hint ? (
+            <LiftedRowFace
+              fill={selected ? c.greenSoft : c.background}
+              border={selected ? c.green : c.border}
+              shoulder={selected ? c.green : dashShoulders.quiet}
+              radius={setRadius.inner}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: s.md,
+                paddingHorizontal: s.lg,
+                gap: s.md,
+              }}
+            >
+              <View style={{ flex: 1 }}>
                 <Text
-                  className="font-nunito-semibold"
-                  style={{ ...t.hint, color: c.textSecondary, marginTop: 2 }}
+                  className={selected ? 'font-nunito-extrabold' : 'font-nunito-semibold'}
+                  style={{ fontSize: 15, lineHeight: 20, color: selected ? c.greenDark : c.navy }}
                 >
-                  {option.hint}
+                  {option.label}
                 </Text>
-              ) : null}
-            </View>
-            {selected ? (
-              <View
-                className="items-center justify-center rounded-full"
-                style={{ width: 22, height: 22, backgroundColor: c.green }}
-              >
-                <Check size={13} color="#FFFFFF" strokeWidth={3.4} />
+                {option.hint ? (
+                  <Text
+                    className="font-nunito-semibold"
+                    style={{ ...t.hint, color: c.textSecondary, marginTop: 2 }}
+                  >
+                    {option.hint}
+                  </Text>
+                ) : null}
               </View>
-            ) : (
-              <View
-                className="rounded-full"
-                style={{ width: 22, height: 22, borderWidth: 1.5, borderColor: c.border }}
-              />
-            )}
-          </Pressable>
+              {selected ? (
+                <View
+                  className="items-center justify-center rounded-full"
+                  style={{ width: 22, height: 22, backgroundColor: c.green }}
+                >
+                  <Check size={13} color="#FFFFFF" strokeWidth={3.4} />
+                </View>
+              ) : (
+                <View
+                  className="rounded-full"
+                  style={{ width: 22, height: 22, borderWidth: 1.5, borderColor: c.border }}
+                />
+              )}
+            </LiftedRowFace>
+          </PressableScale>
         )
       })}
     </View>
   )
 }
 
-/** The switch. One shape for every boolean in the app's settings. */
+/**
+ * A raised face of any height, for rows whose content decides their size:
+ * it stands `DASH_LIFT` above a darker shoulder and sinks onto it while its
+ * `PressableScale` is held — the same press as `LiftedFace`, which needs a
+ * fixed height.
+ */
+function LiftedRowFace({
+  fill,
+  border,
+  shoulder,
+  radius,
+  style,
+  children,
+}: {
+  fill: string
+  border: string
+  shoulder: string
+  radius: number
+  style?: StyleProp<ViewStyle>
+  children: ReactNode
+}) {
+  const resting = useRef(new Animated.Value(0)).current
+  const press = usePressProgress() ?? resting
+  const sink = press.interpolate({ inputRange: [0, 1], outputRange: [0, DASH_LIFT] })
+  return (
+    <View style={{ paddingBottom: DASH_LIFT }}>
+      <View
+        style={{ position: 'absolute', top: DASH_LIFT, left: 0, right: 0, bottom: 0, borderRadius: radius, backgroundColor: shoulder }}
+      />
+      <Animated.View
+        style={[{ borderRadius: radius, borderWidth: 1.5, borderColor: border, backgroundColor: fill, transform: [{ translateY: sink }] }, style]}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  )
+}
+
+/** The switch's geometry: the knob travels the track's inner width. */
+const TOGGLE = { width: 50, height: 30, inset: 3, knob: 24 } as const
+const TOGGLE_TRAVEL = TOGGLE.width - TOGGLE.inset * 2 - TOGGLE.knob
+
+/**
+ * The switch. One shape for every boolean in the app's settings.
+ *
+ * The knob slides across and the track's green fades in under it, following
+ * `value` — so a change from anywhere (a tap, or another screen) animates the
+ * same way. Both run on the native driver (transform and opacity), with a
+ * timer that lands the end state if a browser tab stops animating.
+ */
 export function Toggle({
   value,
   onChange,
@@ -689,6 +743,23 @@ export function Toggle({
   onChange: (value: boolean) => void
   label: string
 }) {
+  const on = useRef(new Animated.Value(value ? 1 : 0)).current
+  useEffect(() => {
+    const to = value ? 1 : 0
+    const anim = Animated.timing(on, {
+      toValue: to,
+      duration: setMotion.toggleMs,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: USE_NATIVE_DRIVER,
+    })
+    anim.start()
+    const backstop = setTimeout(() => on.setValue(to), setMotion.toggleMs + 150)
+    return () => {
+      clearTimeout(backstop)
+      anim.stop()
+    }
+  }, [value, on])
+
   return (
     <Pressable
       onPress={() => {
@@ -699,22 +770,28 @@ export function Toggle({
       accessibilityState={{ checked: value }}
       accessibilityLabel={label}
       hitSlop={8}
-      className="justify-center rounded-full"
       style={{
-        width: 50,
-        height: 30,
-        paddingHorizontal: 3,
-        backgroundColor: value ? c.green : c.neutralTrack,
+        width: TOGGLE.width,
+        height: TOGGLE.height,
+        borderRadius: TOGGLE.height / 2,
+        backgroundColor: c.neutralTrack,
+        justifyContent: 'center',
+        paddingHorizontal: TOGGLE.inset,
+        overflow: 'hidden',
       }}
     >
-      <ShadowSurface shadow={setShadow}
-        style={[{ borderRadius: 9999 }, {
-          width: 24,
-          height: 24,
-          backgroundColor: '#FFFFFF',
-          marginLeft: value ? 20 : 0,
-        }]}
+      <Animated.View
+        pointerEvents="none"
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.green, opacity: on }}
       />
+      <Animated.View
+        style={{ transform: [{ translateX: on.interpolate({ inputRange: [0, 1], outputRange: [0, TOGGLE_TRAVEL] }) }] }}
+      >
+        <ShadowSurface
+          shadow={setShadow}
+          style={{ width: TOGGLE.knob, height: TOGGLE.knob, borderRadius: 9999, backgroundColor: '#FFFFFF' }}
+        />
+      </Animated.View>
     </Pressable>
   )
 }
@@ -767,24 +844,27 @@ export function NumberField({
   label: string
 }) {
   const button = (direction: -1 | 1, disabled: boolean, Glyph: ReactNode) => (
-    <Pressable
-      onPress={() => {
-        tickHaptic()
-        onChange(Math.max(min, Math.min(max, value + direction * step)))
-      }}
-      disabled={disabled}
-      accessibilityRole="button"
-      accessibilityLabel={`${direction < 0 ? 'Decrease' : 'Increase'} ${label}`}
-      className="items-center justify-center rounded-full active:opacity-60"
-      style={{
-        width: 36,
-        height: 36,
-        backgroundColor: c.greenSoft,
-        opacity: disabled ? 0.35 : 1,
-      }}
-    >
-      {Glyph}
-    </Pressable>
+    <View style={{ opacity: disabled ? 0.35 : 1 }}>
+      <RaisedButton
+        onPress={
+          disabled
+            ? undefined
+            : () => {
+                tickHaptic()
+                onChange(Math.max(min, Math.min(max, value + direction * step)))
+              }
+        }
+        accessibilityLabel={`${direction < 0 ? 'Decrease' : 'Increase'} ${label}`}
+        height={36}
+        width={36}
+        radius={18}
+        fill={c.greenSoft}
+        shoulder={playTints.jade.border}
+        scaleTo={0.88}
+      >
+        {Glyph}
+      </RaisedButton>
+    </View>
   )
 
   return (
@@ -848,22 +928,16 @@ export function ActionButton({
   const ink = primary ? '#FFFFFF' : c.textSecondary
 
   return (
-    <Pressable
+    <RaisedButton
       onPress={() => {
         tapHaptic()
         onPress()
       }}
-      accessibilityRole="button"
       accessibilityLabel={label}
-      className="flex-row items-center justify-center active:opacity-70"
-      style={{
-        height: 48,
-        borderRadius: 24,
-        gap: s.sm,
-        backgroundColor: primary ? c.green : c.background,
-        borderWidth: primary ? 0 : 1.5,
-        borderColor: c.border,
-      }}
+      height={48}
+      fill={primary ? c.green : c.background}
+      border={primary ? undefined : c.border}
+      shoulder={primary ? c.greenDark : dashShoulders.quiet}
     >
       {Icon ? <Icon color={ink} size={17} strokeWidth={2.4} /> : null}
       <Text
@@ -872,7 +946,7 @@ export function ActionButton({
       >
         {label}
       </Text>
-    </Pressable>
+    </RaisedButton>
   )
 }
 

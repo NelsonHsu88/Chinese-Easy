@@ -73,7 +73,7 @@ export function Achievements() {
 
   /** Pinning a badge goes to where it now shows: back to the profile if it's
       underneath, else replacing this page with it. */
-  const showOnProfile = () => router.dismissTo('/profile' as Href)
+  const showOnProfile = () => router.navigate('/profile-tab' as Href)
 
   const togglePin = (def: AchievementDefinition) => {
     tickHaptic()
@@ -106,9 +106,9 @@ export function Achievements() {
         <View style={{ gap: s.xl }}>
           <ShadowSurface shadow={profShadow} style={{ backgroundColor: c.card, borderRadius: profRadius.large, borderWidth: 1, borderColor: c.border, padding: s.lg,  }}>
             <View className="flex-row items-end justify-between">
-              <Text className="font-lora-bold" style={{ fontSize: 30, lineHeight: 34, color: c.navy }}>
+              <Text className="font-nunito-extrabold" style={{ fontSize: 30, lineHeight: 34, color: c.navy }}>
                 {earnedCount}
-                <Text className="font-lora" style={{ fontSize: 16, color: c.slate }}>
+                <Text className="font-nunito-semibold" style={{ fontSize: 16, color: c.slate }}>
                   {' '}/ {ACHIEVEMENTS.length} earned
                 </Text>
               </Text>
@@ -119,7 +119,7 @@ export function Achievements() {
 
             {/* The shelf the profile shows, as the profile shows it: the pinned
                 badges in order, then a dashed place for each one still free. */}
-            <Text className="font-lora" style={{ ...t.tag, color: c.slate, marginTop: s.lg, letterSpacing: 0.6, textTransform: 'uppercase' }}>
+            <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.slate, marginTop: s.lg, letterSpacing: 0.6, textTransform: 'uppercase' }}>
               On your profile
             </Text>
             <View className="flex-row" style={{ gap: s.sm, marginTop: s.sm }}>
@@ -133,7 +133,7 @@ export function Achievements() {
                   >
                     {def ? <Medal category={def.category} tier={achievementTier(def)} earned size={44} ink={ink.seal ? ink : undefined} /> : <MedalSlot size={44} />}
                     <Text
-                      className={def ? 'font-lora-bold' : 'font-lora'}
+                      className={def ? 'font-nunito-extrabold' : 'font-nunito-semibold'}
                       numberOfLines={2}
                       style={{ ...t.tag, textAlign: 'center', color: def ? c.navy : c.lockedInk, marginTop: 6 }}
                     >
@@ -174,10 +174,10 @@ export function Achievements() {
                     >
                       <Medal category={def.category} tier={achievementTier(def)} earned={earned} size={58} ink={isPinned && ink.seal ? ink : undefined} />
                       <View style={{ flex: 1 }}>
-                        <Text className="font-lora-bold" style={{ fontSize: 15.5, lineHeight: 20, color: c.navy }}>
+                        <Text className="font-nunito-extrabold" style={{ fontSize: 15.5, lineHeight: 20, color: c.navy }}>
                           {def.name}
                         </Text>
-                        <Text className="font-lora" style={{ ...t.tileBody, fontSize: 13, lineHeight: 17, color: c.slate }}>
+                        <Text className="font-nunito-semibold" style={{ ...t.tileBody, fontSize: 13, lineHeight: 17, color: c.slate }}>
                           {def.description}
                         </Text>
                         {earned ? (
@@ -199,7 +199,7 @@ export function Achievements() {
                             <View style={{ flex: 1 }}>
                               <ProgressBar fraction={progress / def.goal} color={ink.bar} height={6} />
                             </View>
-                            <Text className="font-lora" style={{ ...t.tag, color: c.slate }}>
+                            <Text className="font-nunito-semibold" style={{ ...t.tag, color: c.slate }}>
                               {progress.toLocaleString()} / {def.goal.toLocaleString()}
                             </Text>
                           </View>
@@ -252,10 +252,10 @@ function CategoryBanner({ category, earned, total, bar }: { category: Achievemen
     >
       <PlayWash tint={tint} direction="left" />
       <View style={{ flex: 1, paddingRight: s.sm }}>
-        <Text className="font-lora-bold" style={{ ...t.section, fontSize: 20, lineHeight: 25, color: c.navy }}>
+        <Text className="font-nunito-extrabold" style={{ ...t.section, fontSize: 20, lineHeight: 25, color: c.navy }}>
           {CATEGORY_TITLES[category]}
         </Text>
-        <Text className="font-lora" style={{ ...t.tag, color: complete ? c.jadeDark : c.slate, marginTop: 2 }}>
+        <Text className="font-nunito-semibold" style={{ ...t.tag, color: complete ? c.jadeDark : c.slate, marginTop: 2 }}>
           {complete ? 'All earned' : `${earned} of ${total} earned`}
         </Text>
         <View style={{ marginTop: s.sm, maxWidth: 150 }}>
@@ -292,10 +292,10 @@ function ReplaceSheet({
         >
           <View className="flex-row items-start justify-between">
             <View style={{ flex: 1 }}>
-              <Text className="font-lora-bold" style={{ ...t.section, color: c.navy }}>
+              <Text className="font-nunito-extrabold" style={{ ...t.section, color: c.navy }}>
                 Choose a badge to replace
               </Text>
-              <Text className="font-lora" style={{ ...t.body, color: c.slate, marginTop: 4 }}>
+              <Text className="font-nunito-semibold" style={{ ...t.body, color: c.slate, marginTop: 4 }}>
                 Your profile shows {MAX_PINNED}. {incomingDef?.name} will take the place of the one you pick.
               </Text>
             </View>
@@ -317,10 +317,10 @@ function ReplaceSheet({
                   style={{ gap: s.md, backgroundColor: c.card, borderRadius: profRadius.medium, borderWidth: 1, borderColor: c.border, padding: s.md }}
                 >
                   <Medal category={def.category} tier={achievementTier(def)} earned size={40} />
-                  <Text className="font-lora-bold" style={{ fontSize: 15.5, color: c.navy, flex: 1 }}>
+                  <Text className="font-nunito-extrabold" style={{ fontSize: 15.5, color: c.navy, flex: 1 }}>
                     {def.name}
                   </Text>
-                  <Text className="font-lora" style={{ ...t.link, color: c.jadeDark }}>
+                  <Text className="font-nunito-semibold" style={{ ...t.link, color: c.jadeDark }}>
                     Replace
                   </Text>
                 </Pressable>

@@ -241,6 +241,7 @@ function PurchaseState({
       unprompted={unprompted}
       onClose={onClose}
       pose="thumbsUp"
+      topBar={false}
       says={'Study without\ninterruptions.'}
       headlinePlain="Learn "
       headlineMarked="ad-free"
@@ -298,6 +299,15 @@ function PurchaseState({
         onPress={buy}
         accessibilityLabel={`Start subscription, ${chosen?.price ?? ''} per ${chosen?.unit ?? ''}`}
       />
+
+      {/*
+        The way out, in place of a corner arrow: a real button, so leaving is
+        as plain as staying — and worded as what the learner keeps by leaving
+        (the ads), which is the honest nudge rather than a guilt trip.
+      */}
+      <View style={{ marginTop: s.md }}>
+        <OutlineButton label="Maybe later — keep the ads for now" onPress={onClose} accessibilityLabel="Maybe later. Close and keep the ads for now" />
+      </View>
 
       <Text
         className="font-nunito-semibold"
@@ -430,11 +440,14 @@ function Page({
   headlinePlain,
   headlineMarked,
   footScenery = false,
+  topBar = true,
   children,
 }: {
   column: number
   unprompted: boolean
   onClose: () => void
+  /** The corner back/close arrow. The offer has none — its way out is a button under the CTA. */
+  topBar?: boolean
   pose: 'thumbsUp' | 'gratitude'
   says: string
   headlinePlain: string
@@ -511,7 +524,7 @@ function Page({
         <Animated.View style={{ width: column, flexGrow: 1, opacity: enter }}>
           <View style={{ flexGrow: 1 }}>
             <SubscriptionHero width={column} height={heroHeight} pose={pose} says={says}>
-              <TopBar mode={unprompted ? 'close' : 'back'} onPress={onClose} />
+              {topBar ? <TopBar mode={unprompted ? 'close' : 'back'} onPress={onClose} /> : null}
             </SubscriptionHero>
 
             <View style={{ paddingHorizontal: s.screen, flexGrow: 1, paddingBottom: s.md }}>

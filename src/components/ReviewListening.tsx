@@ -14,7 +14,7 @@ import {
 import { Volume2, RotateCcw, Check, X, History, HeadphoneOff } from 'lucide-react-native'
 import { useApp, type WordListened } from '../context/AppContext'
 import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
-import { speak, SLOW_SPEECH_RATE } from '../lib/speech'
+import { speak, stopSpeaking, SLOW_SPEECH_RATE } from '../lib/speech'
 import { playCorrectSound, playRetryTone } from '../lib/sound'
 import { carefulHaptic, correctHaptic, tickHaptic, tapHaptic } from '../lib/haptics'
 import { shortGloss } from '../lib/definitions'
@@ -35,6 +35,7 @@ import {
 } from './listening/tokens'
 import { listenArt } from './listening/art'
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
+import { useLearningLoaderGone } from './loading/LearningLoader'
 
 const SCREEN_PAD = DRILL_PAD
 
@@ -93,10 +94,15 @@ export function ReviewListening({
   const [showRecent, setShowRecent] = useState(false)
   const spokenText = displayWord(word, settings.script)
 
-  // Play once on arrival, the way a listening exercise opens itself.
+  // Play once on arrival, the way a listening exercise opens itself — but not
+  // under the learning loader: a session that opens on a listening question
+  // waits until Shifu has gone, so the word isn't spoken to a loading screen.
+  const loaderGone = useLearningLoaderGone()
   useEffect(() => {
-    speak(spokenText)
-  }, [spokenText])
+    if (loaderGone) speak(spokenText)
+  }, [spokenText, loaderGone])
+  // Closing the drill mid-word mustn't leave the voice talking over the hub.
+  useEffect(() => () => stopSpeaking(), [])
 
   const answered = checked || gaveUp
   const wasCorrect = checked && selectedId === word.id

@@ -1,14 +1,14 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { View, Text, Image, ScrollView, Animated, useWindowDimensions, type ImageSourcePropType } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import { ChevronRight } from 'lucide-react-native'
-import { dashColors as c, DASH_CONTENT_MAX, playTints, type PlayTint } from '../components/dashboard/tokens'
+import { dashColors as c, DASH_CONTENT_MAX } from '../components/dashboard/tokens'
 /* The card surface is Review's own, imported rather than copied, so the two
    tabs' cards can never drift apart: ivory, a hairline, the same corner, the
    same barely-there shadow, the same type. */
-import { revColors, revRadius, revShadow, revType } from '../components/review/tokens'
+import { revColors, revEntrance, revRadius, revShadow, revType } from '../components/review/tokens'
 import { RefHero, SHIFU_BUBBLE_REF_WIDTH, ShifuBubble, refScale, refY, shifuBubbleFontSize } from '../components/refScene'
 import { CLOUDS_MANY } from '../components/AmbientClouds'
 import { PressableScale } from '../components/dashboard/parts'
@@ -105,13 +105,12 @@ interface LearnCardDef {
   title: string
   description: string
   art: ImageSourcePropType
-  tint: PlayTint
   onPress: () => void
 }
 
 /**
  * One card: the scene on the left, feathered into the card; the title and
- * description; a soft round chevron on the right.
+ * description; a grey chevron on the right.
  *
  * The whole card is the target — the chevron is decoration, not a second
  * button, so no `Pressable` nests inside `PressableScale`. `numberOfLines` is
@@ -121,7 +120,6 @@ function LearnCard({
   title,
   description,
   art,
-  tint,
   onPress,
   height,
   scale,
@@ -167,7 +165,7 @@ function LearnCard({
         <View className="flex-1" style={{ paddingLeft: 8, paddingRight: 8 }}>
           {/* Sized so "Chinese Basics" fits one line at 360pt; never truncated. */}
           <Text
-            className="font-lora-bold"
+            className="font-nunito-extrabold"
             style={{ fontSize: 19.5 * scale, lineHeight: 24 * scale, letterSpacing: revType.cardTitle.letterSpacing, color: revColors.navy }}
           >
             {title}
@@ -187,10 +185,10 @@ function LearnCard({
         </View>
 
         <View
-          className="items-center justify-center rounded-full"
-          style={{ width: chevron, height: chevron, marginRight: Math.round(20 * scale), backgroundColor: tint.soft }}
+          className="items-center justify-center"
+          style={{ width: chevron, height: chevron, marginRight: Math.round(20 * scale) }}
         >
-          <ChevronRight size={Math.round(20 * scale)} color={tint.ink} strokeWidth={2.4} />
+          <ChevronRight size={Math.round(20 * scale)} color={revColors.slate} strokeWidth={2.4} />
         </View>
       </ShadowSurface>
     </PressableScale>
@@ -248,15 +246,33 @@ export function Learn() {
     width: BUBBLE_REF.width * k,
   }
 
-  /* One calm arrival, replayed on every return to the tab — the page rises,
-     the painting drifts in from the right, both at once as on Review. */
+  /* One calm arrival, replayed on every return to the tab, on Review's own
+     beat (`revEntrance`): the page rises, the painting drifts in from the
+     right, everything at once, with no card-by-card stagger. */
   const run = useEntranceRun()
-  const page = useReveal({ from: 'bottom', at: 0, duration: 420, run, distance: 22 })
-  const hero = useReveal({ from: 'right', at: 0, duration: 520, run, distance: 28 })
+  const page = useReveal({ from: 'bottom', at: revEntrance.at, duration: revEntrance.for, run, distance: revEntrance.slideY })
+  const hero = useReveal({ from: 'right', at: revEntrance.at, duration: revEntrance.for, run, distance: revEntrance.slideX })
   /* The cards and the bubble are raised surfaces inside that fade: their
      shadows settle in behind them on this value (`ShadowSurface`) instead of
      showing at full strength before the cards do, as Android drew them. */
-  const shadowArrival = useShadowReveal({ at: 0, duration: 420, run })
+  const shadowArrival = useShadowReveal({ at: revEntrance.at, duration: revEntrance.for, run })
+
+  /*
+   * The cards are sized from two measurements (viewport and header), which
+   * land a frame or two after mount. Shown before then, the cards drew at a
+   * guessed height and snapped to the real one mid-arrival. So the column
+   * waits, invisible, for them, with a short backstop, since `onLayout`
+   * doesn't always fire on web (see Animation in CLAUDE.md).
+   */
+  const [measured, setMeasured] = useState(false)
+  const sized = viewportHeight !== null && headerHeight !== null
+  useEffect(() => {
+    if (sized) setMeasured(true)
+  }, [sized])
+  useEffect(() => {
+    const backstop = setTimeout(() => setMeasured(true), 250)
+    return () => clearTimeout(backstop)
+  }, [])
 
   const cards: LearnCardDef[] = [
     {
@@ -265,7 +281,6 @@ export function Learn() {
       title: 'New Words',
       description: 'Learn useful Chinese words with clear examples and audio.',
       art: ART.newWords,
-      tint: playTints.jade,
       onPress: () => router.push('/new-words'),
     },
     {
@@ -274,7 +289,6 @@ export function Learn() {
       title: 'Books',
       description: 'Read Chinese stories, articles and classics to build your skills.',
       art: ART.books,
-      tint: playTints.blossom,
       onPress: () => router.push('/books'),
     },
     FEATURES.lessons
@@ -284,7 +298,6 @@ export function Learn() {
           title: 'Lessons Path',
           description: 'Follow a structured path from beginner to advanced.',
           art: ART.basics,
-          tint: playTints.sky,
           onPress: () => router.push('/lessons'),
         }
       : {
@@ -293,7 +306,6 @@ export function Learn() {
           title: 'Chinese Basics',
           description: 'Start from zero and build a strong foundation.',
           art: ART.basics,
-          tint: playTints.sky,
           onPress: () => router.push('/basics'),
         },
   ]
@@ -329,7 +341,7 @@ export function Learn() {
         onLayout={(e) => settle(setViewportHeight)(e.nativeEvent.layout.height)}
       >
         <ShadowRevealProvider value={shadowArrival}>
-        <View style={{ width: columnWidth, flexGrow: 1, paddingHorizontal: GUTTER }}>
+        <View style={{ width: columnWidth, flexGrow: 1, paddingHorizontal: GUTTER, opacity: measured ? 1 : 0 }}>
           <View
             style={{ minHeight: compact ? undefined : headerMin }}
             onLayout={(e) => settle(setHeaderHeight)(e.nativeEvent.layout.height)}
@@ -338,10 +350,10 @@ export function Learn() {
 
             <Animated.View style={[{ paddingTop: compact ? 12 : PAGE_TITLE_TOP + 10, paddingBottom: compact ? 16 : 0 }, page]} needsOffscreenAlphaCompositing>
               {/* Lora Bold in navy, matching the Review, Challenges, My Words and Dictionary headings. */}
-              <Text className="font-lora-bold" accessibilityRole="header" style={{ ...PAGE_TITLE, color: c.navy }}>
+              <Text className="font-nunito-extrabold" accessibilityRole="header" style={{ ...PAGE_TITLE, color: c.navy }}>
                 Learn
               </Text>
-              <Text className="font-lora" style={{ ...PAGE_SUBTITLE, marginTop: 4, color: c.textSecondary }}>
+              <Text className="font-nunito-semibold" style={{ ...PAGE_SUBTITLE, marginTop: 4, color: c.textSecondary }}>
                 Choose your path and{'\n'}make progress today.
               </Text>
 
@@ -354,12 +366,10 @@ export function Learn() {
           </View>
 
           <Animated.View style={[{ gap: CARD_GAP, paddingBottom: COLUMN_BOTTOM }, page]} needsOffscreenAlphaCompositing>
-            {cards.map(({ key, tourId, ...card }, i) => (
-              <CardArrival key={key} index={i} run={run}>
-                <TourTarget id={tourId} radius={CARD_RADIUS}>
-                  <LearnCard {...card} height={cardHeight} scale={typeScale} />
-                </TourTarget>
-              </CardArrival>
+            {cards.map(({ key, tourId, ...card }) => (
+              <TourTarget key={key} id={tourId} radius={CARD_RADIUS}>
+                <LearnCard {...card} height={cardHeight} scale={typeScale} />
+              </TourTarget>
             ))}
           </Animated.View>
         </View>
@@ -370,8 +380,3 @@ export function Learn() {
   )
 }
 
-/** Each card follows the page up a beat after the one above it. */
-function CardArrival({ index, run, children }: { index: number; run: number; children: ReactNode }) {
-  const style = useReveal({ from: 'bottom', at: 90 + index * 70, duration: 380, run, distance: 16 })
-  return <Animated.View style={style}>{children}</Animated.View>
-}

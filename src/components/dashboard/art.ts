@@ -37,9 +37,10 @@ export const homeArt = {
     source: require('../../assets/images/home/challenge-rocks.png'),
     box: { x: 238, y: 1452, w: 240, h: 44 },
   },
+  /** The whole gift (the Challenges screen's own), centred in a disc on the reward row. */
   challengeGift: {
-    source: require('../../assets/images/app/home-gift.png'),
-    box: { x: 630, y: 1215, w: 190, h: 278 },
+    source: require('../../assets/images/challenges/gift.png'),
+    box: { x: 0, y: 0, w: 208, h: 134 },
   },
 } as const
 

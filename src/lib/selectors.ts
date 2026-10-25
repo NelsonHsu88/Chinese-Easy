@@ -86,9 +86,13 @@ function hasExampleSentence(word: VocabWord): boolean {
  *
  * The floor matters as much as the ceiling — someone placed at HSK 6 has no use
  * for HSK 1 vocabulary, so levels below theirs are excluded rather than merely
- * sorted last. Sorting still puts their own level ahead of the stretch level, and
- * once both are exhausted the pool empties and New Words prompts them to raise
- * their level in Settings.
+ * sorted last. Sorting still puts their own level ahead of the stretch level.
+ *
+ * Once both are used up the queue doesn't end: it carries on with the rest of
+ * the bank's teachable words, commonest first — everything above the window,
+ * then anything left below it. Frequency is what makes a word worth learning,
+ * so after the HSK-shaped start a learner keeps meeting practical vocabulary
+ * rather than an empty screen.
  *
  * Three further gates keep the cards teachable: only one- and two-character
  * words, only words that already carry an example sentence, and only words that
@@ -108,10 +112,10 @@ export function newWordsPool(
   seed?: number,
 ): VocabWord[] {
   const addedIds = new Set(deck.map((c) => c.wordId))
-  const candidates = allWords
-    .filter((w) => !addedIds.has(w.id))
-    .filter((w) => w.hskLevel >= settings.hskLevel && w.hskLevel <= settings.hskLevel + 1)
-    .filter(isNewWordCandidate)
+  const level = settings.hskLevel
+  const inWindow = (w: VocabWord) => w.hskLevel >= level && w.hskLevel <= level + 1
+  const teachable = teachableWords(allWords).filter((w) => !addedIds.has(w.id))
+  const candidates = teachable.filter(inWindow)
 
   /*
    * Order matters as much as membership here. This used to sort by id, which for
@@ -134,7 +138,30 @@ export function newWordsPool(
     (frequencyRank.get(w.id) ?? 0) + (seed === undefined ? 0 : jitter(w.id, seed) * NEW_WORD_JITTER)
   const ordered = candidates.sort((a, b) => a.hskLevel - b.hskLevel || rank(a) - rank(b))
 
-  return spreadHeadCharacters(weightTowardsGoal(ordered, settings.learningGoal))
+  /* After the window, in bank (frequency) order: above it first, then below.
+     Kept apart from the window's ordering so goal-weighting never pulls these
+     ahead of the learner's own level. */
+  const beyond = [
+    ...teachable.filter((w) => w.hskLevel > level + 1),
+    ...teachable.filter((w) => w.hskLevel < level),
+  ]
+
+  return [
+    ...spreadHeadCharacters(weightTowardsGoal(ordered, settings.learningGoal)),
+    ...spreadHeadCharacters(weightTowardsGoal(beyond, settings.learningGoal)),
+  ]
+}
+
+const teachableCache = new WeakMap<VocabWord[], VocabWord[]>()
+
+/** Every word New Words could ever offer, in bank (frequency) order. Cached per bank. */
+function teachableWords(allWords: VocabWord[]): VocabWord[] {
+  let list = teachableCache.get(allWords)
+  if (!list) {
+    list = allWords.filter(isNewWordCandidate)
+    teachableCache.set(allWords, list)
+  }
+  return list
 }
 
 /** How far, in frequency places, a seeded shuffle may move a word. */

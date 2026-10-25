@@ -62,7 +62,7 @@ export function ProfileCard({
 
         <View style={{ flex: 1, marginLeft: s.lg, marginRight: s.sm }}>
           <Text
-            className="font-lora-bold"
+            className="font-nunito-extrabold"
             numberOfLines={1}
             style={{ ...t.profileName, color: c.navy }}
           >

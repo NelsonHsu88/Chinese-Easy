@@ -6,6 +6,7 @@ import * as Linking from 'expo-linking'
 import { getSupabase, isSupabaseConfigured } from '../lib/supabase'
 import { deviceStore, markAccountForPurge, requestFreshStart } from '../lib/storage'
 import { recordGuestAdoptionIntent } from '../lib/storageScope'
+import { MIN_PASSWORD_LENGTH } from '../lib/passwordRules'
 
 /*
  * Closes the browser tab left over from an OAuth redirect on web. A no-op
@@ -49,6 +50,8 @@ export interface AuthResult {
    * about the developer. Offered to the profile screen as a starting point.
    */
   account?: { email: string; name: string }
+  /** True when a log-in found no account and created one instead. */
+  created?: boolean
 }
 
 interface AuthContextValue {
@@ -137,7 +140,7 @@ function readableError(message: string): string {
   const m = message.toLowerCase()
   if (m.includes('invalid login credentials')) return 'That email and password don’t match an account.'
   if (m.includes('user already registered')) return 'There’s already an account with that email. Try signing in.'
-  if (m.includes('password should be at least')) return 'Please choose a password of at least 6 characters.'
+  if (m.includes('password should be at least')) return `Please choose a password of at least ${MIN_PASSWORD_LENGTH} characters.`
   if (m.includes('unable to validate email')) return 'That doesn’t look like a valid email address.'
   // `email_address_invalid`: Supabase won't mail placeholder or test-looking addresses.
   if (m.includes('email address') && m.includes('is invalid'))
@@ -216,6 +219,25 @@ export function isGoogleSignInRedirect(code: string | undefined): boolean {
 }
 
 /** The native half of Google sign-in: the browser round trip and the code exchange. */
+/**
+ * An auth action that reports a failure instead of throwing one.
+ *
+ * Every screen sets a busy flag, awaits one of these and clears the flag when it
+ * returns. A throw skipped the clear — the in-app browser refusing to open
+ * (Android allows one at a time), a native module missing, the network
+ * dropping inside the SDK — and left the button spinning until a restart.
+ */
+function guarded<A extends unknown[]>(action: (...args: A) => Promise<AuthResult>) {
+  return async (...args: A): Promise<AuthResult> => {
+    try {
+      return await action(...args)
+    } catch (error) {
+      if (__DEV__) console.warn('[auth] action threw:', error)
+      return { error: 'Something didn’t work. Check your connection and try again.' }
+    }
+  }
+}
+
 async function finishGoogleSignIn(authUrl: string, redirectTo: string): Promise<AuthResult> {
   const supabase = getSupabase()
   const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectTo)
@@ -267,6 +289,52 @@ async function accountStillExists(): Promise<boolean | null> {
   } catch {
     return null
   }
+}
+
+const EXISTING_ACCOUNT = 'There’s already an account with that email. Try logging in.'
+
+/** Supabase's answer for both "no such account" and "wrong password". */
+function isInvalidCredentials(error: { message: string; code?: string }): boolean {
+  return error.code === 'invalid_credentials' || /invalid login credentials/i.test(error.message)
+}
+
+/** Creates an email + password account. Used by sign-up, and by log-in when no account matched. */
+async function createEmailAccount(email: string, password: string, name?: string, captchaToken?: string): Promise<AuthResult> {
+  if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
+  const { data, error } = await getSupabase().auth.signUp({
+    email: email.trim(),
+    password,
+    options: {
+      captchaToken,
+      emailRedirectTo: authRedirectTo(),
+      data: name?.trim() ? { display_name: name.trim() } : undefined,
+    },
+  })
+  if (error) return { error: readableError(error.message) }
+  /*
+   * With confirmation on, signing up with an address that already has an
+   * account is not an error — Supabase answers with a placeholder user with no
+   * identities, so the response can't be used to probe who is registered. The
+   * placeholder is the only signal we get; without this check the learner
+   * would wait for a confirmation email that is never sent.
+   */
+  if (data.user && data.user.identities?.length === 0) return { error: EXISTING_ACCOUNT }
+  /*
+   * Account *creation* is the only local proof that an account is new, and a
+   * new account is the only one guest progress may be adopted into. Recording
+   * the intent here — and nowhere else — is what stops a friend signing into
+   * their own established account on this phone from inheriting the owner's
+   * vocabulary. See `maybeAdoptGuestProgress` in lib/storageMigration.ts.
+   */
+  await recordGuestAdoptionIntent(deviceStore, email)
+  /*
+   * With "Confirm email" on — Supabase's default — signUp returns a user but
+   * no session, and nothing else happens until the link in the email is
+   * clicked. Reporting that honestly is the difference between a learner
+   * waiting for a screen that never comes and one checking their inbox.
+   */
+  if (data.user && !data.session) return { error: null, needsEmailConfirmation: true }
+  return { error: null, account: accountFor(data.user) }
 }
 
 /** Local half of a deletion: erase this device's copy, start over, sign out. */
@@ -337,58 +405,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.remove()
   }, [sessionUserId])
 
-  const signUpWithEmail = useCallback(async (email: string, password: string, name?: string, captchaToken?: string): Promise<AuthResult> => {
-    if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
-    const { data, error } = await getSupabase().auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        captchaToken,
-        emailRedirectTo: authRedirectTo(),
-        data: name?.trim() ? { display_name: name.trim() } : undefined,
-      },
-    })
-    if (error) return { error: readableError(error.message) }
-    /*
-     * With confirmation on, signing up with an address that already has an
-     * account is not an error — Supabase answers with a placeholder user with no
-     * identities, so the response can't be used to probe who is registered. The
-     * placeholder is the only signal we get; without this check the learner
-     * would wait for a confirmation email that is never sent.
-     */
-    if (data.user && data.user.identities?.length === 0) {
-      return { error: 'There’s already an account with that email. Try logging in.' }
-    }
-    /*
-     * Account *creation* is the only local proof that an account is new, and a
-     * new account is the only one guest progress may be adopted into. Recording
-     * the intent here — and nowhere else — is what stops a friend signing into
-     * their own established account on this phone from inheriting the owner's
-     * vocabulary. See `maybeAdoptGuestProgress` in lib/storageMigration.ts.
-     */
-    await recordGuestAdoptionIntent(deviceStore, email)
-    /*
-     * With "Confirm email" on — Supabase's default — signUp returns a user but
-     * no session, and nothing else happens until the link in the email is
-     * clicked. Reporting that honestly is the difference between a learner
-     * waiting for a screen that never comes and one checking their inbox.
-     */
-    if (data.user && !data.session) return { error: null, needsEmailConfirmation: true }
-    return { error: null, account: accountFor(data.user) }
-  }, [])
+  const signUpWithEmail = useCallback(guarded(createEmailAccount), [])
 
-  const signInWithEmail = useCallback(async (email: string, password: string, captchaToken?: string): Promise<AuthResult> => {
+  const signInWithEmail = useCallback(guarded(async (email: string, password: string, captchaToken?: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
     const { data, error } = await getSupabase().auth.signInWithPassword({
       email: email.trim(),
       password,
       options: { captchaToken },
     })
-    if (error) return { error: readableError(error.message) }
-    return { error: null, account: accountFor(data.user) }
-  }, [])
+    if (!error) return { error: null, account: accountFor(data.user) }
+    if (!isInvalidCredentials(error)) return { error: readableError(error.message) }
 
-  const signInWithApple = useCallback(async (captchaToken?: string): Promise<AuthResult> => {
+    /*
+     * No account matched. Supabase says the same thing for "no such account"
+     * and "wrong password", so try creating one: a new address becomes an
+     * account, and an existing one comes back as a placeholder with no
+     * identities, which means the password was wrong.
+     *
+     * With CAPTCHA on, the sign-in above spent the single-use token, so this
+     * second call is refused; the learner is told to use "Create account".
+     */
+    if (password.length < MIN_PASSWORD_LENGTH) return { error: readableError(error.message) }
+    const created = await createEmailAccount(email, password, undefined, captchaToken)
+    if (created.error === EXISTING_ACCOUNT) return { error: readableError(error.message) }
+    if (created.error && /security check/.test(created.error)) {
+      return { error: 'No account matched. To create one, tap “Create account” on the first page.' }
+    }
+    return created.error ? created : { ...created, created: true }
+  }), [])
+
+  const signInWithApple = useCallback(guarded(async (captchaToken?: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
     if (Platform.OS !== 'ios') return { error: 'Sign in with Apple is only available on iPhone and iPad.' }
     // Required lazily: the native module doesn't exist on Android or web.
@@ -434,9 +481,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const account = accountFor(data.user)
     return { error: null, account: { email: account.email, name: account.name || given } }
-  }, [])
+  }), [])
 
-  const sendPasswordReset = useCallback(async (email: string, captchaToken?: string): Promise<AuthResult> => {
+  const sendPasswordReset = useCallback(guarded(async (email: string, captchaToken?: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
     const { error } = await getSupabase().auth.resetPasswordForEmail(email.trim(), {
       redirectTo: Linking.createURL('auth/reset-password'),
@@ -453,16 +500,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: message }
     }
     return { error: null }
-  }, [])
+  }), [])
 
-  const setNewPassword = useCallback(async (password: string): Promise<AuthResult> => {
+  const setNewPassword = useCallback(guarded(async (password: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
     const { error } = await getSupabase().auth.updateUser({ password })
     return { error: error ? readableError(error.message) : null }
-  }, [])
+  }), [])
 
   const changePassword = useCallback(
-    async (current: string, next: string, captchaToken?: string): Promise<AuthResult> => {
+    guarded(async (current: string, next: string, captchaToken?: string): Promise<AuthResult> => {
       const address = session?.user.email
       if (!isSupabaseConfigured || !address) return { error: 'You’re not signed in.' }
       const supabase = getSupabase()
@@ -476,18 +523,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       const { error } = await supabase.auth.updateUser({ password: next })
       return { error: error ? readableError(error.message) : null }
-    },
+    }),
     [session],
   )
 
-  const changeEmail = useCallback(async (email: string): Promise<AuthResult> => {
+  const changeEmail = useCallback(guarded(async (email: string): Promise<AuthResult> => {
     if (!isSupabaseConfigured || !session) return { error: 'You’re not signed in.' }
     const { error } = await getSupabase().auth.updateUser(
       { email: email.trim() },
       { emailRedirectTo: authRedirectTo() },
     )
     return { error: error ? readableError(error.message) : null }
-  }, [session])
+  }), [session])
 
   /**
    * The redirect Google sends the person back to when they are done.
@@ -501,7 +548,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    */
   const oauthRedirectTo = useCallback(authRedirectTo, [])
 
-  const signInWithGoogle = useCallback(async (): Promise<AuthResult> => {
+  const signInWithGoogle = useCallback(guarded(async (): Promise<AuthResult> => {
     if (!isSupabaseConfigured) return { error: 'Supabase isn’t configured yet.' }
     const supabase = getSupabase()
 
@@ -538,15 +585,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       googleSignInInFlight = false
     }
-  }, [oauthRedirectTo])
+  }), [oauthRedirectTo])
 
 
   const signOut = useCallback(async () => {
     if (!isSupabaseConfigured) return
-    await getSupabase().auth.signOut()
+    try {
+      await getSupabase().auth.signOut()
+    } catch (error) {
+      if (__DEV__) console.warn('[auth] sign-out threw:', error)
+    }
   }, [])
 
-  const deleteAccount = useCallback(async (): Promise<AuthResult> => {
+  const deleteAccount = useCallback(guarded(async (): Promise<AuthResult> => {
     const userId = session?.user.id
     if (!isSupabaseConfigured || !userId) return { error: 'You’re not signed in.' }
     const supabase = getSupabase()
@@ -567,7 +618,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     await forgetDeletedAccount(userId)
     return { error: null }
-  }, [session])
+  }), [session])
 
   const value = useMemo<AuthContextValue>(
     () => ({

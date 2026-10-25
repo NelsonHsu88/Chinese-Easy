@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
 import { View, type StyleProp, type ViewStyle } from 'react-native'
+import type { ViewInstance } from 'react-native'
 import type { TourTargetId } from '../../lib/tour'
 
 /*
@@ -28,7 +29,7 @@ export interface MeasuredTarget {
 }
 
 interface Entry {
-  view: View | null
+  view: ViewInstance | null
   radius: number
   /** Scrolls the screen's ScrollView by this much, where the screen offers one. */
   scrollBy: ((dy: number) => void) | null
@@ -55,7 +56,7 @@ export function TourTarget({
   style?: StyleProp<ViewStyle>
   children: ReactNode
 }) {
-  const ref = useRef<View>(null)
+  const ref = useRef<ViewInstance>(null)
   const scrollBy = useContext(TourScrollContext)
 
   useEffect(() => {

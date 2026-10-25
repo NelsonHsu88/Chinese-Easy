@@ -1,30 +1,29 @@
+import { RaisedButton } from '../components/dashboard/parts'
+import { lookalikesFor } from '../lib/lookalikes'
 import { useMemo, useState } from 'react'
-import { Text } from 'react-native'
+import { Text, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useApp } from '../context/AppContext'
 import {
   DetailShell,
   DetailCard,
+  DetailSheetShell,
   StrokeOrderModal,
   openCharacterDetail,
   openWordDetail,
   useInDictionaryTab,
 } from '../components/dictionary/DetailShell'
-import {
-  AppearsInCard,
-  HeroCard,
-  MeaningCard,
-  RadicalCard,
-  WordsContainingCard,
-  type HeroStat,
-} from '../components/dictionary/DetailSections'
+import { DetailHero, type HeroFact } from '../components/dictionary/DetailSections'
+import { SheetHeader } from '../components/dictionary/ExploreCards'
+import { buildExploreTabs } from '../components/dictionary/exploreTabs'
+import { frequencyLabel, frequencyRank } from '../lib/frequency'
 import { SentencesModal, WordsModal } from '../components/dictionary/AppearsInModals'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
-import { PressScale } from '../components/dictionary/PressScale'
-import { DICT_BG, DICT_BUTTON_SHADOW } from '../components/dictionary/shadows'
+import { DICT_BG } from '../components/dictionary/shadows'
 import {
   appearsIn,
   buildDeckIndex,
+  entryStateFor,
   isInDeck,
   radicalFor,
   relatedCharacters,
@@ -34,6 +33,10 @@ import {
   wordsWith,
 } from '../lib/dictionary'
 import { tapHaptic } from '../lib/haptics'
+import { allSenses, shortGloss } from '../lib/definitions'
+import { displayPinyin } from '../lib/hanzi'
+import { LOOKUP_HSK_LEVEL } from '../data/lookupWords'
+import { DeckStateButton, FavoriteButton } from '../components/dictionary/DictionaryControls'
 import type { VocabWord } from '../types'
 
 /**
@@ -46,7 +49,7 @@ import type { VocabWord } from '../types'
 export function CharacterDetail() {
   const { character } = useLocalSearchParams<{ character?: string }>()
   const inTab = useInDictionaryTab()
-  const { wordBank, deck, newlyAddedWordIds, addToReviewDeck, pushRecentSearch, settings } = useApp()
+  const { wordBank, deck, newlyAddedWordIds, addToReviewDeck, pushRecentSearch, settings, favoriteWordIds, toggleFavorite } = useApp()
 
   const [watching, setWatching] = useState(false)
   const [practising, setPractising] = useState(false)
@@ -89,10 +92,13 @@ export function CharacterDetail() {
   }, [entry, glyph])
 
   const radical = useMemo(() => (glyph ? radicalFor(glyph) : null), [glyph])
-  const related = useMemo(() => (radical ? relatedCharacters(radical, glyph) : []), [radical, glyph])
+  const lookalikes = useMemo(() => (glyph ? lookalikesFor(glyph, wordBank, settings.script) : []), [glyph, wordBank, settings.script])
   const counts = useMemo(() => (glyph ? appearsIn(wordBank, glyph, settings.script) : { words: 0, sentences: 0 }), [wordBank, glyph, settings.script])
   const words = useMemo(() => (glyph ? wordsContaining(wordBank, glyph, settings.script, 3) : []), [wordBank, glyph, settings.script])
   const deckIndex = useMemo(() => buildDeckIndex(deck, newlyAddedWordIds), [deck, newlyAddedWordIds])
+  /* The Explore sheet's longer lists: five related words, five example sentences. */
+  const relatedLong = useMemo(() => (glyph ? wordsContaining(wordBank, glyph, settings.script, 5) : []), [wordBank, glyph, settings.script])
+  const exampleHits = useMemo(() => (glyph ? sentencesWith(wordBank, glyph, settings.script, 5) : []), [wordBank, glyph, settings.script])
 
   // Full scans of the bank, so only run once a sheet is actually open — see the
   // same pair in WordDetail.
@@ -109,19 +115,21 @@ export function CharacterDetail() {
     return (
       <DetailShell title="Character">
         <DetailCard>
-          <Text className="font-dict-sans text-[16px] text-dict-body">No character was given.</Text>
-          <PressScale
+          <Text className="font-sans text-[16px] text-dict-body">No character was given.</Text>
+          <RaisedButton
             onPress={() => {
               tapHaptic()
               if (router.canGoBack()) router.back()
               else router.replace(inTab ? '/dictionary-tab' : '/my-words')
             }}
-            style={[{ height: 48, marginTop: 16 }, DICT_BUTTON_SHADOW, { borderRadius: 999, backgroundColor: DICT_BG.green }]}
-            className="items-center justify-center rounded-full bg-dict-green"
             accessibilityLabel="Back to the dictionary"
+            wrapperStyle={{ marginTop: 16, alignSelf: 'stretch' }}
+            height={48}
+            fill={DICT_BG.green}
+            shoulder={DICT_BG.greenShoulder}
           >
-            <Text className="font-dict-bold text-[15px] text-white">Back to Dictionary</Text>
-          </PressScale>
+            <Text className="font-nunito-bold text-[15px] text-white">Back to Dictionary</Text>
+          </RaisedButton>
         </DetailCard>
       </DetailShell>
     )
@@ -129,10 +137,9 @@ export function CharacterDetail() {
 
   const strokes = strokeCountFor(glyph)
 
-  const stats: HeroStat[] = [
-    ...(radical ? [{ label: 'Radical', value: radical.radical.character, hanzi: true }] : []),
-    ...(strokes !== null ? [{ label: 'Strokes', value: `${strokes}` }] : []),
-    ...(entry ? [{ label: 'Level', value: `HSK ${entry.hskLevel}`, green: true }] : []),
+  const facts: HeroFact[] = [
+    ...(strokes !== null ? [{ text: `${strokes} strokes` }] : []),
+    ...(entry && entry.hskLevel < LOOKUP_HSK_LEVEL ? [{ text: `HSK ${entry.hskLevel}`, green: true }] : []),
   ]
 
   const openWord = (word: VocabWord) => {
@@ -141,56 +148,105 @@ export function CharacterDetail() {
     openWordDetail(word.id, inTab)
   }
 
+  const hints = [
+    ...(entry?.example ? ['Examples'] : []),
+    'Radical',
+    ...(words.length > 0 ? ['Related words'] : []),
+    ...(entry && allSenses(entry).length > 1 ? ['More meanings'] : []),
+  ].slice(0, 3)
+
+  const senses = entry ? allSenses(entry) : []
+  const rank = entry ? frequencyRank(entry) : null
+  const level = entry ? (entry.hskLevel < LOOKUP_HSK_LEVEL ? `HSK ${entry.hskLevel}` : 'Rare') : null
+  const openCharacter = (char: string) => {
+    tapHaptic()
+    openCharacterDetail(char, inTab)
+  }
+
+  const tabs = buildExploreTabs({
+    glyph,
+    entry,
+    senses,
+    script: settings.script,
+    /* Characters that look like this one (大 → 太 犬 天). */
+    overviewCharacters: { title: 'Related characters', characters: lookalikes.slice(0, 3) },
+    relatedCharacters: lookalikes,
+    relatedCharactersTitle: 'Related characters',
+    containingTerm: glyph,
+    containingWords: words,
+    containingTotal: counts.words,
+    relatedWords: relatedLong,
+    sentences: exampleHits,
+    counts,
+    stats: [
+      ...(strokes !== null ? [{ label: 'Strokes', value: String(strokes) }] : []),
+      ...(radical
+        ? [{ label: 'Kangxi radical', value: `${radical.radical.number} (${radical.radical.character} · ${radical.radical.meaning})` }]
+        : []),
+      ...(level ? [{ label: 'HSK level', value: level }] : []),
+      ...(rank !== null ? [{ label: 'Frequency', value: frequencyLabel(rank) }] : []),
+    ],
+    isAdded: (id) => isInDeck(id, deckIndex),
+    onAdd: addToReviewDeck,
+    openWord,
+    openCharacter,
+    // The tab route, not the standalone `/dictionary` — that one sits outside the tab group and would drop the nav bar.
+    viewAllWords: () => router.push(`/dictionary-tab?q=${encodeURIComponent(glyph)}`),
+    openWordsList: () => setAppearsIn('words'),
+    openSentencesList: () => setAppearsIn('sentences'),
+    onWatch: () => {
+      tapHaptic()
+      setWatching(true)
+    },
+    onPractice: () => {
+      tapHaptic()
+      setPractising(true)
+    },
+  })
+
+  const sheetHeader = (
+    <SheetHeader
+      glyph={glyph}
+      reading={entry ? displayPinyin(entry, settings.phoneticScript) : ''}
+      meanings={senses.slice(0, 3)}
+      facts={[...(strokes !== null ? [`${strokes} strokes`] : []), ...(level ? [level] : [])]}
+    />
+  )
+
   return (
-    <DetailShell title="Character">
-      <HeroCard
-        glyph={glyph}
-        pinyin={entry?.pinyin ?? ''}
-        stats={stats}
-        onWatch={() => {
-          tapHaptic()
-          setWatching(true)
-        }}
-        onPractice={() => {
-          tapHaptic()
-          setPractising(true)
-        }}
-      />
-
-      {entry && <MeaningCard word={entry} />}
-
-      <WordsContainingCard
-        character={glyph}
-        words={words}
-        totalCount={counts.words}
-        isAdded={(id) => isInDeck(id, deckIndex)}
-        onOpen={openWord}
-        onAdd={addToReviewDeck}
-        onViewAll={() => {
-          tapHaptic()
-          // The tab route, not the standalone `/dictionary` — that one sits
-          // outside the tab group and would drop the nav bar.
-          router.push(`/dictionary-tab?q=${encodeURIComponent(glyph)}`)
-        }}
-      />
-
-      <RadicalCard
-        character={glyph}
-        info={radical}
-        related={related}
-        onOpenCharacter={(char) => {
-          tapHaptic()
-          openCharacterDetail(char, inTab)
-        }}
-      />
-
-      <AppearsInCard
-        words={counts.words}
-        sentences={counts.sentences}
-        onOpenWords={() => setAppearsIn('words')}
-        onOpenSentences={() => setAppearsIn('sentences')}
-      />
-
+    <DetailSheetShell
+      title="Character"
+      sheetLabel="Explore this character"
+      sheetHints={hints}
+      sheetHeader={sheetHeader}
+      tabs={tabs}
+      hero={(availableHeight) => (
+        <DetailHero
+          glyph={glyph}
+          reading={entry ? displayPinyin(entry, settings.phoneticScript) : ''}
+          meaning={entry ? shortGloss(entry) : undefined}
+          facts={facts}
+          availableHeight={availableHeight}
+          onWatch={() => {
+            tapHaptic()
+            setWatching(true)
+          }}
+          onPractice={() => {
+            tapHaptic()
+            setPractising(true)
+          }}
+          /* Only a character that is an entry of its own can be saved. */
+          save={
+            entry ? (
+              <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 }}>
+                <DeckStateButton state={entryStateFor(entry.id, deckIndex)} onAdd={() => addToReviewDeck(entry.id)} />
+                <FavoriteButton favorite={favoriteWordIds.includes(entry.id)} onToggle={() => toggleFavorite(entry.id)} />
+              </View>
+            ) : undefined
+          }
+        />
+      )}
+    >
       {appearsInList === 'words' && (
         <WordsModal
           term={glyph}
@@ -215,6 +271,6 @@ export function CharacterDetail() {
       {practising && practiceTarget && (
         <WritingPracticeModal word={practiceTarget} onClose={() => setPractising(false)} />
       )}
-    </DetailShell>
+    </DetailSheetShell>
   )
 }

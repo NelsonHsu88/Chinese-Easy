@@ -7,5 +7,5 @@ import { Redirect, type Href } from 'expo-router'
  * popup already open.
  */
 export function EditProfile() {
-  return <Redirect href={'/profile?edit=1' as Href} />
+  return <Redirect href={'/profile-tab?edit=1' as Href} />
 }

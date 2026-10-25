@@ -1,3 +1,5 @@
+import { DICT_BG } from './shadows'
+import { RaisedButton } from '../dashboard/parts'
 import type { ReactNode } from 'react'
 import { View, Text, Modal, Pressable, ScrollView } from 'react-native'
 import { X, Quote } from 'lucide-react-native'
@@ -53,16 +55,22 @@ function ListSheet({
         <View className="max-h-[85%] rounded-t-[28px] bg-dict-page pb-2">
           <View className="flex-row items-center gap-3 border-b border-dict-line px-5 py-4">
             <View className="flex-1">
-              <Text className="font-dict-bold text-[20px] leading-[26px] text-dict-heading">{title}</Text>
-              <Text className="mt-0.5 font-inter text-[13px] leading-[18px] text-dict-muted">{subtitle}</Text>
+              <Text className="font-nunito-bold text-[20px] leading-[26px] text-dict-heading">{title}</Text>
+              <Text className="mt-0.5 font-nunito-semibold text-[13px] leading-[18px] text-dict-muted">{subtitle}</Text>
             </View>
-            <PressScale
+            <RaisedButton
               onPress={close}
-              className="h-10 w-10 items-center justify-center rounded-full border border-dict-line bg-dict-card"
               accessibilityLabel={`Close ${title.toLowerCase()}`}
+              height={40}
+              width={40}
+              radius={20}
+              fill={DICT_BG.card}
+              border={DICT_BG.pillBorder}
+              shoulder={DICT_BG.pillShoulder}
+              scaleTo={0.9}
             >
               <X size={18} color={ICON_MUTED} strokeWidth={ICON_STROKE} />
-            </PressScale>
+            </RaisedButton>
           </View>
 
           <ScrollView
@@ -112,7 +120,7 @@ export function WordsModal({
   return (
     <ListSheet title={`Words with ${term}`} subtitle={shownOf(words.length, total, 'words')} onClose={onClose}>
       {words.length === 0 && (
-        <Text className="font-dict-sans text-[15px] leading-[21px] text-dict-body">
+        <Text className="font-sans text-[15px] leading-[21px] text-dict-body">
           No other word in the dictionary is built from {term}.
         </Text>
       )}
@@ -134,8 +142,8 @@ export function WordsModal({
               {displayWord(word, script)}
             </Text>
             <View className="flex-1">
-              <Text className="font-dict-semibold text-[15px] leading-[20px] text-dict-green">{word.pinyin}</Text>
-              <Text numberOfLines={2} className="font-dict-sans text-[14px] leading-[19px] text-dict-muted">
+              <Text className="font-nunito-semibold text-[15px] leading-[20px] text-dict-green">{word.pinyin}</Text>
+              <Text numberOfLines={2} className="font-sans text-[14px] leading-[19px] text-dict-muted">
                 {shortGloss(word)}
               </Text>
             </View>
@@ -171,7 +179,7 @@ export function SentencesModal({
   return (
     <ListSheet title={`Sentences with ${term}`} subtitle={shownOf(hits.length, total, 'sentences')} onClose={onClose}>
       {hits.length === 0 && (
-        <Text className="font-dict-sans text-[15px] leading-[21px] text-dict-body">
+        <Text className="font-sans text-[15px] leading-[21px] text-dict-body">
           No sentence in the bundled corpus uses {term} yet. Example sentences are only ever taken from the corpus, never
           written to fill a gap.
         </Text>
@@ -193,7 +201,7 @@ export function SentencesModal({
             <SpeakChip text={script === 'simplified' ? example.simplified : example.traditional} size={34} />
           </View>
 
-          <Text className="mt-1.5 font-inter text-[14px] leading-[20px] text-dict-body">{example.translation}</Text>
+          <Text className="mt-1.5 font-nunito-semibold text-[14px] leading-[20px] text-dict-body">{example.translation}</Text>
         </View>
       ))}
     </ListSheet>

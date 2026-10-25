@@ -21,11 +21,11 @@ export const loadColors = {
 
 export const loadType = {
   /** Lora — the message under Shifu. */
-  message: { fontFamily: 'Lora', fontSize: 17, lineHeight: 24 },
+  message: { fontFamily: 'NunitoSemiBold', fontSize: 17, lineHeight: 24 },
   /** Nunito SemiBold — the line under an error. */
   detail: { fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 20 },
   /** Lora Bold — buttons. */
-  button: { fontFamily: 'LoraBold', fontSize: 16, lineHeight: 21 },
+  button: { fontFamily: 'NunitoExtraBold', fontSize: 16, lineHeight: 21 },
 } as const
 
 export const loadTiming = {

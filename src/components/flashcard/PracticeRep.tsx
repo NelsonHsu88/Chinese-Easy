@@ -146,7 +146,7 @@ export function PracticeRep({
                 <Text className={face} style={{ ...t.word, color: c.ink, includeFontPadding: false }}>{text}</Text>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: 'InterMedium', ...t.reading, color: c.green }}>{displayPinyin(word, settings.phoneticScript)}</Text>
+                <Text style={{ fontFamily: 'NunitoSemiBold', ...t.reading, color: c.green }}>{displayPinyin(word, settings.phoneticScript)}</Text>
                 <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', ...t.gloss, color: c.body }}>{shortGloss(word)}</Text>
               </View>
               <Pressable onPress={() => speak(text)} accessibilityRole="button" accessibilityLabel="Play pronunciation" hitSlop={6}>
@@ -193,7 +193,7 @@ export function PracticeRep({
           <View style={{ marginTop: 14 }}>
             <PressableScale onPress={next} scaleTo={1} haptic={false} accessibilityLabel={last ? 'Done' : 'Next rep'}>
               <LiftedFace height={fcSize.button} fill={c.green} shoulder={fcShoulders.primary}>
-                <Text style={{ fontFamily: 'LoraBold', ...t.button, color: c.onColor }}>{last ? 'Done' : 'Next rep'}</Text>
+                <Text style={{ fontFamily: 'NunitoExtraBold', ...t.button, color: c.onColor }}>{last ? 'Done' : 'Next rep'}</Text>
               </LiftedFace>
             </PressableScale>
           </View>
