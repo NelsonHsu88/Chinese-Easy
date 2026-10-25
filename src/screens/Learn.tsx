@@ -211,10 +211,19 @@ export function Learn() {
   const footHeight = columnWidth / FOOT_RATIO
   const typeScale = Math.max(TYPE_SCALE_MIN, Math.min(1, columnWidth / DESIGN_COLUMN))
   /*
-   * Decided from the viewport alone: deciding it from the header would flip it
-   * back the moment dropping the bubble made the header fit.
+   * Compact (no bubble, header collapsed to the title) only when the full
+   * header and three cards at their floor genuinely can't share the screen.
+   * Decided from the viewport and the header's designed height — never from
+   * the measured header, which would flip it back the moment dropping the
+   * bubble made the header fit.
+   *
+   * It used to switch on below a fixed 640pt, which a phone *browser* is under
+   * once its address bar and the tab bar are taken off: the header collapsed,
+   * and the cards slid up over Shifu and his bubble even though everything fit.
    */
-  const compact = viewportHeight !== null && viewportHeight < COMPACT_BELOW
+  const headerMin = refY(CARDS_TOP_REF, columnWidth)
+  const fullPageMin = headerMin + CARD_FLOOR * CARD_COUNT + CARD_GAP * (CARD_COUNT - 1) + COLUMN_BOTTOM
+  const compact = viewportHeight !== null && viewportHeight < Math.min(COMPACT_BELOW, fullPageMin)
 
   let cardHeight: number | undefined
   if (viewportHeight !== null && headerHeight !== null) {
@@ -234,7 +243,6 @@ export function Learn() {
    * there, and the bubble sits exactly on the patch the script masked out.
    */
   const k = refScale(columnWidth)
-  const headerMin = refY(CARDS_TOP_REF, columnWidth)
   /*
    * The bubble follows the subtitle in flow, nudged down to where the mockup
    * has it. In flow, not absolute: the painting shrinks with the column but the

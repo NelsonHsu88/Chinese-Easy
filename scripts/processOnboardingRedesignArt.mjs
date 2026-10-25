@@ -30,7 +30,8 @@ import path from 'node:path'
 
 const DIR = path.join('Photos for Reference', 'Beta 2.1 Photos')
 const REF = {
-  welcome: 'Onboarding New UI Redesign.png',
+  /* Renamed from "Onboarding New UI Redesign.png" on 2026-10-25; the same design. */
+  welcome: 'SS1025 New Onboarding.png',
   script: 'Onboarding New UI Redesign 2.png',
   goal: 'Onboarding New UI Redesign 3.png',
   account: 'Onboarding New UI Redesign 4.png',
@@ -77,6 +78,23 @@ const PIECES = [
     holes: [{ left: 222, right: 735, top: -60, bottom: 188, radius: 46, ramp: 34 }],
   },
   {
+    /*
+     * The flowers along the welcome page's foot, so the painting reaches the
+     * bottom edge as the reference's does. The card's last edge, the button
+     * and the dots are cleared to paper: the app draws its own over them.
+     * `buttonY` is the cleared button's centre, for `PageFoot`.
+     */
+    name: 'welcome-foot',
+    ref: 'welcome',
+    box: { left: 0, top: 1420, width: 941, height: 252 },
+    sample: { x: 470, y: 1662 },
+    feather: { top: 50 },
+    holes: [
+      { left: 45, right: 896, top: -80, bottom: 196, radius: 52, ramp: 34 },
+      { left: 355, right: 586, top: 180, bottom: 246, radius: 22, ramp: 22 },
+    ],
+  },
+  {
     name: 'welcome-branch',
     ref: 'welcome',
     /* Clear of the app icon (x≈397) and the wordmark (y≈285). */
@@ -93,6 +111,19 @@ const PIECES = [
     box: { left: 0, top: 905, width: 941, height: 522 },
     sample: { x: 470, y: 915 },
     feather: { ...SIDES, top: 60, bottom: 40 },
+  },
+  {
+    /* The garden under the script page's button and dots, to the bottom edge. */
+    name: 'script-foot',
+    ref: 'script',
+    /* From under the desk's edge (y≈1420), so no sliver of it floats here. */
+    box: { left: 0, top: 1428, width: 941, height: 244 },
+    sample: { x: 470, y: 1662 },
+    feather: { top: 46 },
+    holes: [
+      { left: 70, right: 870, top: -8, bottom: 130, radius: 54, ramp: 30 },
+      { left: 352, right: 592, top: 120, bottom: 184, radius: 22, ramp: 22 },
+    ],
   },
   {
     name: 'script-branch',

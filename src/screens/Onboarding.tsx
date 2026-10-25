@@ -201,7 +201,7 @@ export function Onboarding() {
     endTour,
     markScreenTourSeen,
   } = useApp()
-  const { retake } = useLocalSearchParams<{ retake?: string }>()
+  const { retake, step: devStep } = useLocalSearchParams<{ retake?: string; step?: string }>()
 
   /*
    * A retake: Settings reopened the placement test, which keeps the old result
@@ -223,7 +223,11 @@ export function Onboarding() {
    */
   const [isRetake] = useState(retake === '1' || (!onboardingComplete && placementResult !== undefined))
   const [alreadyOnboarded] = useState(onboardingComplete && !isRetake)
-  const [step, setStep] = useState<Step>(() => (isRetake ? 'test' : 'welcome'))
+  /* `?step=<page>` opens a page directly — development builds only, for
+     checking a page's layout without walking the flow to it. */
+  const [step, setStep] = useState<Step>(() =>
+    isRetake ? 'test' : __DEV__ && STEP_ORDER.includes(devStep as Step) ? (devStep as Step) : 'welcome',
+  )
   /*
    * The script choice, held locally until Continue commits it.
    *
@@ -462,12 +466,27 @@ export function Onboarding() {
    * with. Now nothing is suggested: Google's page decides whose account this
    * is, and the app only ever learns about the person who actually signed in.
    */
+  /* Back from Google's page, the browser can restore this one from its cache
+     with the button still "Opening Google…" — free it again. */
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setGoogleBusy(false)
+    }
+    window.addEventListener('pageshow', onShow)
+    return () => window.removeEventListener('pageshow', onShow)
+  }, [])
+
   const continueWithGoogle = async () => {
     if (googleBusy) return
     tapHaptic()
     setGoogleError(null)
     setGoogleBusy(true)
     const result = await signInWithGoogle()
+    /* On the web the tab is on its way to Google: stay on this page, still
+       "Opening Google…", until it goes. Moving on here showed "Signed in with
+       Google" before Google had even appeared. */
+    if (result.redirecting) return
     setGoogleBusy(false)
 
     /* Backing out is a decision, not a failure — say nothing and stay put. */
@@ -730,6 +749,10 @@ export function Onboarding() {
             <SlideIn from="left" fill delay={onbMotion.enterStagger}>
               <CornerBranch piece="welcome-branch" side="left" />
             </SlideIn>
+            {/* The flowers along the foot, as the reference runs its painting to the bottom edge. */}
+            <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
+              <PageFoot piece="welcome-foot" buttonCenter={WELCOME_BUTTON_CENTER} />
+            </SlideIn>
           </ArtLayer>
         }
         /*
@@ -791,12 +814,13 @@ export function Onboarding() {
         <SlideIn
           from="bottom"
           delay={onbMotion.enterStagger * 2}
-          style={{ flex: 1, minHeight: 0, marginTop: -WELCOME_SCENE_RISE, zIndex: 1 }}
+          style={{ flex: 1, minHeight: 0, zIndex: 1 }}
         >
-          <HeroArt piece="welcome-scene" />
+          <HeroArt piece="welcome-scene" fill overhang={WELCOME_SCENE_OVERHANG} />
         </SlideIn>
 
-        <SlideIn from="bottom" delay={onbMotion.enterStagger * 3}>
+        {/* Above the scene, which on a short phone reaches down behind it. */}
+        <SlideIn from="bottom" delay={onbMotion.enterStagger * 3} style={{ zIndex: 2 }}>
           <OnbCard radius={onbRadius.panel} style={{ paddingHorizontal: s.lg, paddingVertical: s.xs, marginBottom: s.xs }}>
             <FeatureRow
               tone="green"
@@ -832,6 +856,9 @@ export function Onboarding() {
             <OnbArtEnter>
               <CornerBranch piece="script-branch" side="left" />
             </OnbArtEnter>
+            <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
+              <PageFoot piece="script-foot" buttonCenter={SCRIPT_BUTTON_CENTER} />
+            </SlideIn>
           </ArtLayer>
         }
         top={
@@ -922,7 +949,7 @@ export function Onboarding() {
         */}
         <View className="flex-1" style={{ minHeight: 0, marginTop: s.md }}>
           <OnbRise index={3} style={{ flex: 1, minHeight: 0 }}>
-            <HeroArt piece="script-hero" />
+            <HeroArt piece="script-hero" fill />
           </OnbRise>
         </View>
       </OnbShell>
@@ -1457,7 +1484,7 @@ export function Onboarding() {
             the flex, or the scene loses the room it absorbs. */}
         <View className="flex-1" style={{ minHeight: 0 }}>
           <OnbRise index={1} style={{ flex: 1, minHeight: 0 }}>
-            <HeroArt piece="reminders-hero" />
+            <HeroArt piece="reminders-hero" fill />
           </OnbRise>
         </View>
 
@@ -1867,8 +1894,16 @@ export function Onboarding() {
 // --- Page pieces ---------------------------------------------------------------
 
 /** The height of the app mark the welcome page once opened on; its room is kept. */
-/** How far the welcome scene rises behind the subtitle — its top quarter, the cleared patch. */
-const WELCOME_SCENE_RISE = 72
+/*
+ * Where each footer's button centre sits above the safe area, so a page foot's
+ * cleared button patch lands under the app's own button (`PageFoot`). Footer
+ * padding, then what stands under the button, then half its height.
+ */
+const WELCOME_BUTTON_CENTER = s.md + 8 + s.lg + 20 + s.lg + 51 / 2 // dots, "Log in" line
+const SCRIPT_BUTTON_CENTER = s.md + 8 + s.lg + 51 / 2 // dots
+
+/** How much of the welcome scene stands behind the subtitle: its cleared title patch. */
+const WELCOME_SCENE_OVERHANG = 0.22
 
 /** The app icon, as the welcome reference draws it: a rounded green tile, 中, a sakura bloom on its corner. */
 function AppMark() {

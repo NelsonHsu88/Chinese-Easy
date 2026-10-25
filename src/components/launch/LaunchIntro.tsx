@@ -58,8 +58,13 @@ const session = {
   waveStartedAt: null as number | null,
   reduceMotion: null as boolean | null,
   done: false,
+  /** Web: where the video was when its view last unmounted (see the resume effect). */
+  webTime: 0,
 }
 let player: VideoPlayer | null = null
+
+/** When the web resume nudges a remounted video (ms after mount). */
+const WEB_RESUME_TRIES_MS = [0, 60, 160, 320, 520]
 
 function getPlayer(): VideoPlayer {
   if (!player) {
@@ -165,6 +170,45 @@ export function LaunchIntro({ appReady, onVisible, onDone }: Props) {
       }, 2500),
     )
     return () => subs.forEach((s) => s.remove())
+  }, [videoPlayer])
+
+  /*
+   * Web only: the remount above gives the player a brand-new <video> element,
+   * which starts at 0 and paused — while the player, which outlives it, still
+   * believes it is playing, so the `play()` above (guarded on `playing`) never
+   * reaches the new element. The video froze at its first frame a second in and
+   * the backstop skipped it: the intro never played on the web. So each view,
+   * on mount, picks up from where the last one left off and plays.
+   */
+  useEffect(() => {
+    if (!videoPlayer || Platform.OS !== 'web') return
+    /*
+     * Tried more than once: the old element is paused by the browser as it
+     * leaves the document, and expo-video's web player copies that pause onto
+     * every element it holds — the new one included, a few ms after it started.
+     * So it keeps nudging for the first half second, and only while stopped.
+     */
+    let seeked = false
+    const nudge = () => {
+      try {
+        if (!seeked && session.webTime > 0) {
+          videoPlayer.currentTime = session.webTime
+          seeked = true
+        }
+        if (!videoPlayer.playing || videoPlayer.currentTime < 0.05) videoPlayer.play()
+      } catch {
+        // Released by a racing remount — the next view resumes instead.
+      }
+    }
+    const tries = WEB_RESUME_TRIES_MS.map((ms) => setTimeout(nudge, ms))
+    return () => {
+      tries.forEach(clearTimeout)
+      try {
+        session.webTime = videoPlayer.currentTime
+      } catch {
+        // Already released.
+      }
+    }
   }, [videoPlayer])
 
   /* ── Act 2: the wave (or, with reduced motion, a plain fade) ─────────── */

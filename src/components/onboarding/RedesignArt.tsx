@@ -28,6 +28,9 @@ const ART = {
   'welcome-scene': { source: require('../../assets/images/onboarding/redesign/welcome-scene.png'), w: 941, h: 723 },
   'welcome-branch': { source: require('../../assets/images/onboarding/redesign/welcome-branch.png'), w: 335, h: 280 },
   'script-hero': { source: require('../../assets/images/onboarding/redesign/script-hero.png'), w: 941, h: 522 },
+  /* Feet to the bottom edge; `buttonY` is each cleared button's centre, in asset px. */
+  'script-foot': { source: require('../../assets/images/onboarding/redesign/script-foot.png'), w: 941, h: 244, buttonY: 59 },
+  'welcome-foot': { source: require('../../assets/images/onboarding/redesign/welcome-foot.png'), w: 941, h: 252, buttonY: 117 },
   'script-branch': { source: require('../../assets/images/onboarding/redesign/script-branch.png'), w: 470, h: 250 },
   'goal-branch': { source: require('../../assets/images/onboarding/redesign/goal-branch.png'), w: 341, h: 252 },
   'goal-foot': { source: require('../../assets/images/onboarding/redesign/goal-foot.png'), w: 941, h: 457 },
@@ -164,6 +167,9 @@ export function useClearance() {
   return { ref, onLayout, bottom }
 }
 
+/** How far a `fill` hero may grow past its natural size before it stops. */
+const HERO_FILL_MAX = 1.3
+
 /** The least a hero gives up to: still recognisably Shifu in a garden. */
 const HERO_MIN = 120
 
@@ -186,13 +192,36 @@ const HERO_MIN = 120
  * It bleeds past the page's content margin to the column's edges, as the
  * references draw it.
  */
-export function HeroArt({ piece, align = 'end' }: { piece: ArtPiece; align?: 'start' | 'end' | 'center' }) {
+export function HeroArt({
+  piece,
+  align = 'end',
+  fill = false,
+  overhang = 0,
+}: {
+  piece: ArtPiece
+  align?: 'start' | 'end' | 'center'
+  /**
+   * Grow past the natural size to fill a taller slot (up to `HERO_FILL_MAX`),
+   * cropping the sides rather than leaving bare paper above the scene — the
+   * references' paintings run the full height of their pages.
+   */
+  fill?: boolean
+  /**
+   * The share of the scene's height that may stand above its slot, behind
+   * whatever is over it — for a scene whose top is cleared paper (the welcome
+   * page's title patch). A share of the drawn height, so it scales with the
+   * scene: a fixed overlap pushed a small phone's shrunken scene into the text.
+   */
+  overhang?: number
+}) {
   const column = useColumn()
   const art = ART[piece]
   const natural = (column * art.h) / art.w
   const [slot, setSlot] = useState(0)
-  const height = Math.max(0, Math.min(natural, slot))
+  const room = slot / (1 - overhang)
+  const height = Math.max(0, fill ? Math.min(natural * HERO_FILL_MAX, room) : Math.min(natural, room))
   const width = (height * art.w) / art.h
+  const placed = align === 'start' ? { top: -height * overhang } : align === 'center' ? { top: (slot - height) / 2 } : { bottom: 0 }
   return (
     <View
       pointerEvents="none"
@@ -204,20 +233,19 @@ export function HeroArt({ piece, align = 'end' }: { piece: ArtPiece; align?: 'st
         flex: 1,
         minHeight: Math.min(HERO_MIN, natural),
         marginHorizontal: -s.screen,
+        /* A filled scene wider than the column is cropped at the column's edges —
+           only the sides, so an overhang can still reach up out of the slot. */
+        overflow: fill && !overhang ? 'hidden' : undefined,
       }}
     >
       {height > 0 && (
-        <Image
-          source={art.source}
-          resizeMode="contain"
-          style={{
-            position: 'absolute',
-            width,
-            height,
-            left: (column - width) / 2,
-            ...(align === 'start' ? { top: 0 } : align === 'center' ? { top: (slot - height) / 2 } : { bottom: 0 }),
-          }}
-        />
+        <View style={{ position: 'absolute', left: 0, right: 0, height, overflow: 'hidden', ...placed }}>
+          <Image
+            source={art.source}
+            resizeMode="contain"
+            style={{ position: 'absolute', width, height, top: 0, left: (column - width) / 2 }}
+          />
+        </View>
       )}
     </View>
   )

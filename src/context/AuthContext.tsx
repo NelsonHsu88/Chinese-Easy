@@ -46,6 +46,12 @@ export interface AuthResult {
    */
   cancelled?: boolean
   /**
+   * True when the page is navigating away to the provider (Google on the web).
+   * Nothing has been signed in yet — the result arrives when the page comes
+   * back — so the caller must stay where it is rather than moving on.
+   */
+  redirecting?: boolean
+  /**
    * What the provider says about **the person who just signed in** — never
    * about the developer. Offered to the profile screen as a starting point.
    */
@@ -563,7 +569,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         provider: 'google',
         options: { redirectTo: oauthRedirectTo() },
       })
-      return { error: error ? readableError(error.message) : null }
+      return error ? { error: readableError(error.message) } : { error: null, redirecting: true }
     }
 
     const redirectTo = oauthRedirectTo()
