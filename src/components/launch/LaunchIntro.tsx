@@ -188,12 +188,12 @@ export function LaunchIntro({ appReady, onVisible, onDone }: Props) {
      * every element it holds — the new one included, a few ms after it started.
      * So it keeps nudging for the first half second, and only while stopped.
      */
-    let seeked = false
     const nudge = () => {
       try {
-        if (!seeked && session.webTime > 0) {
+        /* Re-seeked on each nudge until it holds: a seek issued before the new
+           element has loaded is dropped, and the video restarted from 0. */
+        if (session.webTime > 0 && videoPlayer.currentTime < session.webTime - 0.15) {
           videoPlayer.currentTime = session.webTime
-          seeked = true
         }
         if (!videoPlayer.playing || videoPlayer.currentTime < 0.05) videoPlayer.play()
       } catch {
