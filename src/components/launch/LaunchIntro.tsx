@@ -201,13 +201,18 @@ export function LaunchIntro({ appReady, onVisible, onDone }: Props) {
       }
     }
     const tries = WEB_RESUME_TRIES_MS.map((ms) => setTimeout(nudge, ms))
+    /* Recorded as it plays, the furthest point reached: read at unmount, the
+       player has already let go of the old element and answers ~0. */
+    const track = setInterval(() => {
+      try {
+        session.webTime = Math.max(session.webTime, videoPlayer.currentTime)
+      } catch {
+        // Released.
+      }
+    }, 100)
     return () => {
       tries.forEach(clearTimeout)
-      try {
-        session.webTime = videoPlayer.currentTime
-      } catch {
-        // Already released.
-      }
+      clearInterval(track)
     }
   }, [videoPlayer])
 
