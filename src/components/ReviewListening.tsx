@@ -36,6 +36,7 @@ import {
 import { listenArt } from './listening/art'
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
 import { useLearningLoaderGone } from './loading/LearningLoader'
+import { spacedReading } from './SpacedReading'
 
 const SCREEN_PAD = DRILL_PAD
 
@@ -580,7 +581,7 @@ function OptionRow({
                 is a transcript of the audio, and would answer the question. */}
             {answered && (
               <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, color: c.slate }}>
-                {displayPinyin(option, phonetic)}
+                {spacedReading(displayPinyin(option, phonetic), 14)}
               </Text>
             )}
           </View>
@@ -713,7 +714,7 @@ function RecentlyHeardSheet({
                         <Text className={hanziFont(script, 'medium')} style={{ fontSize: 22, lineHeight: 30, color: c.ink }}>
                           {text}
                         </Text>
-                        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, color: c.slate }}>{displayPinyin(word, phonetic)}</Text>
+                        <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, color: c.slate }}>{spacedReading(displayPinyin(word, phonetic), 14)}</Text>
                       </View>
                       <Text numberOfLines={1} style={{ fontFamily: 'NunitoSemiBold', fontSize: 13.5, color: c.slate }}>
                         {shortGloss(word)}

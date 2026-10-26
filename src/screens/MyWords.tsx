@@ -4,7 +4,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import {
-  ArrowLeft,
   BookOpen,
   ChevronDown,
   ChevronRight,
@@ -44,6 +43,8 @@ import {
   MW_CONTENT_MAX,
   mwRowTint,
 } from '../components/myWords/tokens'
+import { BackArrow } from '../components/BackArrow'
+import { spacedReading } from '../components/SpacedReading'
 
 /*
  * My Words, built to the Beta 2.1 reference (`SS928 Mywords Redesigned
@@ -202,16 +203,10 @@ export function MyWords() {
 
           <View style={{ height: 44, justifyContent: 'center' }}>
             {/* Guarded: reached by deep link there is nothing to pop. */}
-            <Pressable
+            <BackArrow
               onPress={() => (router.canGoBack() ? router.back() : router.navigate('/review-tab'))}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={12}
-              className="active:opacity-60"
-              style={{ width: 40, height: 44, justifyContent: 'center', marginLeft: -4 }}
-            >
-              <ArrowLeft size={26} color={c.navy} strokeWidth={2} />
-            </Pressable>
+              style={{ marginLeft: -8, alignSelf: 'flex-start' }}
+            />
           </View>
 
           <Text
@@ -738,7 +733,7 @@ function WordRow({
 
         <View style={{ flex: 1 }}>
           <Text className="font-sans" numberOfLines={1} style={{ ...t.reading, color: c.navy }}>
-            {reading}
+            {spacedReading(reading, t.reading.fontSize)}
           </Text>
           <Text className="font-sans" numberOfLines={2} style={{ ...t.gloss, color: c.slate, marginTop: 2 }}>
             {gloss}

@@ -15,6 +15,7 @@ import { characterEntries } from '../../lib/lookalikes'
 import { tapHaptic } from '../../lib/haptics'
 import { useApp } from '../../context/AppContext'
 import type { VocabWord } from '../../types'
+import { spacedReading } from '../SpacedReading'
 
 /*
  * The cards inside the detail pages' "Explore" sheet (SS1021 Writing Cards):
@@ -141,7 +142,7 @@ export function SheetHeader({
       <View style={{ marginTop: 2, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         {reading.length > 0 && (
           <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 17, lineHeight: 22, color: C.heading, includeFontPadding: false }}>
-            {reading}
+            {spacedReading(reading, 17)}
           </Text>
         )}
         <SpeakChip text={glyph} size={30} />
@@ -280,7 +281,7 @@ export function CharacterRow({
         </Text>
         <View style={{ flex: 1 }}>
           <Text numberOfLines={1} style={T.rowTitle}>
-            {title}
+            {spacedReading(title, T.rowTitle.fontSize)}
           </Text>
           <Text numberOfLines={1} style={T.small}>
             {subtitle}
@@ -351,7 +352,7 @@ export function WordRow({
           </Text>
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} style={[T.small, { color: C.body }]}>
-              {displayPinyin(word, phoneticScript)}
+              {spacedReading(displayPinyin(word, phoneticScript), T.small.fontSize)}
             </Text>
             <Text numberOfLines={1} style={T.small}>
               {shortGloss(word)}

@@ -3,7 +3,7 @@ import { View, Text, Pressable, Modal as RNModal, ScrollView, Animated, Platform
 import type { ScrollViewInstance } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ArrowLeft, Droplet, Pencil, Puzzle, Rocket, Star, Trophy } from 'lucide-react-native'
+import { Droplet, Pencil, Puzzle, Rocket, Star, Trophy } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { WritingPracticeModal } from './WritingPracticeModal'
 import { WritingGrid } from './writingGuide/WritingGrid'
@@ -23,6 +23,7 @@ import { guideColors as c, spacing, rhythm, rhythmCompact, type as t, motion } f
 import { tickHaptic } from '../lib/haptics'
 import { playTapSound } from '../lib/sound'
 import type { VocabWord } from '../types'
+import { BackArrow } from './BackArrow'
 
 /*
  * A short primer on how Chinese writing actually works, for someone who has
@@ -280,15 +281,11 @@ export function WritingGuideModal({ onClose }: { onClose: () => void }) {
             </Text>
           )}
           <View className="absolute inset-x-0 flex-row items-center justify-between" style={{ paddingHorizontal: spacing.screen }}>
-            <Pressable
+            <BackArrow
               onPress={() => (page === 0 ? onClose() : goTo(page - 1))}
-              accessibilityRole="button"
               accessibilityLabel={page === 0 ? 'Close writing guide' : 'Previous page'}
-              hitSlop={12}
-              className="active:opacity-60"
-            >
-              <ArrowLeft size={23} color={c.navy} strokeWidth={2.2} />
-            </Pressable>
+              style={{ marginLeft: -6 }}
+            />
           </View>
         </View>
 

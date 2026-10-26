@@ -11,7 +11,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native'
-import { ArrowLeft, Check, ShieldCheck, X, type LucideIcon } from 'lucide-react-native'
+import { Check, ShieldCheck, X, type LucideIcon } from 'lucide-react-native'
 import { PressableScale, LiftedFace, RaisedButton } from '../dashboard/parts'
 import { subArt } from './art'
 import {
@@ -24,6 +24,7 @@ import {
   subHero,
   subMotion,
 } from './tokens'
+import { BackArrow } from '../BackArrow'
 
 /*
  * The pieces the subscription screen is built from.
@@ -267,15 +268,7 @@ export function TopBar({ mode, onPress }: { mode: 'back' | 'close'; onPress: () 
   if (mode === 'back') {
     return (
       <View style={{ position: 'absolute', left: s.screen - 10, top: 4 }}>
-        <Pressable
-          onPress={onPress}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={10}
-          style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <ArrowLeft size={24} color={c.ink} strokeWidth={2.2} />
-        </Pressable>
+        <BackArrow onPress={onPress} accessibilityLabel="Go back" style={{ marginTop: 2 }} />
       </View>
     )
   }

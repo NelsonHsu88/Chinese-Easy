@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { View, Text, Pressable, ScrollView, Image, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ChevronLeft, Lock, Check, CheckCircle2, Circle, Star } from 'lucide-react-native'
+import { Lock, Check, CheckCircle2, Circle, Star } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { UNITS } from '../data/units'
 import { lessonsForUnit } from '../data/lessons'
 import { TOWN_BUILDINGS } from '../data/townBuildings'
 import { playTapSound } from '../lib/sound'
 import { levelForXp } from '../lib/townEconomy'
+import { BackArrow } from '../components/BackArrow'
 
 const CLOUDS = require('../assets/images/icons/lessons-clouds.png')
 // Cropped to its own content by scripts/processCloudOverlay.mjs, so the sprite's
@@ -83,14 +84,7 @@ export function Lessons() {
         <Image source={CLOUDS} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
       </View>
       <View className="flex-row items-center gap-2 px-4 pb-3 pt-2">
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="-ml-1 p-1"
-        >
-          <ChevronLeft size={28} color="#1e293b" strokeWidth={2.5} />
-        </Pressable>
+        <BackArrow onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} style={{ marginLeft: -6 }} />
         <Text className="flex-1 text-[22px] font-extrabold text-slate-900 dark:text-white">Lessons Path</Text>
         <View className="flex-row items-center gap-1.5 rounded-full border border-coral-200 bg-white px-3.5 py-2 dark:border-coral-900 dark:bg-slate-900">
           <Star size={17} color="#f5b93d" fill="#f5b93d" />

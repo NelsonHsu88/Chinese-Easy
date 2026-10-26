@@ -1,5 +1,5 @@
-import { forwardRef } from 'react'
-import { View, Text, Image, Platform, type StyleProp, type ViewStyle } from 'react-native'
+import { forwardRef, useEffect, useRef, useState } from 'react'
+import { View, Text, Image, Platform, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native'
 import type { TextInstance } from 'react-native'
 import { ArrowRight } from 'lucide-react-native'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
@@ -43,6 +43,7 @@ export const TourTooltip = forwardRef<TextInstance, TooltipProps>(function TourT
   titleRef,
 ) {
   const shifuWidth = large ? k.shifuWelcome : k.shifu
+  const line = useOneLine(!!progress, !!(primaryLabel && onPrimary), primaryLabel, width)
   const art = shifu ? tourShifu[shifu] : null
 
   return (
@@ -108,45 +109,56 @@ export const TourTooltip = forwardRef<TextInstance, TooltipProps>(function TourT
           </Text>
           <Text style={{ ...t.body, color: c.slate, marginTop: 4 }}>{body}</Text>
 
-          {/* Wraps rather than overflowing: at a large accessibility text size
-              the action drops onto its own line instead of off the card. */}
+          {/* Skip, the dots and the action always share one line, so the card
+              never grows a second row of buttons. Where they don't fit beside
+              Shifu (a long label, a narrow phone, large text), the action's
+              arrow goes, then the two buttons' type and padding shrink together
+              until they do (`useOneLine`). */}
           <View
-            style={{
-              flexDirection: 'row',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginTop: 12,
-              columnGap: 8,
-              rowGap: 6,
-            }}
+            onLayout={line.onRow}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: ROW_GAP }}
           >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ROW_GAP, flexShrink: 0 }}>
               {/* Raised like the CTA, quietly: white on a grey shoulder. */}
-              <PressableScale
-                onPress={onSecondary}
-                scaleTo={1}
-                haptic={false}
-                accessibilityLabel={secondaryLabel}
-                accessibilityHint={secondaryHint}
-              >
-                <LiftedFace height={k.buttonHeight} fill={c.quietFace} border={c.quietBorder} shoulder={c.quietShoulder} shadow={false}>
-                  <Text style={{ ...t.quiet, color: c.textMuted, paddingHorizontal: 12 }}>{secondaryLabel}</Text>
-                </LiftedFace>
-              </PressableScale>
+              <View onLayout={line.onSkip} style={{ flexShrink: 0 }}>
+                <PressableScale
+                  onPress={onSecondary}
+                  scaleTo={1}
+                  haptic={false}
+                  accessibilityLabel={secondaryLabel}
+                  accessibilityHint={secondaryHint}
+                >
+                  <LiftedFace height={k.buttonHeight} fill={c.quietFace} border={c.quietBorder} shoulder={c.quietShoulder} shadow={false}>
+                    <Text
+                      numberOfLines={1}
+                      style={{ ...t.quiet, fontSize: t.quiet.fontSize * line.fit, color: c.textMuted, paddingHorizontal: 12 * line.fit }}
+                    >
+                      {secondaryLabel}
+                    </Text>
+                  </LiftedFace>
+                </PressableScale>
+              </View>
 
-              {progress && <Dots index={progress.index} count={progress.count} />}
+              {progress && (
+                <View onLayout={line.onDots} style={{ flexShrink: 0 }}>
+                  <Dots index={progress.index} count={progress.count} />
+                </View>
+              )}
             </View>
 
             {primaryLabel && onPrimary && (
-              <PressableScale onPress={onPrimary} scaleTo={1} haptic={false} accessibilityLabel={primaryLabel}>
-                <LiftedFace height={k.buttonHeight} fill={c.cta} shoulder={c.ctaShoulder}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14 }}>
-                    <Text style={{ ...t.button, color: c.onCta }}>{primaryLabel}</Text>
-                    <ArrowRight size={16} color={c.onCta} strokeWidth={2.6} />
-                  </View>
-                </LiftedFace>
-              </PressableScale>
+              <View onLayout={line.onCta} style={{ flexShrink: 0 }}>
+                <PressableScale onPress={onPrimary} scaleTo={1} haptic={false} accessibilityLabel={primaryLabel}>
+                  <LiftedFace height={k.buttonHeight} fill={c.cta} shoulder={c.ctaShoulder}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 * line.fit, paddingHorizontal: 14 * line.fit }}>
+                      <Text numberOfLines={1} style={{ ...t.button, fontSize: t.button.fontSize * line.fit, color: c.onCta }}>
+                        {primaryLabel}
+                      </Text>
+                      {line.arrow && <ArrowRight size={16} color={c.onCta} strokeWidth={2.6} />}
+                    </View>
+                  </LiftedFace>
+                </PressableScale>
+              </View>
             )}
           </View>
         </View>
@@ -154,6 +166,62 @@ export const TourTooltip = forwardRef<TextInstance, TooltipProps>(function TourT
     </View>
   )
 })
+
+/** Space between the skip button, the dots and the action. */
+const ROW_GAP = 8
+/** The smallest the buttons' type and padding may shrink to, as a share of full size. */
+const MIN_FIT = 0.72
+
+/**
+ * Keeps the action row on one line. Each piece reports its width; when they
+ * add up to more than the row has, the buttons (not the dots, which are
+ * already small) are scaled by the share that makes them fit. Widths are
+ * divided back to full size first, so the answer doesn't drift between
+ * passes. A platform that never reports a layout keeps full size.
+ */
+function useOneLine(hasDots: boolean, hasCta: boolean, ctaLabel: string | undefined, cardWidth: number) {
+  const [fit, setFit] = useState(1)
+  /* First the arrow goes (it says nothing the button doesn't), then the type shrinks. */
+  const [arrow, setArrow] = useState(true)
+  const fitRef = useRef(1)
+  const arrowRef = useRef(true)
+  const sizes = useRef({ row: 0, skip: 0, dots: 0, cta: 0 })
+
+  /* A new label or card starts again from full size, arrow and all. */
+  useEffect(() => {
+    fitRef.current = 1
+    arrowRef.current = true
+    setFit(1)
+    setArrow(true)
+  }, [ctaLabel, cardWidth])
+
+  const settle = () => {
+    const z = sizes.current
+    if (!z.row || !z.skip || (hasDots && !z.dots) || (hasCta && !z.cta)) return
+    const pieces = 1 + (hasDots ? 1 : 0) + (hasCta ? 1 : 0)
+    const fixed = (hasDots ? z.dots : 0) + ROW_GAP * (pieces - 1)
+    /* The buttons' width at full size; their few points of border don't scale, which the margin covers. */
+    const full = (z.skip + (hasCta ? z.cta : 0)) / fitRef.current
+    const next = Math.max(MIN_FIT, Math.min(1, (z.row - fixed - 2) / full))
+    if (next < 1 && hasCta && arrowRef.current) {
+      /* Re-measured without it; the CTA's next report settles the rest. */
+      arrowRef.current = false
+      setArrow(false)
+      return
+    }
+    if (Math.abs(next - fitRef.current) > 0.01) {
+      fitRef.current = next
+      setFit(next)
+    }
+  }
+  const report = (key: 'row' | 'skip' | 'dots' | 'cta') => (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width
+    if (Math.abs(sizes.current[key] - w) < 0.5) return
+    sizes.current[key] = w
+    settle()
+  }
+  return { fit, arrow, onRow: report('row'), onSkip: report('skip'), onDots: report('dots'), onCta: report('cta') }
+}
 
 /** Where the learner is in the four steps. Read out as text, not just colour. */
 function Dots({ index, count }: { index: number; count: number }) {

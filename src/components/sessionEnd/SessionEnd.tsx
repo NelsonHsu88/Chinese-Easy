@@ -1,6 +1,7 @@
 import { useState, type ComponentType, type ReactNode } from 'react'
 import { View, Text, Image, ScrollView, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { LinearGradient } from 'expo-linear-gradient'
 import { Flame, Layers, Shuffle, Target } from 'lucide-react-native'
 import { ReviewButton } from '../review/parts'
 import { Reveal, useEntranceRun } from '../dashboard/entrance'
@@ -72,6 +73,14 @@ export function SessionEnd(props: Props) {
   const left = height - insets.top - footHeight - endContentBelow[props.kind]
   const heroHeight = Math.max(natural * END_HERO_MIN, Math.min(natural, left))
 
+  /*
+   * "Nothing to Review" (SS1025): the painting fills the screen instead — edge
+   * to edge, up under the status bar, and down to the title, cropped to cover
+   * rather than shrunk inside white margins. Its foot dissolves into the page.
+   */
+  const fullBleed = empty
+  const bleedHeight = Math.max(natural, height - footHeight - endContentBelow[props.kind])
+
   const back = () => {
     thunkHaptic()
     props.onBack()
@@ -84,16 +93,32 @@ export function SessionEnd(props: Props) {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        <View style={{ width: column, flexGrow: 1, paddingTop: insets.top }}>
+        <View style={{ width: column, flexGrow: 1, paddingTop: fullBleed ? 0 : insets.top }}>
           <Reveal from="bottom" {...beat}>
-            <View style={{ height: heroHeight, alignItems: 'center', justifyContent: 'flex-end' }}>
-              <Image
-                source={empty ? endImages.emptyHero : endImages.doneHero}
-                style={{ width: heroHeight * heroRatio, height: heroHeight }}
-                resizeMode="contain"
-                accessibilityIgnoresInvertColors
-              />
-            </View>
+            {fullBleed ? (
+              <View style={{ height: bleedHeight, overflow: 'hidden' }}>
+                <Image
+                  source={endImages.emptyHero}
+                  style={{ width: column, height: bleedHeight }}
+                  resizeMode="cover"
+                  accessibilityIgnoresInvertColors
+                />
+                <LinearGradient
+                  pointerEvents="none"
+                  colors={[c.emptyPageClear, page]}
+                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: Math.round(bleedHeight * 0.18) }}
+                />
+              </View>
+            ) : (
+              <View style={{ height: heroHeight, alignItems: 'center', justifyContent: 'flex-end' }}>
+                <Image
+                  source={empty ? endImages.emptyHero : endImages.doneHero}
+                  style={{ width: heroHeight * heroRatio, height: heroHeight }}
+                  resizeMode="contain"
+                  accessibilityIgnoresInvertColors
+                />
+              </View>
+            )}
           </Reveal>
 
           {/* Spare height is shared between here and above the foot, so a tall

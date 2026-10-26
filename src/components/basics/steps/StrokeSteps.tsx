@@ -62,20 +62,23 @@ export function StrokeStep({ step, ctx, column, setGate }: StepProps<Of<'stroke'
       <StepTitle>{ctx.text(step.title)}</StepTitle>
       <StepBody>{ctx.text(step.body)}</StepBody>
       <Card style={{ marginTop: 16, alignItems: 'center', paddingVertical: 18 }}>
-        <HanziStage
-          character={character}
-          mode={quiz ? 'quiz' : 'demo'}
-          showOutline={step.guidance !== 'free'}
-          showGuides
-          holdCharacterOnComplete
-          resetKey={run}
-          hintKey={hint}
-          maxSize={size}
-          onQuizComplete={(mistakes) => {
-            successHaptic()
-            setResult(mistakes)
-          }}
-        />
+        {/* The stage fills its parent, so the parent carries the size. */}
+        <View style={{ width: size, height: size }}>
+          <HanziStage
+            character={character}
+            mode={quiz ? 'quiz' : 'demo'}
+            showOutline={step.guidance !== 'free'}
+            showGuides
+            holdCharacterOnComplete
+            resetKey={run}
+            hintKey={hint}
+            maxSize={size}
+            onQuizComplete={(mistakes) => {
+              successHaptic()
+              setResult(mistakes)
+            }}
+          />
+        </View>
         {result !== null && (
           <Text
             accessibilityLiveRegion="polite"
@@ -150,20 +153,23 @@ export function StrokePickerStep({ step, ctx, column }: StepProps<Of<'stroke-pic
             {item.gloss}
           </Text>
         </View>
-        <HanziStage
-          key={`${character}-${mode}`}
-          character={character}
-          mode={mode}
-          showOutline={mode === 'demo'}
-          showGuides
-          holdCharacterOnComplete
-          resetKey={run}
-          maxSize={size}
-          onQuizComplete={() => {
-            successHaptic()
-            setWritten((n) => n + 1)
-          }}
-        />
+        {/* The stage fills its parent, so the parent carries the size. */}
+        <View style={{ width: size, height: size }}>
+          <HanziStage
+            key={`${character}-${mode}`}
+            character={character}
+            mode={mode}
+            showOutline={mode === 'demo'}
+            showGuides
+            holdCharacterOnComplete
+            resetKey={run}
+            maxSize={size}
+            onQuizComplete={() => {
+              successHaptic()
+              setWritten((n) => n + 1)
+            }}
+          />
+        </View>
         <View style={{ marginTop: 12, flexDirection: 'row', gap: 8 }}>
           <SmallAction icon={Eye} label="Watch" active={mode === 'demo'} onPress={() => (setMode('demo'), setRun((n) => n + 1))} />
           <SmallAction icon={PenLine} label="Write" active={mode === 'quiz'} onPress={() => (setMode('quiz'), setRun((n) => n + 1))} />

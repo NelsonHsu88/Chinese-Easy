@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { View, Text, ScrollView, Image, Animated, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router } from 'expo-router'
-import { ArrowLeft, ChevronRight } from 'lucide-react-native'
+import { ChevronRight } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { allDueCardsFor } from '../lib/selectors'
 import { displayWord, displayPinyin, displayExample, hanziFont } from '../lib/hanzi'
@@ -21,6 +21,8 @@ import { thunkHaptic } from '../lib/haptics'
 import { PlayWash } from '../components/dashboard/playWash'
 import type { VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
+import { BackArrow } from '../components/BackArrow'
+import { spacedReading } from '../components/SpacedReading'
 
 /*
  * Due for Review — the list behind the Review hub's "Due today" stat.
@@ -73,20 +75,10 @@ export function DueWords() {
         <ShadowRevealProvider value={shadowArrival}>
           <View style={{ width: column, flexGrow: 1, paddingHorizontal: s.screen }}>
             <View style={{ paddingTop: s.sm }}>
-              <RaisedButton
+              <BackArrow
                 onPress={() => (router.canGoBack() ? router.back() : router.replace('/review-tab'))}
-                accessibilityLabel="Back"
-                hitSlop={10}
-                height={40}
-                width={40}
-                radius={20}
-                fill={playTints.jade.fill}
-                border={playTints.jade.border}
-                shoulder={playTints.jade.border}
-                scaleTo={0.9}
-              >
-                <ArrowLeft size={20} color={playTints.jade.text} strokeWidth={2.4} />
-              </RaisedButton>
+                style={{ marginLeft: -8, alignSelf: 'flex-start' }}
+              />
             </View>
 
             <Animated.View style={head}>
@@ -195,7 +187,7 @@ export function DueWords() {
                         </View>
                         <View style={{ flex: 1, minWidth: 0 }}>
                           <Text numberOfLines={1} className="font-nunito-semibold" style={{ fontSize: 14.5, lineHeight: 19, color: c.slate }}>
-                            {displayPinyin(word, settings.phoneticScript)}
+                            {spacedReading(displayPinyin(word, settings.phoneticScript), 14.5)}
                           </Text>
                           <Text numberOfLines={1} className="font-nunito-extrabold" style={{ fontSize: 15.5, lineHeight: 21, color: c.navy }}>
                             {shortGloss(word)}
@@ -257,7 +249,7 @@ export function DueWords() {
               <SpeakButton text={displayWord(selected, settings.script)} />
             </View>
             <Text className="font-nunito-semibold" style={{ fontSize: 18, lineHeight: 24, color: c.slate }}>
-              {displayPinyin(selected, settings.phoneticScript)}
+              {spacedReading(displayPinyin(selected, settings.phoneticScript), 18)}
             </Text>
             <Text className="font-nunito-extrabold" style={{ fontSize: 20, lineHeight: 26, color: c.navy }}>
               {shortGloss(selected)}

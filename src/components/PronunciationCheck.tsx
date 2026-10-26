@@ -11,6 +11,7 @@ import { isSpeechRecognitionAvailable, startListening, type ListenSession, type 
 import { playPositiveChime, playRetryTone } from '../lib/sound'
 import { celebrateHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
 import type { VocabWord } from '../types'
+import { spacedReading } from './SpacedReading'
 
 /** The raised buttons' faces and shoulders: Tailwind's `brand-500` on `brand-700`, and a quiet white on slate-300. */
 const BRAND = '#22c55e'
@@ -276,7 +277,7 @@ export function PronunciationCheck({
           </View>
           <SpeakButton text={character} size={20} label="Hear it first" />
         </View>
-        <Text className="text-lg font-medium text-slate-400">{displayPinyin(word, settings.phoneticScript)}</Text>
+        <Text className="text-lg font-medium text-slate-400">{spacedReading(displayPinyin(word, settings.phoneticScript), 18)}</Text>
         <Text className="text-center text-base font-semibold text-slate-700 dark:text-slate-300">{shortGloss(word)}</Text>
       </View>
 

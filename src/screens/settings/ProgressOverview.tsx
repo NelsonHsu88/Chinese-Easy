@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { View, Text } from 'react-native'
 import { playTints, type PlayHue } from '../../components/dashboard/tokens'
 import { router } from 'expo-router'
-import { Flame, Sparkles, Repeat, CalendarCheck } from 'lucide-react-native'
+import { Flame, Sparkles, Repeat, CalendarCheck, Trophy } from 'lucide-react-native'
+import { nextTestLevel, LEVEL_TEST_MAX_MISTAKES, LEVEL_TEST_QUESTIONS } from '../../lib/levelTest'
 import { useApp } from '../../context/AppContext'
 import { buildHeatmapFromProgress, summarizeActivity } from '../../lib/progress'
 import { proficiencyTotals } from '../../lib/proficiency'
@@ -61,7 +62,8 @@ function StatTile({
 }
 
 export function ProgressOverview() {
-  const { dailyProgress, streak, deck } = useApp()
+  const { dailyProgress, streak, deck, settings } = useApp()
+  const nextLevel = nextTestLevel(settings.hskLevel)
 
   const summary = useMemo(
     () => summarizeActivity(buildHeatmapFromProgress(dailyProgress, WINDOW_DAYS)),
@@ -104,6 +106,26 @@ export function ProgressOverview() {
           />
         </View>
       </View>
+
+      {/* Level up (SS1025): a 20-question test on the next level's words. Not
+          offered at the top level, where there is nothing to move up to. */}
+      {nextLevel != null && (
+        <ControlGroup title="Level up">
+          <Text className="font-nunito-bold" style={{ fontSize: 16, lineHeight: 22, color: c.navy }}>
+            You’re at HSK {settings.hskLevel}
+          </Text>
+          <Hint>
+            Pass a {LEVEL_TEST_QUESTIONS}-question test on HSK {nextLevel} words to move up. You can make up to{' '}
+            {LEVEL_TEST_MAX_MISTAKES} mistakes, and every attempt asks new words.
+          </Hint>
+          <ActionButton
+            label={`Take the HSK ${nextLevel} test`}
+            icon={Trophy}
+            tone="primary"
+            onPress={() => router.push('/level-test')}
+          />
+        </ControlGroup>
+      )}
 
       <ControlGroup title="Your deck">
         <DeckBar label="Proficient" count={tiers.proficient} total={deck.length} fill={c.green} />

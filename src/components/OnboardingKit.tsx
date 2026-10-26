@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { View, Text, Pressable, TextInput, Image, Modal as RNModal, type TextInputProps } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withSequence, withRepeat, withSpring, withTiming } from 'react-native-reanimated'
-import { ArrowLeft, Check } from 'lucide-react-native'
+import { Check } from 'lucide-react-native'
 import { playTapSound } from '../lib/sound'
+import { BackArrow } from './BackArrow'
 
 const RED = '#ff6b6b'
 const RED_DARK = '#dc2f2f'
@@ -14,14 +15,7 @@ export function OnboardingHeader({ progress, onBack }: { progress: number; onBac
   return (
     <View className="mb-7 flex-row items-center gap-3">
       {onBack ? (
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          className="h-9 w-9 items-center justify-center rounded-full active:bg-slate-100 dark:active:bg-slate-800"
-        >
-          <ArrowLeft size={22} color="#94a3b8" />
-        </Pressable>
+        <BackArrow onPress={onBack} />
       ) : (
         <View className="w-9" />
       )}

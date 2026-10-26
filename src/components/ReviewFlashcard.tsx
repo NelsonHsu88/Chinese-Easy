@@ -38,6 +38,7 @@ import type { Grade, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 import { QuestionContent } from './motion/questionMotion'
 import { useReduceMotion } from './tour/useReduceMotion'
+import { spacedReading } from './SpacedReading'
 
 const NATIVE = Platform.OS !== 'web'
 
@@ -125,11 +126,14 @@ export function ReviewFlashcard({
    * in opposite directions read as clutter, and the backing means nothing of
    * it shows between the tiles while they settle.
    *
-   * That works because the space below the writer is sized for whichever side
-   * is taller from the first frame: both layers are rendered from mount (the
-   * answer parked below the screen) and measured, and the region takes the
-   * larger height. So the reveal changes no layout at all, which is what used
-   * to force a veil over the whole screen to hide a resize.
+   * The space below the writer is sized for the question alone (SS1025: the
+   * writing card gets most of the screen, roughly 55–65% of its height). The
+   * answer sheet is anchored to that region's foot and, being taller, rises
+   * over the writing card's lower edge — the writer's square is pinned to the
+   * card's top (`stageTop`), so what it covers is the card's spare foot, and
+   * the corner discs are lifted ahead of it. Both layers are rendered from
+   * mount (the answer parked below the screen) and measured, so the reveal
+   * changes no layout and the writer never resizes.
    *
    * Slides only, no fades: on Android a fading parent shows its children's
    * elevation shadows at full strength (CLAUDE.md, Animation traps). Each
@@ -139,10 +143,15 @@ export function ReviewFlashcard({
   const { height: windowHeight } = useWindowDimensions()
   const [questionHeight, setQuestionHeight] = useState(0)
   const [answerHeight, setAnswerHeight] = useState(0)
-  const regionHeight = Math.max(questionHeight, answerHeight)
-  /* Far enough that the answer starts wholly below the screen. Until the
-     region is measured, a whole screen's height is the safe distance. */
-  const travel = regionHeight > 0 ? regionHeight + fcReveal.travelExtra : windowHeight
+  /* Far enough that the answer starts wholly below the screen. Until it is
+     measured, a whole screen's height is the safe distance. */
+  const travel = answerHeight > 0 ? answerHeight + fcReveal.travelExtra : windowHeight
+  /* How far the risen answer reaches up over the writing card's foot. */
+  const overlap = Math.max(0, answerHeight - questionHeight)
+  /* The writing card takes whatever the screen has left (flex), but never less
+     than this: about half the screen, capped at a square of the card's width
+     (the writer is square, so height past that is not more room to write). */
+  const writerMin = Math.max(fcSize.writingMin, Math.min(cardWidth, Math.round(windowHeight * 0.46)))
   const measure = (set: (h: number) => void) => (e: LayoutChangeEvent) => {
     const h = Math.ceil(e.nativeEvent.layout.height)
     set(h)
@@ -246,7 +255,9 @@ export function ReviewFlashcard({
           <QuestionContent style={{ flexGrow: 1 }} veil={{ color: c.background, inset: { top: 6, bottom: 10, side: fcSize.pad } }}>
           <View style={{ flexGrow: 1 }}>
           <WritingCard
-            minHeight={fcSize.writingMin}
+            minHeight={writerMin}
+            stageTop
+            cornerLift={cardIn.interpolate({ inputRange: [0, 1], outputRange: [0, -overlap] })}
             corner={
               <>
                 {!revealed && !hintShown && direction === 'production' && (
@@ -277,34 +288,34 @@ export function ReviewFlashcard({
             />
           </WritingCard>
 
-          {/* The region the reveal happens in — sized for the taller of its two
-              layers (see `reveal` above), so nothing outside it ever moves. */}
-          <View style={{ marginTop: 12, minHeight: regionHeight }}>
+          {/* The region the reveal happens in — sized for the question; the
+              answer rises from its foot (see `reveal` above). */}
+          <View style={{ marginTop: 12 }}>
           {/* The question: sky-washed card (SS1017), Show Answer, "I don't know". */}
           <Animated.View
             onLayout={measure(setQuestionHeight)}
             pointerEvents={revealed ? 'none' : 'auto'}
             importantForAccessibility={revealed ? 'no-hide-descendants' : 'auto'}
             accessibilityElementsHidden={revealed}
-            style={{ flexGrow: 1, opacity: covered ? 0 : 1 }}
+            style={{ opacity: covered ? 0 : 1 }}
           >
+            {/* Compact on purpose: the label and pill, then the prompt — the
+                screen's height belongs to the writing card above. */}
             <View
               style={[
                 card,
                 fcShadow,
-                { flexGrow: 1, backgroundColor: playTints.sky.fill, borderColor: playTints.sky.border },
+                { backgroundColor: playTints.sky.fill, borderColor: playTints.sky.border },
               ]}
             >
-              <View style={{ flexGrow: 1, padding: 20, paddingBottom: 22, minHeight: 132 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-                  <Text style={{ flex: 1, fontFamily: 'NunitoExtraBold', ...t.label, color: playTints.sky.text, textTransform: 'uppercase', marginTop: 6 }}>
+              <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Text style={{ flex: 1, fontFamily: 'NunitoExtraBold', ...t.label, color: playTints.sky.text, textTransform: 'uppercase' }}>
                     {direction === 'recognition' ? 'Recognize this' : 'Write in Chinese'}
                   </Text>
                   <DuePill isNew={isNew} />
                 </View>
-                {/* The prompt sits in the middle of the card, however tall the
-                    answer has made it, so the space reads as a flashcard's face. */}
-                <View style={{ flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 10 }}>
+                <View style={{ justifyContent: 'center', alignItems: 'center', paddingTop: 6 }}>
                   {direction === 'recognition' ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                       <Text className={face} style={{ ...t.word, color: c.ink, includeFontPadding: false }}>{text}</Text>
@@ -359,7 +370,7 @@ export function ReviewFlashcard({
             pointerEvents={revealed ? 'box-none' : 'none'}
             importantForAccessibility={revealed ? 'auto' : 'no-hide-descendants'}
             accessibilityElementsHidden={!revealed}
-            style={[{ position: 'absolute', top: 0, left: 0, right: 0, minHeight: regionHeight }, rise(cardIn, travel)]}
+            style={[{ position: 'absolute', bottom: 0, left: 0, right: 0 }, rise(cardIn, travel)]}
           >
             {/* The sheet's backing, in the page colour: it hides the question
                 between and below the tiles. It starts under the card, clear of
@@ -385,7 +396,7 @@ export function ReviewFlashcard({
                   <DuePill isNew={isNew} />
                 </View>
                 <Text style={{ fontFamily: 'NunitoSemiBold', ...t.reading, color: c.green, marginTop: 4 }}>
-                  {displayPinyin(word, settings.phoneticScript)}
+                  {spacedReading(displayPinyin(word, settings.phoneticScript), t.reading.fontSize)}
                 </Text>
                 <Text style={{ fontFamily: 'NunitoSemiBold', ...t.gloss, color: c.body, marginTop: 4 }}>{shortGloss(word)}</Text>
                 {example ? (

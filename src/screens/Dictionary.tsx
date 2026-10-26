@@ -4,7 +4,7 @@ import { View, Text, TextInput, ScrollView, Pressable, Animated, Easing, Image, 
 import { runAfterInteractions } from '../lib/afterInteractions'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
-import { ChevronLeft, Search, X, Layers } from 'lucide-react-native'
+import { Search, X, Layers } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { defaultPhoneticFor, displayPinyin } from '../lib/hanzi'
 import {
@@ -43,6 +43,7 @@ import { AppBannerAd } from '../components/ads/AppBannerAd'
 import { TourScrollContext, TourTarget } from '../components/tour/targets'
 import { PAGE_SUBTITLE, PAGE_TITLE, PAGE_TITLE_TOP } from '../components/pageHeader'
 import { RefHero, refY } from '../components/refScene'
+import { BackArrow } from '../components/BackArrow'
 
 /**
  * The design viewport, matching `DASH_CONTENT_MAX` / `REV_CONTENT_MAX` /
@@ -671,14 +672,13 @@ function ResultList({
 
   return (
     <View className="mt-3 gap-3">
-      {results.map((word, i) => (
+      {results.map((word) => (
         <EntryCard
           key={word.id}
           word={word}
           pinyin={displayPinyin(word, settings.phoneticScript)}
           script={settings.script}
           state={entryStateFor(word.id, deckIndex)}
-          expanded={i === 0}
           onOpen={() => onOpen(word)}
           onAdd={() => onAdd(word.id)}
           onPractice={() => onPractice(word)}
@@ -706,24 +706,17 @@ function BrowseResults({
 }) {
   return (
     <>
-      <View className="flex-row items-center justify-between pb-3 pt-7">
-        <Text className="flex-1 font-nunito-extrabold text-[21px] leading-[28px] text-dict-heading">{title}</Text>
-        <RaisedButton
+      <View className="flex-row items-center pb-3 pt-7" style={{ gap: 4 }}>
+        <BackArrow
           onPress={() => {
             tickHaptic()
             onBack()
           }}
           accessibilityLabel="Back to the dictionary home"
-          height={44}
-          fill={DICT_BG.card}
-          border={DICT_BG.pillBorder}
-          shoulder={DICT_BG.pillShoulder}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 12, paddingRight: 16 }}>
-            <ChevronLeft size={19} color={ICON_GREEN_DARK} strokeWidth={2.5} />
-            <Text className="font-nunito-bold text-[14px] text-dict-green-dark">Back</Text>
-          </View>
-        </RaisedButton>
+          size={28}
+          style={{ marginLeft: -8 }}
+        />
+        <Text className="flex-1 font-nunito-extrabold text-[21px] leading-[28px] text-dict-heading">{title}</Text>
       </View>
       {action}
       <ResultList emptyTitle={emptyTitle} emptyBody={emptyBody} {...rest} />

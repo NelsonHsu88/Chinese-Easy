@@ -3,11 +3,12 @@ import { View, Text, Pressable, ScrollView, Image } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
-import { ArrowLeft, Lock, Star } from 'lucide-react-native'
+import { Lock, Star } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { TOWN_BUILDINGS } from '../data/townBuildings'
 import { canAfford, levelForXp } from '../lib/townEconomy'
 import { playTapSound } from '../lib/sound'
+import { BackArrow } from '../components/BackArrow'
 
 export function MyTown() {
   const { xp, unlockedBuildingIds, unlockBuilding } = useApp()
@@ -26,14 +27,7 @@ export function MyTown() {
     <SafeAreaView edges={['top']} className="flex-1 bg-slate-50 dark:bg-slate-950">
       <ScrollView contentContainerStyle={{ gap: 18, padding: 16, paddingBottom: 40 }}>
         <View className="flex-row items-center gap-3">
-          <Pressable
-            onPress={() => router.back()}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            className="rounded-full bg-white p-2 shadow-card dark:bg-slate-900"
-          >
-            <ArrowLeft size={20} color="#64748b" />
-          </Pressable>
+          <BackArrow onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
           <Text className="flex-1 text-lg font-bold text-slate-900 dark:text-white">My Town</Text>
           <View className="flex-row items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 dark:bg-amber-900/40">
             <Star size={14} color="#f5b93d" fill="#f5b93d" />

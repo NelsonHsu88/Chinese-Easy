@@ -13,7 +13,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { ChevronLeft, Check, X, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react-native'
+import { Check, X, HelpCircle, Eye, EyeOff, AlertCircle } from 'lucide-react-native'
 import {
   onbColors as c,
   onbSpacing as s,
@@ -32,6 +32,7 @@ import type { ScriptMode } from '../../types'
 import { ShadowRevealProvider, ShadowSurface, useRevealedShadow, useShadowReveal } from '../shadowReveal'
 import { dashShoulders } from '../dashboard/tokens'
 import { playTapSound } from '../../lib/sound'
+import { BackArrow } from '../BackArrow'
 
 /*
  * The onboarding building blocks.
@@ -500,15 +501,7 @@ export function OnbTopBar({
   return (
     <View className="flex-row items-center justify-between" style={{ height: 44 }}>
       {onBack ? (
-        <Pressable
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          hitSlop={14}
-          className="active:opacity-60"
-        >
-          <ChevronLeft size={26} color={c.navy} strokeWidth={2.4} />
-        </Pressable>
+        <BackArrow onPress={onBack} accessibilityLabel="Go back" style={{ marginLeft: -6 }} />
       ) : (
         <View />
       )}

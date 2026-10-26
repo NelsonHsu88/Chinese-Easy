@@ -1,3 +1,4 @@
+import { Platform } from 'react-native'
 import { requireOptionalNativeModule } from 'expo'
 import type { ExpoSpeechRecognitionModule as SpeechModule } from 'expo-speech-recognition'
 import { FALLBACK_LANGUAGE, bestMandarinTag } from './mandarinLocale'
@@ -81,8 +82,13 @@ function speechModule(): typeof SpeechModule | null {
   if (nativeModule !== undefined) return nativeModule
 
   /* Ask before importing - a `require` of the package where the native module
-     is missing is not recoverable. See `nativeModuleRegistered`. */
-  if (!nativeModuleRegistered()) {
+     is missing is not recoverable. See `nativeModuleRegistered`.
+     Not on web: there the package is plain JavaScript over the browser's Web
+     Speech API, registered under another name and only once imported, so the
+     probe always said no and the web app never offered speaking practice.
+     Importing it is safe; whether the browser has the API is
+     `isRecognitionAvailable`'s question. */
+  if (Platform.OS !== 'web' && !nativeModuleRegistered()) {
     nativeModule = null
     return nativeModule
   }

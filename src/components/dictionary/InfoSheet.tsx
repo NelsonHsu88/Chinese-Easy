@@ -15,12 +15,13 @@ import {
   type PanResponderGestureState,
 } from 'react-native'
 import { useFocusEffect } from 'expo-router'
-import { ChevronDown, ChevronLeft, ChevronUp, type LucideIcon } from 'lucide-react-native'
+import { ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react-native'
 import { tapHaptic } from '../../lib/haptics'
 import { useReduceMotion } from '../tour/useReduceMotion'
 import { TourTarget } from '../tour/targets'
 import { ICON_GREEN, ICON_STROKE } from './DictionaryControls'
 import { sheetColors } from './sheetTokens'
+import { BackArrow } from '../BackArrow'
 
 /*
  * The draggable "Explore this word" sheet on the dictionary detail pages.
@@ -453,14 +454,7 @@ export function InfoSheet({
             <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: C.handle }} />
             <View style={{ width: '100%', maxWidth: contentMaxWidth + 40, alignSelf: 'center', paddingHorizontal: 56, marginTop: 6 }}>
               {header}
-              <Pressable
-                onPress={onBack}
-                accessibilityRole="button"
-                accessibilityLabel="Back"
-                style={{ position: 'absolute', left: 8, top: 4, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <ChevronLeft size={24} color={C.heading} strokeWidth={ICON_STROKE} />
-              </Pressable>
+              <BackArrow onPress={onBack} style={{ position: 'absolute', left: 8, top: 2 }} />
               <RaisedButton
                 onPress={() => settle(false)}
                 accessibilityLabel="Close details"

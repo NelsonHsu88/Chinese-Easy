@@ -17,6 +17,8 @@ import { revColors, revShadow } from '../review/tokens'
 export const endColors = {
   ...revColors,
   emptyPage: '#FFFFFF',
+  /** `emptyPage` at zero alpha: the top of the fade under the full-bleed hero. */
+  emptyPageClear: 'rgba(255,255,255,0)',
   donePage: '#FFFFFF',
   /** The tip and stats cards: a shade lighter than either page, on a hairline. */
   panel: '#FFFDF9',

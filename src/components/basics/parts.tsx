@@ -1,11 +1,12 @@
 import { useRef } from 'react'
 import { View, Text, Pressable, Animated, type StyleProp, type ViewStyle } from 'react-native'
 import { router } from 'expo-router'
-import { ChevronLeft, ChevronRight } from 'lucide-react-native'
+import { ChevronRight } from 'lucide-react-native'
 import { DASH_LIFT, LiftedFace, PressableScale, usePressProgress } from '../dashboard/parts'
 import { basicsColors as c, basicsSpacing as sp, basicsType as t } from './tokens'
 import type { PlayTint } from '../dashboard/tokens'
 import { RaisedProgressBar } from '../progress/RaisedProgressBar'
+import { BackArrow } from '../BackArrow'
 
 /*
  * The small pieces Chinese Basics' three screens share. Everything here is
@@ -19,15 +20,10 @@ import { RaisedProgressBar } from '../progress/RaisedProgressBar'
 export function BasicsBackRow({ fallback, right }: { fallback: string; right?: React.ReactNode }) {
   return (
     <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-      <Pressable
+      <BackArrow
         onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback as never))}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        hitSlop={12}
-        style={{ marginLeft: -6 }}
-      >
-        <ChevronLeft size={28} color={c.jadeDark} strokeWidth={2} />
-      </Pressable>
+        style={{ marginLeft: -8 }}
+      />
       {right}
     </View>
   )

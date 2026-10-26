@@ -72,7 +72,16 @@ export function basicsText(text: Phon, script: ScriptMode, phonetic: Phonetic): 
 export function localizeString(text: string, script: ScriptMode, phonetic: Phonetic): string {
   return text
     .replace(/\{\{([^|}]+)\|([^}]+)\}\}/g, (_, t: string, s: string) => (script === 'simplified' ? s : t))
-    .replace(/\[\[([^\]]+)\]\]/g, (_, pinyin: string) => basicsReading(pinyin, phonetic))
+    .replace(/\[\[([^\]]+)\]\]/g, (_, pinyin: string) => proseReading(basicsReading(pinyin, phonetic)))
+}
+
+/**
+ * A reading set inside a sentence of prose. Zhuyin tone marks are glued to
+ * their syllable with a word joiner (U+2060), or a line could break before
+ * one and leave "ˇ)." alone at the start of the next line.
+ */
+function proseReading(reading: string): string {
+  return reading.replace(/([ˊˇˋ˙])/g, '\u2060$1')
 }
 
 /** A step (or any content) with every string's markup resolved for this learner. */

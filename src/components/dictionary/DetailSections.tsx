@@ -6,6 +6,7 @@ import { ICON_GREEN, ICON_STROKE, SpeakChip } from './DictionaryControls'
 import { DICT_BG } from './shadows'
 import { hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
+import { spacedReading } from '../SpacedReading'
 
 /** The hero card's two action buttons' face height — see the comment above their row for why nothing there is a class. */
 const HERO_BUTTON_HEIGHT = 50
@@ -75,7 +76,7 @@ export function DetailHero({
       <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         {reading.length > 0 && (
           <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 22, lineHeight: 28, color: DICT_BG.green, includeFontPadding: false }}>
-            {reading}
+            {spacedReading(reading, 22)}
           </Text>
         )}
         <SpeakChip text={glyph} size={34} />

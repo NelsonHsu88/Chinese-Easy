@@ -4,7 +4,6 @@ import { View, Text, Image, Pressable, ScrollView, Animated, useWindowDimensions
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, Stack, type Href } from 'expo-router'
 import {
-  ArrowLeft,
   BookOpen,
   CalendarCheck,
   ChartNoAxesColumnIncreasing,
@@ -45,6 +44,7 @@ import {
 import { ShadowSurface } from '../shadowReveal'
 import { playTints } from '../dashboard/tokens'
 import { RefHero, refY } from '../refScene'
+import { BackArrow } from '../BackArrow'
 
 /** Where the profile card starts in "SS1017 New APP DesIGN UI (3)" (its pixels). */
 const PROFILE_CARD_TOP_REF = 328
@@ -869,16 +869,12 @@ export function ProfileSubpage({
         contentContainerStyle={{ alignItems: 'center', paddingBottom: Math.max(s.xxl, insets.bottom + s.md) }}
       >
         <View style={{ width: column, paddingHorizontal: s.screen }}>
-          <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile-tab' as Href))}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-            className="items-center justify-center active:opacity-60"
-            style={{ width: 40, height: 48, marginLeft: -6 }}
-          >
-            <ArrowLeft size={26} color={c.jadeDark} strokeWidth={2} />
-          </Pressable>
+          <View style={{ height: 48, justifyContent: 'center', alignSelf: 'flex-start' }}>
+            <BackArrow
+              onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile-tab' as Href))}
+              style={{ marginLeft: -8 }}
+            />
+          </View>
           {/* The hero's range and pagoda, smaller, so the sub-pages read as rooms
               of the same house rather than as bare lists. Out of flow, never a
               tap target, and sized by height to the back-arrow row alone: sized

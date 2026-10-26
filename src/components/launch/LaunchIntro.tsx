@@ -23,6 +23,9 @@ import Svg, { Path } from 'react-native-svg'
 import { launchColors as C, launchTiming as T } from './tokens'
 import { LOCKUP, WORD_PATHS } from './lockup'
 
+/** Room around the written word, in its own units, so no letter's overhang is clipped. */
+const WORD_BLEED = 60
+
 const VIDEO = require('../../assets/video/launch-intro.mp4')
 const LOGO = require('../../assets/images/launch/shifu-logo.png')
 
@@ -266,13 +269,17 @@ export function LaunchIntro({ appReady, onVisible, onDone }: Props) {
     const logo = { left: ox + LOCKUP.logo.x * sc, top: oy + LOCKUP.logo.y * sc, size: LOCKUP.logo.size * sc }
     const ws = LOCKUP.word.scale * sc
     const box = LOCKUP.wordBox
+    /* The box is padded on every side: `wordBox.width` is the word's advance,
+       and the y's tail reaches past it (and a hair below `bottom`), so an
+       unpadded box clipped the end of the y. */
+    const pad = WORD_BLEED
     const word = {
-      left: ox + LOCKUP.word.x * sc,
-      top: oy + LOCKUP.word.y * sc + box.top * ws,
-      width: box.width * ws,
-      height: (box.bottom - box.top) * ws,
+      left: ox + (LOCKUP.word.x - pad * LOCKUP.word.scale) * sc,
+      top: oy + LOCKUP.word.y * sc + (box.top - pad) * ws,
+      width: (box.width + pad * 2) * ws,
+      height: (box.bottom - box.top + pad * 2) * ws,
     }
-    const groupBottom = word.top + word.height
+    const groupBottom = word.top + word.height - pad * ws
 
     const bodyH = Math.round(H * 0.55)
     const crestH = CREST_BOX
@@ -327,7 +334,7 @@ export function LaunchIntro({ appReady, onVisible, onDone }: Props) {
         <Svg
           width={g.word.width}
           height={g.word.height}
-          viewBox={`0 ${LOCKUP.wordBox.top} ${LOCKUP.wordBox.width} ${LOCKUP.wordBox.bottom - LOCKUP.wordBox.top}`}
+          viewBox={`${-WORD_BLEED} ${LOCKUP.wordBox.top - WORD_BLEED} ${LOCKUP.wordBox.width + WORD_BLEED * 2} ${LOCKUP.wordBox.bottom - LOCKUP.wordBox.top + WORD_BLEED * 2}`}
           style={{ position: 'absolute', left: g.word.left, top: g.word.top }}
         >
           {WORD_PATHS.map((d, i) => (

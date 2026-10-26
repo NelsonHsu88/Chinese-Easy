@@ -14,6 +14,7 @@ import { ReadingSentence } from './dictionary/ReadingSentence'
 import { PressableScale, LiftedFace } from './dashboard/parts'
 import { AnswerSheet } from './drills/parts'
 import { IconChip } from './dictionary/DictionaryControls'
+import { spacedReading } from './SpacedReading'
 
 /**
  * Faces and shoulders for the raised buttons, from the `brand` scale in the
@@ -295,7 +296,7 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
               </Text>
             ))}
           </View>
-          <Text className="mt-1 text-[16px] font-bold text-slate-400">{pinyin}</Text>
+          <Text className="mt-1 text-[16px] font-bold text-slate-400">{spacedReading(pinyin, 16)}</Text>
         </View>
 
         {/* Flexes to absorb whatever height is left rather than claiming a fixed
@@ -391,7 +392,7 @@ export function WritingPracticeModal({ word, onClose, onCompleted, playbackOnFin
                 {text}
               </Text>
               <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, color: '#64748b' }}>
-                {pinyin} — {shortGloss(word)}
+                {spacedReading(pinyin, 15)} — {shortGloss(word)}
               </Text>
             </>
           }

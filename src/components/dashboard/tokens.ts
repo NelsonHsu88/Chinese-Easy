@@ -22,6 +22,9 @@ export const dashColors = {
   textSecondary: '#5D6878',
   textMuted: '#919CAA',
 
+  /** Every back arrow in the app: one flat grey chevron (`components/BackArrow.tsx`). */
+  backArrow: '#7A8494',
+
   /** Card fill: warm near-white, a shade off the page rather than white. */
   card: '#FFFDFC',
   border: '#E8E5DE',

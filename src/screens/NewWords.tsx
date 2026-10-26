@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
 import { router } from 'expo-router'
 import {
-  ChevronLeft,
   CirclePlus,
   CircleAlert,
   PenLine,
@@ -33,6 +32,8 @@ import { RaisedProgressBar } from '../components/progress/RaisedProgressBar'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
 import { shortGloss } from '../lib/definitions'
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
+import { BackArrow } from '../components/BackArrow'
+import { spacedReading } from '../components/SpacedReading'
 
 /*
  * New Words, built to the Beta 2.1 reference "SS 927 GOAL NEW WORDS UI LEARN
@@ -636,15 +637,10 @@ export function NewWords() {
         <View style={{ width: columnWidth, flexGrow: 1, paddingHorizontal: GUTTER, paddingBottom: 12 }}>
           {/* Header: back, the centred title, Recent. */}
           <View style={{ height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Pressable
+            <BackArrow
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={10}
-              style={{ width: 40, height: 44, justifyContent: 'center', marginLeft: -6 }}
-            >
-              <ChevronLeft size={28} color={c.greenDark} strokeWidth={2.4} />
-            </Pressable>
+              style={{ marginLeft: -8 }}
+            />
 
             {/*
               The title spans the whole header so it centres on the screen, and
@@ -857,7 +853,15 @@ export function NewWords() {
 
                 {/* The tour's "Save what matters" spotlight lands here. The
                     wrapper is the flex child now, so it carries the share. */}
-                <TourTarget id="new-words-add" radius={BUTTON_HEIGHT / 2} style={{ flex: 1.4 }}>
+                <TourTarget
+                  id="new-words-add"
+                  radius={BUTTON_HEIGHT / 2}
+                  style={{ flex: 1.4 }}
+                  onActivate={() => {
+                    tapHaptic()
+                    forward('add')
+                  }}
+                >
                   <PressableScale
                     onPress={() => {
                       tapHaptic()
@@ -1018,7 +1022,7 @@ function WordCard({
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 }}>
           <Text style={{ fontFamily: 'NunitoBold', fontSize: 26, lineHeight: 32, color: c.textSecondary }}>
-            {displayPinyin(word, phoneticScript)}
+            {spacedReading(displayPinyin(word, phoneticScript), 26)}
           </Text>
           {/* A bare speaker, as the reference draws it — the padding and
               `hitSlop` keep it a full-size target without a visible circle. */}
@@ -1226,7 +1230,7 @@ function RecentWordsSheet({
                         {displayWord(word, script)}
                       </Text>
                       <Text style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 20, color: c.textSecondary }}>
-                        {displayPinyin(word, phoneticScript)}
+                        {spacedReading(displayPinyin(word, phoneticScript), 15)}
                       </Text>
                     </View>
                     <Text

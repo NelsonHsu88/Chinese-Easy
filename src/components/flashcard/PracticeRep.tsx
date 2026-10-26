@@ -12,6 +12,7 @@ import { DiscButton, FlashcardHeader, WritingCard, card, useFlashcardColumn } fr
 import { fcColors as c, fcShoulders, fcShadow, fcType as t, fcSize, fcRepSlide, FC_CHARACTER_HOLD_MS } from './tokens'
 import type { VocabWord } from '../../types'
 import { QuestionContent } from '../motion/questionMotion'
+import { spacedReading } from '../SpacedReading'
 
 /**
  * How long a finished rep stays on screen before the next one starts by
@@ -146,7 +147,7 @@ export function PracticeRep({
                 <Text className={face} style={{ ...t.word, color: c.ink, includeFontPadding: false }}>{text}</Text>
               )}
               <View style={{ flex: 1 }}>
-                <Text style={{ fontFamily: 'NunitoSemiBold', ...t.reading, color: c.green }}>{displayPinyin(word, settings.phoneticScript)}</Text>
+                <Text style={{ fontFamily: 'NunitoSemiBold', ...t.reading, color: c.green }}>{spacedReading(displayPinyin(word, settings.phoneticScript), t.reading.fontSize)}</Text>
                 <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', ...t.gloss, color: c.body }}>{shortGloss(word)}</Text>
               </View>
               <Pressable onPress={() => speak(text)} accessibilityRole="button" accessibilityLabel="Play pronunciation" hitSlop={6}>

@@ -27,6 +27,7 @@ import { placeTooltip, type Bounds } from '../../lib/tourPlacement'
 import { tabBarHeight } from '../../lib/tabBar'
 import { successHaptic } from '../../lib/haptics'
 import { Spotlight } from './Spotlight'
+import { activateTarget } from './targets'
 import { TourTooltip } from './TourTooltip'
 import { TourToast, toastLifetime } from './TourToast'
 import { useReduceMotion } from './useReduceMotion'
@@ -190,8 +191,17 @@ export function TourOverlay() {
       case 'new-words':
         return { label: s.primaryLabel ?? 'Next', onPress: () => router.push('/new-words') }
       case 'save':
-        /* Only the real Add finishes this step — unless there is no Add to press. */
-        if (!fallback) return null
+        /* "Add word" presses the real Add for the learner — the card flies off
+           and the step finishes on the screen's own report, exactly as a tap. */
+        if (!fallback)
+          return {
+            label: s.primaryLabel ?? 'Add word',
+            onPress: () => {
+              if (activateTarget('new-words-add')) return
+              skippedSave.current = true
+              advanceTour('save')
+            },
+          }
         return {
           label: 'Next',
           onPress: () => {

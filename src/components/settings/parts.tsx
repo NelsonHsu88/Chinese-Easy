@@ -15,7 +15,7 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
-import { ArrowLeft, ChevronRight, Check } from 'lucide-react-native'
+import { ChevronRight, Check } from 'lucide-react-native'
 import { useScreenTransition, LeaveProvider } from './transition'
 import { ShadowRevealProvider, ShadowSurface, useRevealedShadow } from '../shadowReveal'
 import {
@@ -33,6 +33,7 @@ import { playTints, type PlayHue, dashShoulders } from '../dashboard/tokens'
 import { useScrollToTopOnFocus } from '../useScrollToTopOnFocus'
 import { TourScrollContext } from '../tour/targets'
 import { DASH_LIFT, PressableScale, RaisedButton, usePressProgress } from '../dashboard/parts'
+import { BackArrow } from '../BackArrow'
 
 /*
  * The Settings screen's building blocks.
@@ -239,22 +240,13 @@ export function DetailShell({ title, children }: { title: string; children: Reac
                 the hub it came from rather than reading as a bare form. */}
             <SakuraCorner width={column * DETAIL_SAKURA_SHARE} />
             <View className="flex-row items-center" style={{ paddingTop: s.md, gap: s.md }}>
-              <RaisedButton
+              <BackArrow
                 onPress={() =>
                   leave(() => (router.canGoBack() ? router.back() : router.replace('/settings')))
                 }
                 accessibilityLabel="Back to Settings"
-                hitSlop={10}
-                height={40}
-                width={40}
-                radius={20}
-                fill={playTints.jade.fill}
-                border={playTints.jade.border}
-                shoulder={playTints.jade.border}
-                scaleTo={0.9}
-              >
-                <ArrowLeft size={20} color={playTints.jade.text} strokeWidth={2.4} />
-              </RaisedButton>
+                style={{ marginLeft: -8 }}
+              />
               <Text className="font-nunito-extrabold" style={{ ...t.detailTitle, color: c.navy }}>
                 {title}
               </Text>

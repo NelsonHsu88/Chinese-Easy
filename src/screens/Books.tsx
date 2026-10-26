@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { View, Text, Pressable, ScrollView, Animated, Image, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
-import { BookOpen, ChevronLeft, ChevronRight, Lock } from 'lucide-react-native'
+import { BookOpen, ChevronRight, Lock } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { STORIES } from '../data/stories'
 import type { Story, StoryCollection } from '../types'
@@ -23,6 +23,7 @@ import { FilterPanelCard, PanelLabel, Pill, PILL_HEIGHT } from '../components/di
 import { FilterButton } from '../components/dictionary/FilterDrawer'
 import { FilterChip } from '../components/dictionary/DictionaryControls'
 import { DASH_LIFT } from '../components/dashboard/parts'
+import { BackArrow } from '../components/BackArrow'
 
 /*
  * The Reading Library, built to the Beta 2.1 reference
@@ -161,16 +162,9 @@ export function Books() {
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: EDGE - 4, paddingTop: 6, height: 44 }}>
-          <Pressable
-            // Opened from the Learn tab; when there is no stack to pop (a reload,
-            // a deep link) the dashboard is where it belongs.
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-          >
-            <ChevronLeft size={28} color={c.teal} strokeWidth={2} />
-          </Pressable>
+          {/* Opened from the Learn tab; when there is no stack to pop (a reload,
+              a deep link) the dashboard is where it belongs. */}
+          <BackArrow onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))} />
           <StreakPill streak={streak} />
         </View>
 

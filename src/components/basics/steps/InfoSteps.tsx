@@ -3,8 +3,7 @@ import { Check, Play } from 'lucide-react-native'
 import type { BasicsStep } from '../../../data/basics/types'
 import { AudioIndicator, playZh } from '../audio'
 import { BasicsPill } from '../parts'
-import { Card, Gloss, ItemRow, LearnMore, RaisedTap, Reading, StepBody, StepTitle, type StepProps } from '../lessonParts'
-import { hanziFont } from '../../../lib/hanzi'
+import { Card, Gloss, ItemRow, LearnMore, RaisedTap, RubySentence, StepBody, StepTitle, listIsStacked, type StepProps } from '../lessonParts'
 import { basicsColors as c } from '../tokens'
 
 /*
@@ -30,6 +29,7 @@ export function ExplainStep({ step, ctx, stepId }: StepProps<Of<'explain'>>) {
               audioId={`${stepId}-item-${i}`}
               bothReadings={step.bothReadings}
               bothScripts={step.bothScripts}
+              stacked={!step.bothScripts && listIsStacked(step.items!, ctx)}
             />
           ))}
         </View>
@@ -47,7 +47,14 @@ export function ListenStep({ step, ctx, stepId }: StepProps<Of<'listen'>>) {
       <StepBody>{ctx.text(step.body)}</StepBody>
       <View style={{ marginTop: 18, gap: 10 }}>
         {step.items.map((item, i) => (
-          <ItemRow key={i} item={item} ctx={ctx} audioId={`${stepId}-item-${i}`} bothReadings={step.bothReadings} />
+          <ItemRow
+            key={i}
+            item={item}
+            ctx={ctx}
+            audioId={`${stepId}-item-${i}`}
+            bothReadings={step.bothReadings}
+            stacked={listIsStacked(step.items, ctx)}
+          />
         ))}
       </View>
     </View>
@@ -81,10 +88,7 @@ export function DialogueStep({ step, ctx, stepId }: StepProps<Of<'dialogue'>>) {
                   {line.speaker}
                 </Text>
                 <View style={{ flexShrink: 1 }}>
-                  <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 22, lineHeight: 30, color: c.navy }}>
-                    {spoken}
-                  </Text>
-                  <Reading pinyin={line.item.pinyin} ctx={ctx} size={13.5} />
+                  <RubySentence text={spoken} pinyin={line.item.pinyin} ctx={ctx} size={22} readingSize={11.5} />
                   {line.item.gloss && <Gloss>{line.item.gloss}</Gloss>}
                 </View>
                 <AudioIndicator id={id} size={34} />

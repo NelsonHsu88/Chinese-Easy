@@ -197,6 +197,8 @@ export function HeroArt({
   align = 'end',
   fill = false,
   overhang = 0,
+  maxOverhang = overhang,
+  maxSink = 0,
 }: {
   piece: ArtPiece
   align?: 'start' | 'end' | 'center'
@@ -213,15 +215,41 @@ export function HeroArt({
    * scene: a fixed overlap pushed a small phone's shrunken scene into the text.
    */
   overhang?: number
+  /**
+   * How far a scene that is short of room may reach up past `overhang` before
+   * it shrinks instead. Shrinking narrows it too — on a 360pt Android phone the
+   * welcome landscape stopped short of both edges with bare paper either side
+   * and no longer reached the top half — so a scene keeps the column's full
+   * width as long as its quiet top (sky, mist, the title's cleared patch) can
+   * stand behind the text above it.
+   */
+  maxOverhang?: number
+  /**
+   * With `maxOverhang`: how much of the scene's bottom may sink behind what is
+   * below its slot once the top has reached `maxOverhang`. Past both, the scene
+   * still keeps the full width and reaches further up — it never shrinks, which
+   * on a short phone (Expo Go on Android, with the status and navigation bars
+   * taken off the window) left bare paper down both sides.
+   */
+  maxSink?: number
 }) {
   const column = useColumn()
   const art = ART[piece]
   const natural = (column * art.h) / art.w
   const [slot, setSlot] = useState(0)
   const room = slot / (1 - overhang)
-  const height = Math.max(0, fill ? Math.min(natural * HERO_FILL_MAX, room) : Math.min(natural, room))
+  let height = Math.max(0, fill ? Math.min(natural * HERO_FILL_MAX, room) : Math.min(natural, room))
+  let lift = height * overhang
+  let sink = 0
+  if (align !== 'center' && maxOverhang > overhang && slot > 0 && room < natural) {
+    /* The column's full width: up behind the text above to `maxOverhang`, then
+       down behind what is below to `maxSink`, then further up. */
+    height = natural
+    sink = Math.min(height * maxSink, Math.max(0, height * (1 - maxOverhang) - slot))
+    lift = height - slot - sink
+  }
   const width = (height * art.w) / art.h
-  const placed = align === 'start' ? { top: -height * overhang } : align === 'center' ? { top: (slot - height) / 2 } : { bottom: 0 }
+  const placed = align === 'start' ? { top: -lift } : align === 'center' ? { top: (slot - height) / 2 } : { bottom: -sink }
   return (
     <View
       pointerEvents="none"

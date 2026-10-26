@@ -6,6 +6,7 @@ import { ShadowSurface } from '../shadowReveal'
 import { dashShadow, type PlayTint } from '../dashboard/tokens'
 import { hanziFont } from '../../lib/hanzi'
 import { pinyinToZhuyin } from '../../lib/zhuyin'
+import { SyllableText } from '../SyllableText'
 import { basicsReading, basicsText, zhText } from '../../lib/basics'
 import type { Phon, Phonetic, Zh, ZhItem } from '../../data/basics/types'
 import type { ScriptMode } from '../../types'
@@ -236,6 +237,108 @@ export function Reading({
   )
 }
 
+const HAN = /\p{Script=Han}/u
+
+/** Glyphs in a string, counting only hanzi — the unit a lesson sizes its layout by. */
+export function hanziCount(text: string): number {
+  return Array.from(text).filter((ch) => HAN.test(ch)).length
+}
+
+/**
+ * Pairs each hanzi with its syllable; punctuation gets none. Null when the
+ * reading doesn't have one syllable per hanzi, so a caller can fall back.
+ */
+function rubyCells(text: string, pinyin: string): { glyph: string; sound: string }[] | null {
+  const syllables = pinyin.split(' ').filter(Boolean)
+  const cells: { glyph: string; sound: string }[] = []
+  let k = 0
+  for (const ch of Array.from(text)) {
+    if (HAN.test(ch)) {
+      if (k >= syllables.length) return null
+      cells.push({ glyph: ch, sound: syllables[k++] })
+    } else {
+      cells.push({ glyph: ch, sound: '' })
+    }
+  }
+  return k === syllables.length ? cells : null
+}
+
+/**
+ * A sentence with its reading under each character, centred on the glyph
+ * (zhuyin tone marks hang, see `SyllableText`). SS1025: a reading set beside a
+ * sentence in a narrow column wrapped into a vertical stack of symbols.
+ * Punctuation carries no reading and clings to the glyph before it, so a line
+ * never starts with "。". With "Show both", or a reading that doesn't pair up,
+ * the reading lines run under the sentence instead.
+ */
+export function RubySentence({
+  text,
+  pinyin,
+  ctx,
+  size,
+  readingSize,
+  both,
+  center,
+}: {
+  text: string
+  pinyin?: string
+  ctx: BasicsCtx
+  size: number
+  readingSize: number
+  both?: boolean
+  center?: boolean
+}) {
+  const face = hanziFont(ctx.script, 'medium')
+  const cells = pinyin && !(both || ctx.both) ? rubyCells(text, pinyin) : null
+  if (!cells) {
+    return (
+      <View style={{ alignItems: center ? 'center' : 'flex-start' }}>
+        <Text className={face} style={{ fontSize: size, lineHeight: size * 1.3, color: c.navy, textAlign: center ? 'center' : 'left' }}>
+          {text}
+        </Text>
+        <Reading pinyin={pinyin} ctx={ctx} size={readingSize} both={both} center={center} />
+      </View>
+    )
+  }
+  /* Each hanzi starts a group; punctuation joins the group before it. */
+  const groups: { glyph: string; sound: string }[][] = []
+  for (const cell of cells) {
+    if (!cell.sound && groups.length > 0) groups[groups.length - 1].push(cell)
+    else groups.push([cell])
+  }
+  const zhuyin = ctx.phonetic === 'zhuyin'
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        alignItems: 'flex-start',
+        justifyContent: center ? 'center' : 'flex-start',
+        columnGap: zhuyin ? 3 : 2,
+        rowGap: 4,
+      }}
+    >
+      {groups.map((group, g) => (
+        <View key={g} style={{ flexDirection: 'row' }}>
+          {group.map((cell, i) => (
+            <View key={i} style={{ alignItems: 'center', minWidth: cell.sound ? size : 0 }}>
+              <Text className={face} style={{ fontSize: size, lineHeight: size * 1.25, color: c.navy, includeFontPadding: false }}>
+                {cell.glyph}
+              </Text>
+              <SyllableText
+                text={cell.sound ? basicsReading(cell.sound, ctx.phonetic) : ' '}
+                fontSize={readingSize}
+                className="font-nunito-semibold"
+                style={{ fontSize: readingSize, lineHeight: readingSize * 1.35, color: c.sageDark }}
+              />
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  )
+}
+
 export function Hanzi({ zh, ctx, size, color = c.navy }: { zh: Zh; ctx: BasicsCtx; size: number; color?: string }) {
   return (
     <Text
@@ -257,12 +360,19 @@ export function ItemRow({
   audioId,
   bothReadings,
   bothScripts,
+  stacked,
 }: {
   item: ZhItem
   ctx: BasicsCtx
   audioId: string
   bothReadings?: boolean
   bothScripts?: boolean
+  /**
+   * Sentence layout: the hanzi across the row's full width with its reading
+   * under each character, the gloss beneath. Set for every row of a list that
+   * holds a sentence (`listIsStacked`), so the rows of one step match.
+   */
+  stacked?: boolean
 }) {
   const spoken = ctx.zh(item.zh)
   const shown = bothScripts && typeof item.zh !== 'string' ? `${item.zh.t} → ${item.zh.s}` : spoken
@@ -282,18 +392,43 @@ export function ItemRow({
           </View>
         ) : null
       }
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10, paddingHorizontal: 14, minHeight: 64 }}
+      style={
+        stacked
+          ? { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16, minHeight: 64 }
+          : { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 10, paddingHorizontal: 14, minHeight: 64 }
+      }
     >
-      <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 30, lineHeight: 40, color: c.navy }}>
-        {shown}
-      </Text>
-      <View style={{ flex: 1 }}>
-        <Reading pinyin={item.pinyin} ctx={ctx} size={15.5} both={bothReadings} />
-        {item.gloss && <Gloss>{ctx.text(item.gloss)}</Gloss>}
-      </View>
+      {stacked ? (
+        <View style={{ flex: 1 }}>
+          <RubySentence text={shown} pinyin={item.pinyin} ctx={ctx} size={26} readingSize={12} both={bothReadings} />
+          {item.gloss && (
+            <View style={{ marginTop: 4 }}>
+              <Gloss>{ctx.text(item.gloss)}</Gloss>
+            </View>
+          )}
+        </View>
+      ) : (
+        <>
+          <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 30, lineHeight: 40, color: c.navy }}>
+            {shown}
+          </Text>
+          <View style={{ flex: 1 }}>
+            <Reading pinyin={item.pinyin} ctx={ctx} size={15.5} both={bothReadings} />
+            {item.gloss && <Gloss>{ctx.text(item.gloss)}</Gloss>}
+          </View>
+        </>
+      )}
       <AudioIndicator id={audioId} size={40} />
     </RaisedTap>
   )
+}
+
+/** A list of items is drawn stacked when any of them is a sentence, or longer than a short word. */
+export function listIsStacked(items: ZhItem[], ctx: BasicsCtx): boolean {
+  return items.some((item) => {
+    const text = ctx.zh(item.zh)
+    return hanziCount(text) > 3 || /[。！？，]/.test(text)
+  })
 }
 
 /** "Learn more" — a short extra, closed until asked for. */
@@ -440,7 +575,7 @@ export function OptionFrame({
             gap: 10,
           }}
         >
-          <View style={{ flex: center ? 0 : 1, alignItems: center ? 'center' : 'flex-start' }}>{children}</View>
+          <View style={center ? { flexShrink: 1, alignItems: 'center' } : { flex: 1, alignItems: 'flex-start' }}>{children}</View>
           {state === 'right' && <Check size={20} color={c.rightInk} strokeWidth={2.6} />}
           {(state === 'wrong' || state === 'ruledOut') && (
             <Text className="font-nunito-bold" style={{ fontSize: 18, color: c.wrongInk }}>

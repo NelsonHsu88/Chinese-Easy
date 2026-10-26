@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Image, ScrollView, Pressable, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Redirect, router, useLocalSearchParams } from 'expo-router'
-import { Check, ChevronLeft, X } from 'lucide-react-native'
+import { Check, X } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { Reveal } from '../components/dashboard/entrance'
 import { basicsColors as c, basicsSpacing as sp, basicsType as t, BASICS_CONTENT_MAX, BASICS_GUTTER } from '../components/basics/tokens'
@@ -28,6 +28,7 @@ import { tickHaptic } from '../lib/haptics'
 import { playPositiveChime, playTapSound } from '../lib/sound'
 import type { BasicsCtx } from '../components/basics/lessonParts'
 import type { BasicsLesson } from '../data/basics'
+import { BackArrow } from '../components/BackArrow'
 
 /*
  * The Chinese Basics lesson player: one step on screen at a time, a progress
@@ -219,17 +220,16 @@ function LessonPlayer({ lesson }: { lesson: BasicsLesson }) {
 
         {/* Step back, progress. */}
         <View style={{ height: 36, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <Pressable
-            onPress={index > 0 ? () => moveTo(index - 1) : undefined}
-            accessibilityRole="button"
-            accessibilityLabel="Previous step"
-            accessibilityState={{ disabled: index === 0 }}
-            hitSlop={10}
-          >
-            <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', opacity: index === 0 ? 0.3 : 1 }}>
-              <ChevronLeft size={22} color={c.jadeDark} strokeWidth={2.2} />
-            </View>
-          </Pressable>
+          {/* Dimmed on the first step, where there is nothing to step back to. */}
+          <View style={{ opacity: index === 0 ? 0.3 : 1, marginLeft: -6 }}>
+            <BackArrow
+              onPress={() => {
+                if (index > 0) moveTo(index - 1)
+              }}
+              accessibilityLabel="Previous step"
+              size={26}
+            />
+          </View>
           <BasicsProgressBar done={index + 1} total={steps.length} />
           <Text
             className="font-nunito-semibold"

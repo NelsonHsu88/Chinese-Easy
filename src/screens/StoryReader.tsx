@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, Stack, useLocalSearchParams } from 'expo-router'
-import { ChevronLeft, ChevronDown, Check, Plus, Volume2, PenLine } from 'lucide-react-native'
+import { ChevronDown, Check, Plus, Volume2, PenLine } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { storyById } from '../data/stories'
 import { segmentText } from '../lib/textSegmentation'
@@ -23,6 +23,8 @@ import { PageFlip, type PageFlipHandle } from '../components/book/PageFlip'
 import { BookBlock, EndPage, TextPage, TitlePage } from '../components/book/BookPages'
 import { BOOK_CELL, BOOK_CONTENT_MAX, TRANSLATION_ALLOWANCE, bookColors as c, bookSize } from '../components/book/tokens'
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
+import { BackArrow } from '../components/BackArrow'
+import { spacedReading } from '../components/SpacedReading'
 
 /*
  * Sheet motion. Rising is a spring — damped hard enough not to wobble, but with
@@ -526,9 +528,7 @@ export function StoryReader() {
               somewhere to go back to: a story is reachable by its own URL, and
               then nothing was pushed to pop.
             */}
-            <Pressable onPress={leave} accessibilityRole="button" accessibilityLabel="Back to library" hitSlop={12}>
-              <ChevronLeft size={26} color={c.ink} strokeWidth={2} />
-            </Pressable>
+            <BackArrow onPress={leave} accessibilityLabel="Back to library" size={28} style={{ marginLeft: -6 }} />
             <Text
               numberOfLines={1}
               className={hanziFont(settings.script, 'semibold')}
@@ -706,7 +706,7 @@ export function StoryReader() {
 
               <View className="mt-1 flex-row items-center gap-2">
                 <Text className="font-nunito-semibold text-[15px]" style={{ color: '#66636a' }}>
-                  {displayPinyin(sheetWord, settings.phoneticScript)}
+                  {spacedReading(displayPinyin(sheetWord, settings.phoneticScript), 15)}
                 </Text>
                 <Pressable
                   onPress={() => speak(displayWord(sheetWord, settings.script))}

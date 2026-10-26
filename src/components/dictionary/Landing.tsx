@@ -18,11 +18,12 @@ import { DICT_BG, DICT_CARD_SHADOW } from './shadows'
 import { useRevealedShadow } from '../shadowReveal'
 import { displayExample, displayPinyin, displayWord, hanziFont } from '../../lib/hanzi'
 import { shortGloss } from '../../lib/definitions'
-import { ZHUYIN_SYLLABLE_GAP } from '../../lib/zhuyin'
 import { SEARCH_FIELDS, type SearchField } from '../../lib/dictionary'
 import { playPositiveChime } from '../../lib/sound'
 import { sequence, successHaptic, tapHaptic, tickHaptic } from '../../lib/haptics'
 import type { AppSettings, ScriptMode, VocabWord } from '../../types'
+import { RubyWord, useReadingStart } from '../RubyWord'
+import { spacedReading } from '../SpacedReading'
 
 /*
  * The Dictionary landing — the pieces under the search field while nothing is
@@ -379,7 +380,7 @@ export function RecentList({
                     {hanzi}
                   </Text>
                   <Text numberOfLines={1} className="flex-1 pr-2 font-sans text-[15px] leading-[20px] text-dict-soft">
-                    {displayPinyin(word, settings.phoneticScript)}
+                    {spacedReading(displayPinyin(word, settings.phoneticScript), 15)}
                   </Text>
                   <Text
                     numberOfLines={1}
@@ -545,9 +546,7 @@ export function WordToDiscover({
    * column, so switching systems never changes the card's size.
    */
   const zhuyin = settings.phoneticScript === 'zhuyin'
-  const characters = Array.from(hanzi)
-  const syllables = reading.split(ZHUYIN_SYLLABLE_GAP)
-  const zhuyinPerCharacter = zhuyin && syllables.length === characters.length
+  const readingStart = useReadingStart()
   const hanziClass = `${hanziFont(settings.script, 'medium')} text-dict-heading`
 
   return (
@@ -625,18 +624,20 @@ export function WordToDiscover({
               accessibilityLabel={`Open ${hanzi}`}
             >
               {zhuyin ? (
-                <View className="flex-row items-start" style={{ gap: 2 }}>
-                  {(zhuyinPerCharacter ? characters : [hanzi]).map((glyph, i) => (
-                    <View key={i} className="items-center">
-                      <Text className={hanziClass} style={{ fontSize: 44, lineHeight: 47 }}>
-                        {glyph}
-                      </Text>
-                      <Text className="font-nunito-semibold text-dict-green-dark" style={{ fontSize: 11.5, lineHeight: 14 }}>
-                        {zhuyinPerCharacter ? syllables[i] : reading}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
+                /* The first character starts at the card's edge, and the
+                   English below starts where the reading does. */
+                <RubyWord
+                  hanzi={hanzi}
+                  reading={reading}
+                  hanziClass={hanziClass}
+                  hanziStyle={{ fontSize: 44, lineHeight: 47 }}
+                  readingClass="font-nunito-semibold text-dict-green-dark"
+                  readingSize={11.5}
+                  readingLineHeight={14}
+                  gap={2}
+                  flush
+                  onReadingStart={readingStart.onReadingStart}
+                />
               ) : (
                 <Text className={hanziClass} style={{ fontSize: 44, lineHeight: 54 }}>
                   {hanzi}
@@ -651,7 +652,11 @@ export function WordToDiscover({
               {reading}
             </Text>
           )}
-          <Text numberOfLines={2} className="mt-0.5 font-sans text-[14.5px] leading-[19px] text-dict-soft">
+          <Text
+            numberOfLines={2}
+            className="mt-0.5 font-sans text-[14.5px] leading-[19px] text-dict-soft"
+            style={{ marginLeft: zhuyin ? readingStart.start : 0 }}
+          >
             {shortGloss(word)}
           </Text>
         </View>

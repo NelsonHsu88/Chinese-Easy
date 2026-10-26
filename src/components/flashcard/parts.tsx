@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { View, Text, Image, useWindowDimensions } from 'react-native'
-import { ChevronLeft, Timer } from 'lucide-react-native'
+import { View, Text, Image, Animated, useWindowDimensions } from 'react-native'
+import { Timer } from 'lucide-react-native'
 import { onbVerdict } from '../onboarding/tokens'
 import type { PlayTint } from '../dashboard/tokens'
 import { RaisedProgressBar } from '../progress/RaisedProgressBar'
@@ -17,6 +17,7 @@ import {
   FC_HILLS_RATIO,
   FC_SAKURA_RATIO,
 } from './tokens'
+import { BackArrow } from '../BackArrow'
 
 /*
  * The pieces the flashcard and the remedial "rewrite it" reps share, so the two
@@ -120,9 +121,7 @@ export function FlashcardHeader({
   return (
     <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingTop: 8 }}>
-        <DiscButton onPress={onClose} label="Close review">
-          <ChevronLeft size={24} color={c.greenDark} strokeWidth={2.4} />
-        </DiscButton>
+        <BackArrow onPress={onClose} accessibilityLabel="Close review" style={{ marginLeft: -8 }} />
         {/* The header mounts per card, so the bar opens on the previous card's progress and steps forward. */}
         <RaisedProgressBar
           progress={shownCount / safeTotal}
@@ -164,11 +163,21 @@ export function FlashcardHeader({
 export function WritingCard({
   minHeight,
   corner,
+  cornerLift,
+  stageTop = false,
   children,
 }: {
   minHeight: number
   /** Disc buttons, bottom right. */
   corner?: ReactNode
+  /** Moves the corner discs up (negative px), e.g. ahead of a sheet rising over the card's foot. */
+  cornerLift?: Animated.AnimatedInterpolation<number> | Animated.Value
+  /**
+   * The writer is always a square, so in a card taller than it is wide the
+   * square sits at the top and the spare height gathers at the foot (where
+   * the discs and the answer sheet go) instead of splitting above and below.
+   */
+  stageTop?: boolean
   /** The HanziStage. It is laid out inside a 14pt inset. */
   children: ReactNode
 }) {
@@ -185,9 +194,22 @@ export function WritingCard({
         <View pointerEvents="none" style={{ position: 'absolute', left: 0, bottom: 0 }}>
           <Image source={fcArt.hills} style={{ width: hills, height: hills / FC_HILLS_RATIO }} resizeMode="contain" />
         </View>
-        <View style={{ position: 'absolute', top: 14, bottom: 14, left: 14, right: 14 }}>{children}</View>
+        <View style={{ position: 'absolute', top: 14, bottom: 14, left: 14, right: 14 }}>
+          {stageTop ? <View style={{ width: '100%', aspectRatio: 1, maxHeight: '100%' }}>{children}</View> : children}
+        </View>
         {corner ? (
-          <View style={{ position: 'absolute', right: 12, bottom: 12, flexDirection: 'row', gap: 10 }}>{corner}</View>
+          <Animated.View
+            style={{
+              position: 'absolute',
+              right: 12,
+              bottom: 12,
+              flexDirection: 'row',
+              gap: 10,
+              transform: cornerLift ? [{ translateY: cornerLift }] : [],
+            }}
+          >
+            {corner}
+          </Animated.View>
         ) : null}
       </View>
     </View>

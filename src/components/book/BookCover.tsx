@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, Image, Animated, Easing, PanResponder, Platform, StyleSheet, useWindowDimensions } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import { BarChart3, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react-native'
+import { BarChart3, BookOpen, ChevronRight } from 'lucide-react-native'
 import { displayTitleReading, hanziFont } from '../../lib/hanzi'
 import { forScript } from '../../lib/scriptConversion'
 import { tapHaptic, thunkHaptic } from '../../lib/haptics'
@@ -11,6 +11,7 @@ import { StoryArt } from '../reading/StoryArt'
 import { PressableScale, LiftedFace, DASH_LIFT } from '../dashboard/parts'
 import { formatCount, levelBand } from '../reading/storyPresentation'
 import { bookColors as c, bookMotion, BOOK_CONTENT_MAX, ROOM } from './tokens'
+import { BackArrow } from '../BackArrow'
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
 
@@ -216,15 +217,13 @@ export function BookCover({
         </View>
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
 
-        <Pressable
+        {/* The same flat arrow as everywhere else, but cream: grey vanishes on the cover. */}
+        <BackArrow
           onPress={onBack}
-          accessibilityRole="button"
           accessibilityLabel="Back to library"
-          hitSlop={12}
-          style={{ position: 'absolute', top: insets.top + 6, left: 16, padding: 4, zIndex: 2 }}
-        >
-          <ChevronLeft size={28} color={c.cream} strokeWidth={2} />
-        </Pressable>
+          color={c.cream}
+          style={{ position: 'absolute', top: insets.top + 6, left: 16, zIndex: 2 }}
+        />
 
         {/* Title, reading, a brass rule with a diamond, and the English. */}
         <View pointerEvents="none" style={{ position: 'absolute', top: titleTop, left: 20, right: 20, alignItems: 'center' }}>

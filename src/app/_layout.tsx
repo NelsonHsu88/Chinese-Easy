@@ -62,6 +62,7 @@ import { AuthProvider, useAuth } from '../context/AuthContext'
 import { AdsProvider } from '../context/AdsContext'
 import { TourOverlay } from '../components/tour/TourOverlay'
 import { ScreenTourOverlay } from '../components/tour/ScreenTourOverlay'
+import { TourOrigin } from '../components/tour/targets'
 import { ProgressionCelebration } from '../components/profile/Celebration'
 import { useSubscribePrompt } from '../components/subscription/useSubscribePrompt'
 import { configureAudioSession } from '../lib/sound'
@@ -230,6 +231,8 @@ function RootNavigator() {
         <View pointerEvents="auto" style={[StyleSheet.absoluteFill, { backgroundColor: launchColors.page }]} />
       ) : (
         <>
+          {/* The (0, 0) both overlays draw from; targets are measured against it. */}
+          <TourOrigin />
           <TourOverlay />
           {/* The first-visit guides on Learn, Dictionary and Settings. */}
           <ScreenTourOverlay />

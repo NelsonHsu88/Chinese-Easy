@@ -26,6 +26,7 @@ import {
   FeedbackPanel,
   OptionFrame,
   Reading,
+  hanziCount,
   StepTitle,
   type BasicsCtx,
   type OptionState,
@@ -104,7 +105,9 @@ export function ChoiceStep({ step, ctx, stepId, setGate, onGraded }: StepProps<C
   }, [state, onGraded])
 
   const isToneQuestion = step.options.every((o) => o.tone)
-  const compact = step.options.every((o) => o.tone || o.symbol || (o.zh && !o.label))
+  /* Two to a row only for short faces. A sentence gets the full width, so it
+     reads on one line instead of wrapping every two characters (SS1025). */
+  const compact = step.options.every((o) => o.tone || o.symbol || (o.zh && !o.label && hanziCount(ctx.zh(o.zh)) <= 3))
   const pickedOption = state.picked !== null ? step.options[state.picked] : null
 
   const message =
@@ -224,7 +227,7 @@ function OptionFace({ option, ctx }: { option: ChoiceOption; ctx: BasicsCtx }) {
   }
   if (option.zh) {
     return (
-      <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 26, lineHeight: 36, color: c.navy }}>
+      <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 26, lineHeight: 36, color: c.navy, textAlign: 'center' }}>
         {ctx.zh(option.zh)}
       </Text>
     )

@@ -7,7 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { tabBarHeight } from '../../lib/tabBar'
 import { InfoSheet, SHEET_PEEK, type SheetTab } from './InfoSheet'
 import { router, usePathname } from 'expo-router'
-import { ChevronLeft, X, Play, Pause, RotateCcw } from 'lucide-react-native'
+import { X, Play, Pause, RotateCcw } from 'lucide-react-native'
 import { HanziStage, type HanziStageSpeed } from '../HanziStage'
 import { StrokeSpeedToggle } from '../StrokeSpeedToggle'
 import { ICON_GREEN, ICON_MUTED, ICON_STROKE } from './DictionaryControls'
@@ -15,6 +15,7 @@ import { tapHaptic } from '../../lib/haptics'
 import { hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
 import { TourScrollContext } from '../tour/targets'
+import { BackArrow } from '../BackArrow'
 
 /**
  * Page frame for the two detail screens: a hairline nav bar over the
@@ -58,21 +59,19 @@ function DetailNavBar({ title }: { title: string }) {
   const inTab = useInDictionaryTab()
   return (
     <View className="flex-row items-center border-b border-dict-line bg-dict-page px-3 py-2.5">
-      <Pressable
-        onPress={() => {
-          tapHaptic()
-          // Falls back to the Dictionary *tab* rather than the standalone
-          // `/dictionary` route, so a deep-linked detail screen lands
-          // somewhere with the tab bar still under it.
-          if (router.canGoBack()) router.back()
-          else router.replace(inTab ? '/dictionary-tab' : '/my-words')
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Back"
-        className="h-10 w-10 items-center justify-center rounded-full active:opacity-60"
-      >
-        <ChevronLeft size={26} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
-      </Pressable>
+      <View className="h-10 w-10 justify-center">
+        <BackArrow
+          onPress={() => {
+            tapHaptic()
+            // Falls back to the Dictionary *tab* rather than the standalone
+            // `/dictionary` route, so a deep-linked detail screen lands
+            // somewhere with the tab bar still under it.
+            if (router.canGoBack()) router.back()
+            else router.replace(inTab ? '/dictionary-tab' : '/my-words')
+          }}
+          style={{ marginLeft: -4 }}
+        />
+      </View>
       <Text className="flex-1 text-center font-nunito-bold text-[20px] leading-[26px] text-dict-heading">{title}</Text>
       {/* Balances the back button so the title sits truly centred. */}
       <View className="h-10 w-10" />

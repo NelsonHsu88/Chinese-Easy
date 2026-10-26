@@ -8,6 +8,7 @@ import { displayWord, displayPinyin } from '../lib/hanzi'
 import { shortGloss } from '../lib/definitions'
 import { playTapSound } from '../lib/sound'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
+import { spacedReading } from './SpacedReading'
 
 /*
  * Asks, on the Dashboard, whether the learner wants to pick up a new word — and
@@ -71,7 +72,7 @@ export function NewWordPrompt() {
           {displayWord(next, settings.script)}
         </Text>
         <View className="flex-1">
-          <Text className="text-xs text-slate-400">{displayPinyin(next, settings.phoneticScript)}</Text>
+          <Text className="text-xs text-slate-400">{spacedReading(displayPinyin(next, settings.phoneticScript), 12)}</Text>
           <Text numberOfLines={1} className="text-sm font-semibold text-slate-600 dark:text-slate-300">
             {shortGloss(next)}
           </Text>

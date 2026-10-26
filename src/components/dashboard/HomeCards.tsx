@@ -11,6 +11,7 @@ import { displayWord, displayPinyin, hanziFont } from '../../lib/hanzi'
 import { shortGloss } from '../../lib/definitions'
 import { tapHaptic } from '../../lib/haptics'
 import { SpeakChip } from '../dictionary/DictionaryControls'
+import { RubyWord, useReadingStart } from '../RubyWord'
 
 /*
  * The four cards of Home, each across the full column: Review, the word on
@@ -270,6 +271,7 @@ export function WordCard({
   const wordColumn = (range.x - card.x + 30) * k
 
   const shown = word ? displayWord(word, script) : ''
+  const readingStart = useReadingStart()
   const speaker = 40
   /* CJK sizes come from width and character count — adjustsFontSizeToFit is iOS-only. */
   const hanziSize = Math.min(42, (wordColumn - l.cardPad - speaker - 10) / Math.max(1, Array.from(shown).length))
@@ -317,22 +319,54 @@ export function WordCard({
         <View style={{ justifyContent: 'center', paddingVertical: 12, minHeight: 96, width: word ? wordColumn : undefined }}>
           {word ? (
             <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Text
-                  className={hanziFont(script, 'semibold')}
-                  style={{ fontSize: hanziSize, lineHeight: hanziSize * 1.3, color: c.ink, includeFontPadding: false }}
-                >
-                  {shown}
-                </Text>
-                {/* The dictionary word card's speaker, so every word's audio button is one object. */}
-                <SpeakChip text={word.simplified} size={speaker} />
-              </View>
-              {/* Pinyin or zhuyin, by the learner's setting. */}
-              <Text className="font-nunito-semibold" style={{ ...t.pinyin, color: c.subtle, marginTop: 4 }}>
-                {displayPinyin(word, phoneticScript)}
-              </Text>
+              {phoneticScript === 'zhuyin' ? (
+                /* Zhuyin under each character, centred on its glyph (SS1025). */
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+                  <RubyWord
+                    hanzi={shown}
+                    reading={displayPinyin(word, phoneticScript)}
+                    hanziClass={hanziFont(script, 'semibold')}
+                    hanziStyle={{ fontSize: hanziSize, lineHeight: hanziSize * 1.3, color: c.ink, includeFontPadding: false }}
+                    readingClass="font-nunito-semibold"
+                    readingSize={t.pinyin.fontSize}
+                    readingLineHeight={t.pinyin.lineHeight}
+                    readingColor={c.subtle}
+                    flush
+                    onReadingStart={readingStart.onReadingStart}
+                  />
+                  <View style={{ height: hanziSize * 1.3, justifyContent: 'center' }}>
+                    <SpeakChip text={word.simplified} size={speaker} />
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text
+                      className={hanziFont(script, 'semibold')}
+                      style={{ fontSize: hanziSize, lineHeight: hanziSize * 1.3, color: c.ink, includeFontPadding: false }}
+                    >
+                      {shown}
+                    </Text>
+                    {/* The dictionary word card's speaker, so every word's audio button is one object. */}
+                    <SpeakChip text={word.simplified} size={speaker} />
+                  </View>
+                  <Text className="font-nunito-semibold" style={{ ...t.pinyin, color: c.subtle, marginTop: 4 }}>
+                    {displayPinyin(word, phoneticScript)}
+                  </Text>
+                </>
+              )}
               {/* Regular weight, set as a style so every platform agrees. */}
-              <Text numberOfLines={2} style={{ ...t.gloss, fontFamily: 'NunitoSemiBold', color: c.ink, marginTop: 2 }}>
+              {/* Under zhuyin, the English starts where the reading does. */}
+              <Text
+                numberOfLines={2}
+                style={{
+                  ...t.gloss,
+                  fontFamily: 'NunitoSemiBold',
+                  color: c.ink,
+                  marginTop: 2,
+                  marginLeft: phoneticScript === 'zhuyin' ? readingStart.start : 0,
+                }}
+              >
                 {shortGloss(word)}
               </Text>
             </>

@@ -4,6 +4,7 @@ import { Check, Volume2, X } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
 import { displayPinyin, displayWord, hanziFont } from '../../lib/hanzi'
 import { readingForText } from '../../lib/characterReading'
+import { SyllableText } from '../SyllableText'
 import { shortGloss } from '../../lib/definitions'
 import { blankTranslation, clozeFor } from '../../lib/mixedDrills'
 import { speak } from '../../lib/speech'
@@ -16,6 +17,7 @@ import { AnswerShimmer, AnswerSparks } from '../motion/answerFeedback'
 import { useReadingFade } from '../readingFade'
 import { drillColors as c, drillType as t, drillSize, drillShadow } from './tokens'
 import type { VocabWord } from '../../types'
+import { spacedReading } from '../SpacedReading'
 
 /** Above this many characters the sentence steps down a size so it wraps onto two lines, not three. */
 const LONG_SENTENCE = 12
@@ -202,6 +204,32 @@ export function ReviewFillGap({
                 : segment.word
                   ? displayPinyin(segment.word, phonetic)
                   : readingForText(segment.display, phonetic)
+              /* Words around the gap: a reading over each character, centred on
+                 its glyph (SS1025), rather than one block over the word. */
+              if (!isGap) {
+                const chars = [...segment.display]
+                const syllables = sound.split(/\s+/).filter(Boolean)
+                const cells: [string, string][] =
+                  syllables.length === chars.length ? chars.map((ch, k) => [ch, syllables[k]]) : [[segment.display, sound]]
+                return (
+                  <View key={i} style={{ flexDirection: 'row', gap: 1, paddingHorizontal: 1.5 }}>
+                    {cells.map(([glyph, syllable], k) => (
+                      <View key={k} style={{ alignItems: 'center' }}>
+                        <Animated.View style={{ opacity: fade.opacity }} accessibilityElementsHidden={fade.hidden}>
+                          <SyllableText
+                            text={syllable || ' '}
+                            fontSize={t.reading.fontSize}
+                            style={{ fontFamily: 'NunitoSemiBold', ...t.reading, color: c.reading }}
+                          />
+                        </Animated.View>
+                        <Text className={hanziFont(script, 'semibold')} style={{ ...type, color: c.ink }}>
+                          {glyph}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )
+              }
               return (
                 <View key={i} style={{ alignItems: 'center', paddingHorizontal: isGap ? 4 : 1.5 }}>
                   {/* An empty reading still reserves its line, or words without one sit higher. */}
@@ -412,7 +440,7 @@ function GapOption({
             includeFontPadding: false,
           }}
         >
-          {reading}
+          {spacedReading(reading, readingSize)}
         </Text>
         {(state === 'right' || state === 'wrong') && (
           <View

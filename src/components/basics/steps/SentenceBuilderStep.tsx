@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react'
-import { View, Text } from 'react-native'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { View, Text, Animated } from 'react-native'
 import type { BasicsStep, ZhItem } from '../../../data/basics/types'
 import {
   ORDER_START,
@@ -19,12 +19,19 @@ import { AudioButton } from '../audio'
 import { BasicsPill, BasicsRaised } from '../parts'
 import { PressableScale } from '../../dashboard/parts'
 import { FeedbackPanel, Reading, StepTitle, type BasicsCtx, type StepProps } from '../lessonParts'
+import { useFlipTiles, type TileMotion } from '../../motion/flipTiles'
 import { basicsColors as c } from '../tokens'
 
 /*
  * Word order: tap tiles into the answer line, tap a placed tile to lift it
  * back. Check tells you how much of the start is right; Try again keeps that
  * much in place. A second miss lays the words out in order.
+ *
+ * Motion (SS1025, Duolingo-style): a tapped tile glides from the bank to its
+ * place in the line and back, its neighbours sliding to make or close the
+ * room, via `useFlipTiles`. Each word keeps its own slot in the bank — an
+ * empty hole while it is placed — so a word always returns to where it came
+ * from and the bank never reflows under the learner's finger.
  */
 
 type Builder = Extract<BasicsStep, { kind: 'sentence-builder' }>
@@ -55,6 +62,9 @@ export function SentenceBuilderStep({ step, ctx, stepId, setGate, onGraded }: St
   const sentence = keys.map((k) => k.key).join('') + step.end
   const graded = useRef(false)
   const lastTries = useRef(0)
+  /* Whichever area a tile is flying into is drawn above the other, so the
+     tile passes over it rather than under it. */
+  const [front, setFront] = useState<'line' | 'bank'>('line')
 
   useEffect(() => {
     if (state.status === 'answering') {
@@ -64,7 +74,15 @@ export function SentenceBuilderStep({ step, ctx, stepId, setGate, onGraded }: St
         onPress: () => dispatch({ type: 'check', words: keys }),
       })
     } else if (state.status === 'wrong') {
-      setGate({ label: 'Try again', enabled: true, onPress: () => dispatch({ type: 'retry' }) })
+      setGate({
+        label: 'Try again',
+        enabled: true,
+        onPress: () => {
+          /* The words after the right start fly home, so the bank draws on top. */
+          setFront('bank')
+          dispatch({ type: 'retry' })
+        },
+      })
     } else if (state.status === 'right') {
       setGate({ label: 'Continue', enabled: true, correct: `${sentence} ${ctx.text(step.explain)}` })
     } else {
@@ -89,11 +107,27 @@ export function SentenceBuilderStep({ step, ctx, stepId, setGate, onGraded }: St
   }, [state, onGraded])
 
   /* Settled: the line shows the sentence in order, whatever was placed. */
-  const shownLine = isSettled(state.status) ? step.words.map((_, i) => i) : state.placed
-  const bank = step.shuffled.filter((i) => !state.placed.includes(i))
+  const settled = isSettled(state.status)
+  const shownLine = settled ? step.words.map((_, i) => i) : state.placed
+  const inLine = useMemo(() => new Set(shownLine), [shownLine])
+
+  const placedOf = useCallback((id: string) => inLine.has(Number(id)), [inLine])
+  const { containerRef, slotRef, motionFor, lift, rebaseline } = useFlipTiles(`${state.status}|${shownLine.join(',')}`, placedOf)
+  const place = (word: number) => {
+    tickHaptic()
+    lift(String(word))
+    setFront('line')
+    dispatch({ type: 'place', word, total })
+  }
+  const remove = (word: number, position: number) => {
+    tickHaptic()
+    lift(String(word))
+    setFront('bank')
+    dispatch({ type: 'remove', position })
+  }
 
   return (
-    <View>
+    <View ref={containerRef as never} onLayout={rebaseline}>
       <BasicsPill label="Build the sentence" />
       <StepTitle>{ctx.text(step.prompt)}</StepTitle>
       <Text className="font-nunito-semibold-italic" style={{ marginTop: 8, fontSize: 18, lineHeight: 25, color: c.slate }}>
@@ -119,6 +153,7 @@ export function SentenceBuilderStep({ step, ctx, stepId, setGate, onGraded }: St
           flexWrap: 'wrap',
           alignItems: 'center',
           gap: 8,
+          zIndex: front === 'line' ? 2 : 1,
         }}
       >
         {shownLine.length === 0 && (
@@ -127,51 +162,54 @@ export function SentenceBuilderStep({ step, ctx, stepId, setGate, onGraded }: St
           </Text>
         )}
         {shownLine.map((word, position) => (
-          <Tile
-            key={`${word}-${position}`}
+          <FlyingTile
+            key={word}
+            slot={slotRef(String(word))}
+            motion={motionFor(String(word))}
             item={step.words[word]}
             ctx={ctx}
             placed
             marked={state.status === 'wrong' && position >= state.rightPrefix}
-            onPress={
-              state.status === 'answering'
-                ? () => {
-                    tickHaptic()
-                    dispatch({ type: 'remove', position })
-                  }
-                : undefined
-            }
+            onPress={state.status === 'answering' ? () => remove(word, position) : undefined}
           />
         ))}
-        {isSettled(state.status) && (
+        {settled && (
           <Text className={hanziFont(ctx.script, 'medium')} style={{ fontSize: 26, color: c.navy }}>
             {step.end}
           </Text>
         )}
       </View>
 
-      {/* The word bank. */}
-      {!isSettled(state.status) && (
-        <View style={{ marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
-          {bank.map((word) => (
-            <Tile
-              key={word}
-              item={step.words[word]}
-              ctx={ctx}
-              onPress={
-                state.status === 'answering'
-                  ? () => {
-                      tickHaptic()
-                      dispatch({ type: 'place', word, total })
-                    }
-                  : undefined
-              }
-            />
-          ))}
+      {/* The word bank: one fixed slot per word, a hole while it is placed. */}
+      {!settled && (
+        <View
+          style={{
+            marginTop: 16,
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 10,
+            justifyContent: 'center',
+            zIndex: front === 'bank' ? 2 : 1,
+          }}
+        >
+          {step.shuffled.map((word) =>
+            inLine.has(word) ? (
+              <Hole key={word} item={step.words[word]} ctx={ctx} />
+            ) : (
+              <FlyingTile
+                key={word}
+                slot={slotRef(String(word))}
+                motion={motionFor(String(word))}
+                item={step.words[word]}
+                ctx={ctx}
+                onPress={state.status === 'answering' ? () => place(word) : undefined}
+              />
+            ),
+          )}
         </View>
       )}
 
-      {isSettled(state.status) && (
+      {settled && (
         <View style={{ marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 14 }}>
           <AudioButton text={sentence} id={`${stepId}-sentence`} size={52} label="Play the sentence" />
           <AudioButton text={sentence} id={`${stepId}-sentence`} size={40} slow label="Play the sentence slowly" />
@@ -189,19 +227,50 @@ export function SentenceBuilderStep({ step, ctx, stepId, setGate, onGraded }: St
   )
 }
 
-function Tile({
-  item,
-  ctx,
-  onPress,
-  placed = false,
-  marked = false,
+/**
+ * A tile in its slot. The slot (outer view) is laid out normally and never
+ * transformed, so it can be measured; the tile inside it carries the flight.
+ */
+function FlyingTile({
+  slot,
+  motion,
+  ...tile
 }: {
+  slot: (v: unknown) => void
+  motion: TileMotion
+} & TileProps) {
+  return (
+    <View ref={slot as never}>
+      <Animated.View
+        style={{ transform: [{ translateX: motion.pos.x }, { translateY: motion.pos.y }, { scale: motion.scale }] }}
+      >
+        <Tile {...tile} tone={motion.tone} />
+      </Animated.View>
+    </View>
+  )
+}
+
+/** Where a placed word waits to come back to: its own size, empty. */
+function Hole({ item, ctx }: { item: ZhItem; ctx: BasicsCtx }) {
+  return (
+    <View pointerEvents="none" importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14, backgroundColor: c.track }} />
+      <View style={{ opacity: 0 }}>
+        <Tile item={item} ctx={ctx} />
+      </View>
+    </View>
+  )
+}
+
+type TileProps = {
   item: ZhItem
   ctx: BasicsCtx
   onPress?: () => void
   placed?: boolean
   marked?: boolean
-}) {
+}
+
+function Tile({ item, ctx, onPress, placed = false, marked = false, tone }: TileProps & { tone?: Animated.Value }) {
   const text = ctx.zh(item.zh)
   return (
     <PressableScale
@@ -211,11 +280,27 @@ function Tile({
       accessibilityLabel={`${text}${item.gloss ? `, ${item.gloss}` : ''}${placed ? '. Tap to remove' : '. Tap to add'}`}
     >
       <BasicsRaised
-        fill={placed ? c.sageSoft : c.card}
+        fill={c.card}
         shoulder={marked ? c.shoulder.wrong : placed ? c.shoulder.sage : c.shoulder.quiet}
         border={marked ? c.wrong : c.border}
         borderWidth={marked ? 2 : 1}
         radius={14}
+        /* The placed look fades in over the plain face as the tile lands. */
+        underlay={
+          <Animated.View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: 13,
+              backgroundColor: c.sageSoft,
+              opacity: tone ?? (placed ? 1 : 0),
+            }}
+          />
+        }
         style={{
           minWidth: 56,
           minHeight: 60,

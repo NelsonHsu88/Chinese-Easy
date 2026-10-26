@@ -74,7 +74,7 @@ export interface TourStep {
   completion: TourCompletion
   /** The action an `externalEvent` step waits for. */
   awaits?: TourAction
-  /** Label for the tooltip's button. Absent on a step only the action can finish. */
+  /** Label for the tooltip's button. Absent on a step only the action can finish. On `save` it presses the real Add for the learner. */
   primaryLabel?: string
   /** The small Shifu beside the copy. Every card carries one. */
   shifu: TourShifu
@@ -109,6 +109,8 @@ export const TOUR_STEPS: readonly TourStep[] = [
     body: 'Add useful words and I’ll bring them back for review.',
     completion: 'externalEvent',
     awaits: 'word:add',
+    /* Presses the real Add for the learner; the step still ends on the add itself. */
+    primaryLabel: 'Add word',
     shifu: 'point',
   },
   {

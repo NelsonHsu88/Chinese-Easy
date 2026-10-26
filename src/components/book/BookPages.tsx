@@ -13,6 +13,7 @@ import { StoryArt } from '../reading/StoryArt'
 import { useReadingFade } from '../readingFade'
 import { formatCount } from '../reading/storyPresentation'
 import { bookColors as c, bookSize, COVER_RATIO } from './tokens'
+import { spacedReading } from '../SpacedReading'
 
 const MOUNTAINS = require('../../assets/images/decor/mountains-small.png')
 /** mountains-small.png is 325×132. */
@@ -243,7 +244,7 @@ export const TextPage = memo(function TextPage({
                 {/* Faded rather than removed when readings are off, so the page
                     never reflows under the reader (see `useReadingFade`). */}
                 <Animated.View style={{ opacity: fade.opacity }} accessibilityElementsHidden={fade.hidden}>
-                  <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 9.5, lineHeight: 12, color: c.inkFaint }}>{reading || ' '}</Text>
+                  <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 9.5, lineHeight: 12, color: c.inkFaint }}>{reading ? spacedReading(reading, 9.5) : ' '}</Text>
                 </Animated.View>
               </Pressable>
             )

@@ -85,6 +85,7 @@ import { ShadowSurface } from '../components/shadowReveal'
 import { FlexGap } from '../components/FlexGap'
 import { AnswerShimmer, AnswerSparks } from '../components/motion/answerFeedback'
 import { AnswerReactionView, QuestionContent, QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
+import { spacedReading } from '../components/SpacedReading'
 
 /*
  * The six-screen onboarding flow, built to the reference mockups.
@@ -816,7 +817,7 @@ export function Onboarding() {
           delay={onbMotion.enterStagger * 2}
           style={{ flex: 1, minHeight: 0, zIndex: 1 }}
         >
-          <HeroArt piece="welcome-scene" fill overhang={WELCOME_SCENE_OVERHANG} />
+          <HeroArt piece="welcome-scene" fill overhang={WELCOME_SCENE_OVERHANG} maxOverhang={WELCOME_SCENE_MAX_OVERHANG} maxSink={WELCOME_SCENE_MAX_SINK} />
         </SlideIn>
 
         {/* Above the scene, which on a short phone reaches down behind it. */}
@@ -1687,7 +1688,7 @@ export function Onboarding() {
                   className="text-center font-nunito-bold"
                   style={{ fontSize: 15, color: c.textSecondary, marginTop: 2 }}
                 >
-                  {displayPinyin(question.word, settings.phoneticScript)}
+                  {spacedReading(displayPinyin(question.word, settings.phoneticScript), 15)}
                 </Text>
               </>
             )}
@@ -1904,6 +1905,10 @@ const SCRIPT_BUTTON_CENTER = s.md + 8 + s.lg + 51 / 2 // dots
 
 /** How much of the welcome scene stands behind the subtitle: its cleared title patch. */
 const WELCOME_SCENE_OVERHANG = 0.22
+/** On a phone short of room, how much of the scene may stand behind the title before it shrinks: its sky and mist. */
+const WELCOME_SCENE_MAX_OVERHANG = 0.4
+/** Then how much may sink behind the feature card: the paper and table edge under the 学 sheet. */
+const WELCOME_SCENE_MAX_SINK = 0.1
 
 /** The app icon, as the welcome reference draws it: a rounded green tile, 中, a sakura bloom on its corner. */
 function AppMark() {

@@ -1,6 +1,6 @@
 import { RaisedButton } from '../components/dashboard/parts'
 import { View, Text, useWindowDimensions } from 'react-native'
-import { ArrowLeft, BarChart3, Bell, BookOpen, Info, SlidersHorizontal, Sparkles, Target } from 'lucide-react-native'
+import { BarChart3, Bell, BookOpen, Info, SlidersHorizontal, Sparkles, Target } from 'lucide-react-native'
 import { router, type Href } from 'expo-router'
 import { useApp } from '../context/AppContext'
 import { playTints } from '../components/dashboard/tokens'
@@ -15,6 +15,7 @@ import {
 import { TourTarget } from '../components/tour/targets'
 import { useScreenTransition } from '../components/settings/transition'
 import { setColors as c, setSpacing as s, setType as t, setRadius, SET_CONTENT_MAX } from '../components/settings/tokens'
+import { BackArrow } from '../components/BackArrow'
 
 /** Everything this screen can open. Typed so a renamed route fails the build. */
 type SettingsHref =
@@ -117,20 +118,7 @@ export function Settings() {
           but it is out of flow, so the title's own box is untouched.
         */}
         <View style={{ paddingTop: s.md }}>
-          <RaisedButton
-            onPress={back}
-            accessibilityLabel="Back to Profile"
-            hitSlop={10}
-            height={40}
-            width={40}
-            radius={20}
-            fill={playTints.jade.fill}
-            border={playTints.jade.border}
-            shoulder={playTints.jade.border}
-            scaleTo={0.9}
-          >
-            <ArrowLeft size={20} color={playTints.jade.text} strokeWidth={2.4} />
-          </RaisedButton>
+          <BackArrow onPress={back} accessibilityLabel="Back to Profile" style={{ marginLeft: -8, alignSelf: 'flex-start' }} />
         </View>
         <View style={{ paddingTop: s.sm }}>
           <SakuraCorner width={column * SAKURA_SHARE} />

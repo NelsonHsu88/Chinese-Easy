@@ -1,4 +1,4 @@
-c/bt{
+{
   "cli": {
     "version": ">= 22.0.0",
     "appVersionSource": "remote"
@@ -9,13 +9,13 @@ c/bt{
       "distribution": "internal",
       "channel": "development",
       "environment": "development",
-      "android":
+      "android": {
         "buildType": "apk"
       },
       "ios": {
         "simulator": false
       }
-    }
+    },
     "preview": {
       "distribution": "internal",
       "channel": "preview",

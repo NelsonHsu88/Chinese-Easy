@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, Text, Pressable, ScrollView, Animated, Easing, Platform, useWindowDimensions } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router, Stack } from 'expo-router'
-import { ArrowLeft } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { playTapSound, playPositiveChime } from '../lib/sound'
 import { celebrateHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
@@ -40,6 +39,7 @@ import {
   type ChallengeContext,
   type ChallengeDef,
 } from '../lib/challenges'
+import { BackArrow } from '../components/BackArrow'
 
 /*
  * Challenges, built to the Beta 2.1 reference (`SS 929 Redesigned
@@ -506,21 +506,15 @@ export function Challenges() {
           <View className="flex-row items-center" style={{ height: 48 }}>
             {/* Guarded, never a bare `back()`: reached by deep link or after a
                 web reload there is nothing to pop, and the arrow would be inert. */}
-            <Pressable
+            <BackArrow
               onPress={() => {
                 playTapSound()
                 tapHaptic()
                 if (router.canGoBack()) router.back()
                 else router.replace('/')
               }}
-              accessibilityRole="button"
-              accessibilityLabel="Back"
-              hitSlop={12}
-              className="items-center justify-center active:opacity-60"
-              style={{ width: 40, height: 44, marginLeft: -6 }}
-            >
-              <ArrowLeft size={26} color={c.jadeDark} strokeWidth={2} />
-            </Pressable>
+              style={{ marginLeft: -8, height: 44, justifyContent: 'center' }}
+            />
           </View>
 
           <ChallengesHero column={column} run={run} />

@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { View, Text, Pressable, ScrollView, Image, Animated, Easing, Platform, AccessibilityInfo, useWindowDimensions } from 'react-native'
 import type { TextInstance } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg'
-import { Check, ChevronLeft, HeadphoneOff, HelpCircle, Timer, X } from 'lucide-react-native'
+import { Check, HeadphoneOff, HelpCircle, Timer, X } from 'lucide-react-native'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { RaisedProgressBar } from '../progress/RaisedProgressBar'
 import { useSessionProgressStart } from '../progress/sessionProgress'
@@ -21,6 +21,7 @@ import {
   DRILL_FOOT_RATIO,
   DRILL_SAKURA_RATIO,
 } from './tokens'
+import { BackArrow } from '../BackArrow'
 
 /*
  * The frame every Mixed Drills question sits in: back arrow, title, progress,
@@ -38,6 +39,13 @@ export function formatClock(seconds: number): string {
   const s = seconds % 60
   return `${m}:${s.toString().padStart(2, '0')}`
 }
+
+/**
+ * Something a whole session shows after the progress bar on every question —
+ * the level test's hearts. A context rather than a prop, so each question kind
+ * passes it on without knowing about it.
+ */
+export const DrillHeaderExtra = createContext<ReactNode>(null)
 
 export function useDrillColumn() {
   const { width } = useWindowDimensions()
@@ -84,6 +92,7 @@ export function DrillShell({
   children: ReactNode
 }) {
   const { column } = useDrillColumn()
+  const headerExtra = useContext(DrillHeaderExtra)
   const footHeight = column / DRILL_FOOT_RATIO
   const branch = column * 0.4
   /* Each question mounts its own shell, so a screen reader starts on its title. */
@@ -118,10 +127,9 @@ export function DrillShell({
           <View
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: DRILL_PAD - 6, paddingRight: DRILL_PAD, paddingTop: 8, height: 52, zIndex: 1 }}
           >
-            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close drills" hitSlop={10} style={{ padding: 4 }}>
-              <ChevronLeft size={30} color={c.greenDark} strokeWidth={2.4} />
-            </Pressable>
+            <BackArrow onPress={onClose} accessibilityLabel="Close drills" />
             <DrillProgress step={step} total={total} solved={answer?.kind === 'correct'} />
+            {headerExtra}
           </View>
 
           <View
