@@ -114,14 +114,26 @@ function closeSession() {
  * swapped away. Out here it stays put while the card moves under it.
  */
 export function ReviewSession() {
-  const [toastKey, setToastKey] = useState(0)
+  /* The gold notice: which drill was turned off, keyed afresh each time so it shows again. */
+  const [toast, setToast] = useState<{ key: number; kind: 'listening' | 'speaking' } | null>(null)
   const params = useLocalSearchParams<{ mode?: string }>()
   const loading = LOADER_MESSAGES[modeFrom(params.mode)]
   const body = (
     <View style={{ flex: 1 }}>
-      <ReviewSessionBody onListeningPaused={() => setToastKey((k) => k + 1)} />
-      {toastKey > 0 && (
-        <DrillToast key={toastKey} message={`Listening will be turned off for ${LISTENING_PAUSE_MINUTES} minutes`} />
+      <ReviewSessionBody
+        onListeningPaused={() => setToast((t) => ({ key: (t?.key ?? 0) + 1, kind: 'listening' }))}
+        onSpeakingPaused={() => setToast((t) => ({ key: (t?.key ?? 0) + 1, kind: 'speaking' }))}
+      />
+      {toast && (
+        <DrillToast
+          key={toast.key}
+          icon={toast.kind}
+          message={
+            toast.kind === 'listening'
+              ? `Listening will be turned off for ${LISTENING_PAUSE_MINUTES} minutes`
+              : 'Speaking will be turned off for the rest of this session'
+          }
+        />
       )}
     </View>
   )
@@ -146,7 +158,7 @@ function modeFrom(param: string | undefined): ReviewMode {
   return param === 'listening' ? 'mixed' : MODES.includes(param as ReviewMode) ? (param as ReviewMode) : 'flashcards'
 }
 
-function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => void }) {
+function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListeningPaused: () => void; onSpeakingPaused: () => void }) {
   const {
     deck,
     wordBank,
@@ -255,6 +267,8 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
    * the step is skipped entirely rather than shown as a dead end.
    */
   const [speakingEnabled] = useState(isSpeechRecognitionAvailable)
+  /* "I can't speak now": no more speaking steps this session. */
+  const [speakingOff, setSpeakingOff] = useState(false)
 
   // Quick review is time-boxed: it ends when the clock does, wherever the learner is.
   useEffect(() => {
@@ -365,7 +379,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
    * screen carries its own way past.
    */
   const advanceThroughSpeaking = (wordId: string) => {
-    if (speakingEnabled && getWord(wordId)) setSpeaking(wordId)
+    if (speakingEnabled && !speakingOff && getWord(wordId)) setSpeaking(wordId)
     else advance()
   }
 
@@ -649,6 +663,11 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
           word={speakingWord}
           onPass={finishSpeaking}
           onSkip={finishSpeaking}
+          onCantSpeak={() => {
+            setSpeakingOff(true)
+            onSpeakingPaused()
+            finishSpeaking()
+          }}
           onClose={() => closeSession()}
           step={shown.step}
           total={shown.total}

@@ -3,7 +3,7 @@ import { View, Text, Pressable, ScrollView, Image, Animated, Easing, Platform, A
 import type { TextInstance } from 'react-native'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg'
-import { Check, HeadphoneOff, HelpCircle, Timer, X } from 'lucide-react-native'
+import { Check, HeadphoneOff, HelpCircle, MicOff, Timer, X } from 'lucide-react-native'
 import { PressableScale, LiftedFace } from '../dashboard/parts'
 import { RaisedProgressBar } from '../progress/RaisedProgressBar'
 import { useSessionProgressStart } from '../progress/sessionProgress'
@@ -304,7 +304,8 @@ const TOAST_OUT_MS = 320
  * that is. Mount it with a fresh `key` to show it again. It takes no touches,
  * so it never sits between the learner and the button under it.
  */
-export function DrillToast({ message }: { message: string }) {
+export function DrillToast({ message, icon = 'listening' }: { message: string; /** What was turned off: listening's headphones, or speaking's mic. */ icon?: 'listening' | 'speaking' }) {
+  const Icon = icon === 'speaking' ? MicOff : HeadphoneOff
   const tone = onbVerdict.unsure
   const insets = useSafeAreaInsets()
   const { column } = useDrillColumn()
@@ -359,7 +360,7 @@ export function DrillToast({ message }: { message: string }) {
           }}
         >
           <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: tone.accent, alignItems: 'center', justifyContent: 'center' }}>
-            <HeadphoneOff size={15} color="#FFFFFF" strokeWidth={2.6} />
+            <Icon size={15} color="#FFFFFF" strokeWidth={2.6} />
           </View>
           <Text style={{ flex: 1, fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 20, color: tone.text }}>{message}</Text>
         </View>

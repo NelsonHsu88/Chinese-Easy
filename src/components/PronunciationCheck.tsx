@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { View, Text, Animated, Platform } from 'react-native'
 import { PressableScale, LiftedFace, DASH_LIFT } from './dashboard/parts'
-import { DrillShell, DRILL_PAD, useDrillColumn } from './drills/parts'
+import { DrillShell, DRILL_PAD, useDrillColumn, verdictDetailLabel } from './drills/parts'
 import { drillColors as c, drillShoulders, drillShadow, drillSize, drillType as t } from './drills/tokens'
 import { useSessionProgressStart } from './progress/sessionProgress'
 import { Mic, MicOff, Check, ChevronRight } from 'lucide-react-native'
@@ -11,8 +11,8 @@ import { shortGloss } from '../lib/definitions'
 import { SpeakButton } from './SpeakButton'
 import { bestTranscript, gradePronunciation, PASS_THRESHOLD } from '../lib/pronunciation'
 import { isSpeechRecognitionAvailable, startListening, type ListenSession, type RecognitionFailure } from '../lib/speechRecognition'
-import { playPositiveChime, playRetryTone } from '../lib/sound'
-import { celebrateHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
+import { playCorrectSound, playRetryTone } from '../lib/sound'
+import { correctHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
 import type { VocabWord } from '../types'
 import { spacedReading } from './SpacedReading'
 
@@ -31,16 +31,6 @@ type Status =
   /** Can't listen at all: no engine, or permission refused. */
   | 'blocked'
 
-/**
- * How long the green success state is held before the session moves on.
- *
- * Long enough to be read as a result rather than a flicker: the characters have
- * just turned green one by one, and cutting away the instant the last one lands
- * throws away the only confirmation the learner gets. Not longer, though — this
- * sits between two cards in a drill, and a genuine pause of any length turns
- * into waiting.
- */
-const PASS_HOLD_MS = 1500
 
 const BLOCKED_COPY: Record<'unavailable' | 'permission', { title: string; body: string }> = {
   unavailable: {
@@ -66,14 +56,18 @@ export function PronunciationCheck({
   word,
   onPass,
   onSkip,
+  onCantSpeak,
   onClose,
   step,
   total,
   secondsLeft,
 }: {
   word: VocabWord
+  /** Continue on the correct sheet. */
   onPass: () => void
   onSkip: () => void
+  /** "I can't speak now" — like "Can't listen now", it turns speaking off for a while (the session shows the notice); falls back to a skip. */
+  onCantSpeak?: () => void
   onClose: () => void
   /** The card this word was, 1-based — the card is finished, so the bar counts it. */
   step: number
@@ -158,10 +152,10 @@ export function PronunciationCheck({
 
   const succeed = useCallback(() => {
     setStatus('correct')
-    playPositiveChime()
-    celebrateHaptic()
-    passTimer.current = setTimeout(onPass, PASS_HOLD_MS)
-  }, [onPass])
+    /* The drills' right-answer ding and buzz; the correct sheet rises with its confetti (`answer` below), and its Continue moves on. */
+    playCorrectSound()
+    correctHaptic()
+  }, [])
 
   const listen = useCallback(async () => {
     if (status === 'listening' || attemptOpen.current) return
@@ -259,6 +253,23 @@ export function PronunciationCheck({
     onSkip()
   }, [onSkip])
 
+  /* Closes the mic exactly as a skip does, then lets the session turn speaking off. */
+  const cantSpeak = useCallback(() => {
+    skippedRef.current = true
+    if (passTimer.current) clearTimeout(passTimer.current)
+    sessionRef.current?.cancel()
+    sessionRef.current = null
+    ;(onCantSpeak ?? onSkip)()
+  }, [onCantSpeak, onSkip])
+
+  /* Continue on the correct sheet, once. */
+  const passed = useRef(false)
+  const pass = useCallback(() => {
+    if (passed.current) return
+    passed.current = true
+    onPass()
+  }, [onPass])
+
   const ringStyle = {
     transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.75] }) }],
     opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.32, 0] }),
@@ -290,8 +301,8 @@ export function PronunciationCheck({
    * has failed them; one Continue when the mic isn't an option. A passed word
    * keeps the row's height so nothing moves while it holds.
    */
-  const quiet = (label: string) => (
-    <PressableScale onPress={skip} scaleTo={1} haptic={false} wrapperStyle={{ flex: 1 }} accessibilityLabel={label}>
+  const quiet = (label: string, onPress: () => void = skip) => (
+    <PressableScale onPress={onPress} scaleTo={1} haptic={false} wrapperStyle={{ flex: 1 }} accessibilityLabel={label}>
       <LiftedFace height={drillSize.button} fill={c.card} shoulder={drillShoulders.quiet} border={c.outline} shadow={false}>
         <Text style={{ fontFamily: 'NunitoBold', ...t.button, color: c.slate }}>{label}</Text>
       </LiftedFace>
@@ -319,7 +330,7 @@ export function PronunciationCheck({
         {primary('Try again', listen, 'mic', 1.15)}
       </>
     ) : (
-      quiet(attempts > 0 ? 'Skip speaking' : 'I can’t speak now')
+      attempts > 0 ? quiet('Skip speaking') : quiet('I can’t speak now', cantSpeak)
     )
 
   return (
@@ -333,6 +344,24 @@ export function PronunciationCheck({
       sakuraCorner
       progress={{ shown: Math.min(step, total), from: Math.max(0, progressFrom - 1) }}
       buttons={buttons}
+      /* Heard right: the same correct sheet the Mixed Drills raise — praise, confetti, the word, Continue. */
+      answer={
+        status === 'correct'
+          ? {
+              kind: 'correct',
+              onContinue: pass,
+              detailLabel: verdictDetailLabel('correct'),
+              detail: (
+                <Text numberOfLines={2} style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 20, color: c.slate }}>
+                  <Text className={hanziFont(settings.script, 'medium')} style={{ fontSize: 18, color: c.ink }}>
+                    {character}
+                  </Text>
+                  {'  '}— {shortGloss(word)}
+                </Text>
+              ),
+            }
+          : null
+      }
     >
       <View style={{ flex: 1, minHeight: 0, paddingHorizontal: DRILL_PAD, marginTop: 18 }}>
         {/* What to say, in the drills' card. */}
