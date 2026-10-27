@@ -11,7 +11,7 @@
  * reduced motion, the still is all there is.
  */
 import { forwardRef, useEffect, useImperativeHandle } from 'react'
-import { Image, StyleSheet, View } from 'react-native'
+import { Image, Platform, StyleSheet, View } from 'react-native'
 import { VideoView, useVideoPlayer } from 'expo-video'
 import { SHIFU_LOOP } from './loop'
 
@@ -52,7 +52,7 @@ export const ShifuWritingLoop = forwardRef<ShifuLoopHandle, Props>(function Shif
         {/* Explicit size: on web an absolutely-filled Image takes its natural
             810×1080 instead of the box. */}
         <Image source={STILL} resizeMode="stretch" style={{ position: 'absolute', left: 0, top: 0, ...art }} fadeDuration={0} />
-        {still ? <StillHandle handleRef={ref} /> : <Moving handleRef={ref} />}
+        {still ? <StillHandle handleRef={ref} /> : <Moving handleRef={ref} art={art} />}
       </View>
     </View>
   )
@@ -63,7 +63,7 @@ function StillHandle({ handleRef }: { handleRef: React.Ref<ShifuLoopHandle> }) {
   return null
 }
 
-function Moving({ handleRef }: { handleRef: React.Ref<ShifuLoopHandle> }) {
+function Moving({ handleRef, art }: { handleRef: React.Ref<ShifuLoopHandle>; art: { width: number; height: number } }) {
   // The hook releases the player when the loader unmounts.
   const player = useVideoPlayer(VIDEO, (p) => {
     p.loop = true
@@ -85,7 +85,25 @@ function Moving({ handleRef }: { handleRef: React.Ref<ShifuLoopHandle> }) {
     }),
     [player],
   )
-  return (
+  /*
+   * On web the <video> never grows past its own 810×1080: in a box bigger than
+   * that (a tall desktop window) it sat short of the still under it, and the
+   * two showed different crops. There, it's laid out at its own size and
+   * scaled up to the box, about the centre. Smaller boxes (every phone) keep
+   * the plain fill.
+   */
+  const upscale = Platform.OS === 'web' && art.width > SHIFU_LOOP.width
+  const style = upscale
+    ? {
+        position: 'absolute' as const,
+        left: (art.width - SHIFU_LOOP.width) / 2,
+        top: (art.height - SHIFU_LOOP.height) / 2,
+        width: SHIFU_LOOP.width,
+        height: SHIFU_LOOP.height,
+        transform: [{ scale: art.width / SHIFU_LOOP.width }],
+      }
+    : null
+  const video = (
     <VideoView
       player={player}
       style={StyleSheet.absoluteFill}
@@ -99,4 +117,6 @@ function Moving({ handleRef }: { handleRef: React.Ref<ShifuLoopHandle> }) {
       useExoShutter={false}
     />
   )
+  // The scale goes on a wrapper: the web VideoView doesn't apply a transform given to it.
+  return upscale ? <View style={style}>{video}</View> : video
 }

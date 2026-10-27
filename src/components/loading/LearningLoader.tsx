@@ -99,6 +99,8 @@ type Props = {
 
 export function LearningLoader({ message, children, onBack, minDurationMs = T.minDurationMs, timeoutMs = T.timeoutMs }: Props) {
   const { width, height } = useWindowDimensions()
+  /* Web only: capped at the app's column, so a desktop window frames the painting as a phone would. */
+  const frameWidth = Platform.OS === 'web' ? Math.min(width, LOADER_COLUMN_MAX) : width
   const insets = useSafeAreaInsets()
   const reduceMotion = useReduceMotion()
   const loop = useRef<ShifuLoopHandle>(null)
@@ -250,8 +252,19 @@ export function LearningLoader({ message, children, onBack, minDurationMs = T.mi
             while its parent fades, which showed as a dark void between Shifu
             and the first card.
           */}
-          <Animated.View style={[StyleSheet.absoluteFill, { opacity: enter }]}>
-            <ShifuWritingLoop ref={loop} width={width} height={height} still={reduceMotion || phase !== 'loading'} />
+          {/* On a desktop browser the painting fills the app's phone-width
+              column, centred, like every other screen — across the whole
+              window it was blown up and cropped to Shifu's sleeve. Native and
+              phone-sized windows are untouched (`frameWidth` is the window). */}
+          <Animated.View style={[StyleSheet.absoluteFill, { opacity: enter, alignItems: 'center' }]}>
+            <ShifuWritingLoop ref={loop} width={frameWidth} height={height} still={reduceMotion || phase !== 'loading'} />
+            {/* Framed in a wider window: the painting's side edges fade into the page rather than ending in a line. */}
+            {frameWidth < width && (
+              <View pointerEvents="none" style={{ position: 'absolute', top: 0, bottom: 0, width: frameWidth, flexDirection: 'row', justifyContent: 'space-between' }}>
+                <LinearGradient colors={[C.page, C.pageClear]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={{ width: EDGE_FADE }} />
+                <LinearGradient colors={[C.pageClear, C.page]} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={{ width: EDGE_FADE }} />
+              </View>
+            )}
           </Animated.View>
 
           {/* The words sit at the foot, on a fade into the page so they read over the scene. */}
@@ -335,6 +348,11 @@ function LoaderButton({ label, primary, onPress }: { label: string; primary?: bo
     </RaisedButton>
   )
 }
+
+/** The app's column width (every full-screen layout caps at 430). */
+const LOADER_COLUMN_MAX = 430
+/** How wide the fade is at each side of the framed painting on a desktop window. */
+const EDGE_FADE = 36
 
 /** How tall the fade behind the words is, above the safe area. */
 const FOOT_FADE = 230
