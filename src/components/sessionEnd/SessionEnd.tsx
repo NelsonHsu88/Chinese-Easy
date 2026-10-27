@@ -1,13 +1,13 @@
-import { useState, type ComponentType, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { View, Text, Image, ScrollView, useWindowDimensions } from 'react-native'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient'
-import { Flame, Layers, Shuffle, Target } from 'lucide-react-native'
+import { Layers, Shuffle, Target, Zap } from 'lucide-react-native'
 import { ReviewButton } from '../review/parts'
 import { Reveal, useEntranceRun } from '../dashboard/entrance'
 import { revEntrance } from '../review/tokens'
 import { thunkHaptic } from '../../lib/haptics'
 import { endImages } from './art'
+import { ResultBoxes, type ResultBox } from './ResultBoxes'
 import {
   endColors as c,
   endType as t,
@@ -15,10 +15,9 @@ import {
   endRadius,
   endShadow,
   endArt,
+  endBoxes,
   endFoot,
   endContentBelow,
-  END_DISC,
-  END_HERO_MIN,
   END_CONTENT_MAX,
 } from './tokens'
 import { ShadowSurface } from '../shadowReveal'
@@ -27,12 +26,13 @@ import { ShadowSurface } from '../shadowReveal'
  * The review session's end screen, in its two states — built to the SS930
  * "Nothing to Review" and "Session Complete" references over `tokens.ts`.
  *
- * Both are the same composition: a painted hero, a Lora title and two lines, a
- * card, and the hub's own Back to Review button standing in the hole the foot
- * painting leaves for it. Only the hero changes size — it is given what the
- * screen has left once everything below it is placed — so the page ends at the
- * bottom of the screen on a tall phone and shrinks the painting, rather than
- * scrolling, on a short one.
+ * Both are the same composition: a painted hero, a title and two lines, then
+ * the tip card ("Nothing to Review") or the result boxes ("Session Complete" —
+ * Duolingo's lesson-complete boxes, counting up one after another, see
+ * `ResultBoxes`), and the hub's own Back to Review button standing in the hole
+ * the foot painting leaves for it. The hero fills the screen edge to edge, up
+ * under the status bar, down to the title, cropped to cover; it is given what
+ * the screen has left once everything below it is placed.
  */
 
 export type SessionMode = 'flashcards' | 'mixed' | 'mistakes' | 'full' | 'quick'
@@ -45,21 +45,20 @@ type Props =
       onBack: () => void
       reviewed: number
       correct: number
-      streak: number
+      /** XP this session earned (grading awards it as it goes). */
+      xpEarned: number
       /** The quick session's five minutes ran out before the queue did. */
       timedOut: boolean
     }
 
 export function SessionEnd(props: Props) {
   const { width, height } = useWindowDimensions()
-  const insets = useSafeAreaInsets()
   const run = useEntranceRun()
   const beat = { at: revEntrance.at, duration: revEntrance.for, run, distance: revEntrance.slideY }
 
   const empty = props.kind === 'empty'
   const column = Math.min(width, END_CONTENT_MAX)
-  /* Type and discs are drawn at the 430pt column and scale with it, so the
-     stats still fit side by side on a 360pt phone. */
+  /* Type is drawn at the 430pt column and scales with it. */
   const k = column / END_CONTENT_MAX
   const page = empty ? c.emptyPage : c.donePage
 
@@ -68,18 +67,15 @@ export function SessionEnd(props: Props) {
   const foot = empty ? endFoot.empty : endFoot.done
   const footHeight = column / footRatio
 
-  /* The hero takes what is left, between a floor and its natural size. */
-  const natural = column / heroRatio
-  const left = height - insets.top - footHeight - endContentBelow[props.kind]
-  const heroHeight = Math.max(natural * END_HERO_MIN, Math.min(natural, left))
-
   /*
-   * "Nothing to Review" (SS1025): the painting fills the screen instead — edge
-   * to edge, up under the status bar, and down to the title, cropped to cover
-   * rather than shrunk inside white margins. Its foot dissolves into the page.
+   * The painting fills the screen (SS1025): edge to edge, up under the status
+   * bar, and down to the title, cropped to cover rather than shrunk inside
+   * white margins. Its foot dissolves into the page. Both states — on a phone
+   * the done state used to sit inside margins under the status bar, which read
+   * as a smaller screen than the one before it.
    */
-  const fullBleed = empty
-  const bleedHeight = Math.max(natural, height - footHeight - endContentBelow[props.kind])
+  const natural = column / heroRatio
+  const bleedHeight = Math.max(natural * 0.75, height - footHeight - endContentBelow[props.kind])
 
   const back = () => {
     thunkHaptic()
@@ -93,32 +89,21 @@ export function SessionEnd(props: Props) {
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        <View style={{ width: column, flexGrow: 1, paddingTop: fullBleed ? 0 : insets.top }}>
+        <View style={{ width: column, flexGrow: 1 }}>
           <Reveal from="bottom" {...beat}>
-            {fullBleed ? (
-              <View style={{ height: bleedHeight, overflow: 'hidden' }}>
-                <Image
-                  source={endImages.emptyHero}
-                  style={{ width: column, height: bleedHeight }}
-                  resizeMode="cover"
-                  accessibilityIgnoresInvertColors
-                />
-                <LinearGradient
-                  pointerEvents="none"
-                  colors={[c.emptyPageClear, page]}
-                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: Math.round(bleedHeight * 0.18) }}
-                />
-              </View>
-            ) : (
-              <View style={{ height: heroHeight, alignItems: 'center', justifyContent: 'flex-end' }}>
-                <Image
-                  source={empty ? endImages.emptyHero : endImages.doneHero}
-                  style={{ width: heroHeight * heroRatio, height: heroHeight }}
-                  resizeMode="contain"
-                  accessibilityIgnoresInvertColors
-                />
-              </View>
-            )}
+            <View style={{ height: bleedHeight, overflow: 'hidden' }}>
+              <Image
+                source={empty ? endImages.emptyHero : endImages.doneHero}
+                style={{ width: column, height: bleedHeight }}
+                resizeMode="cover"
+                accessibilityIgnoresInvertColors
+              />
+              <LinearGradient
+                pointerEvents="none"
+                colors={[c.emptyPageClear, page]}
+                style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: Math.round(bleedHeight * 0.18) }}
+              />
+            </View>
           </Reveal>
 
           {/* Spare height is shared between here and above the foot, so a tall
@@ -140,9 +125,16 @@ export function SessionEnd(props: Props) {
             </View>
           </Reveal>
 
-          <Reveal from="bottom" {...beat} style={{ marginTop: s.section, paddingHorizontal: s.screen }}>
-            {empty ? <TipCard mode={props.mode} artWidth={column * endArt.scrollShare} /> : <StatsCard {...props} k={k} />}
-          </Reveal>
+          {empty ? (
+            <Reveal from="bottom" {...beat} style={{ marginTop: s.section, paddingHorizontal: s.screen }}>
+              <TipCard mode={props.mode} artWidth={column * endArt.scrollShare} />
+            </Reveal>
+          ) : (
+            /* The boxes play their own entrance, a beat after the title. */
+            <View style={{ marginTop: s.section + 6, paddingHorizontal: s.screen }}>
+              <ResultBoxes boxes={resultBoxes(props.mode, props.reviewed, props.correct, props.xpEarned)} width={column - s.screen * 2} startDelay={420} />
+            </View>
+          )}
 
           {/* Slack lands here, so the foot always meets the bottom of the screen. */}
           <View style={{ flexGrow: 1, minHeight: s.section }} />
@@ -248,140 +240,33 @@ function TipCard({ mode, artWidth }: { mode: SessionMode; artWidth: number }) {
   )
 }
 
-function StatsCard({
-  mode,
-  reviewed,
-  correct,
-  streak,
-  k,
-}: {
-  mode: SessionMode
-  reviewed: number
-  correct: number
-  streak: number
-  k: number
-}) {
-  const accuracy = reviewed === 0 ? 0 : Math.round((correct / reviewed) * 100)
-  const AccuracyIcon = mode === 'mixed' ? Shuffle : mode === 'mistakes' ? Target : Layers
-  return (
-    <Panel>
-      <Stat
-        icon={AccuracyIcon}
-        iconColor={c.accuracy}
-        disc={c.accuracyDisc}
-        label="Accuracy"
-        value={`${accuracy}%`}
-        valueColor={c.accuracy}
-        note={`${correct} / ${reviewed} correct`}
-        k={k}
-      />
-      <Divider />
-      <Stat
-        icon={Flame}
-        iconColor={c.flame}
-        iconFill={c.flame}
-        disc={c.flameDisc}
-        label="Streak"
-        value={`${streak} ${streak === 1 ? 'day' : 'days'}`}
-        valueColor={c.streak}
-        note="Keep it up!"
-        k={k}
-      />
-    </Panel>
-  )
-}
-
 /** A type style at `k` times its designed size. */
 function scaled<T extends { fontSize: number; lineHeight: number }>(style: T, k: number): T {
   return { ...style, fontSize: style.fontSize * k, lineHeight: style.lineHeight * k }
 }
 
-function Stat({
-  icon: Icon,
-  iconColor,
-  iconFill,
-  disc,
-  label,
-  value,
-  valueColor,
-  note,
-  k,
-}: {
-  icon: ComponentType<{ color: string; size: number; strokeWidth: number; fill?: string }>
-  iconColor: string
-  iconFill?: string
-  disc: string
-  label: string
-  value: string
-  valueColor: string
-  note: string
-  k: number
-}) {
-  const discSize = END_DISC * k
-  /*
-   * The value is sized to the width its column actually has. Guessing from the
-   * character count let "100%" through at full size — four characters, so no
-   * shrink — and on a phone it ran out of room and printed as "100…". Until
-   * the column reports its width, the estimate from the screen is used.
-   */
-  const [avail, setAvail] = useState<number | null>(null)
-  const designSize = t.statValue.fontSize * k
-  const fitted = avail == null ? designSize : Math.min(designSize, (avail * 0.94) / emWidth(value))
-  const shrink = fitted / designSize
-  /* The label and note around it fit the same way, so a 320pt phone gets
-     "ACCURACY" and "2 / 2 correct" whole rather than "ACCURA…". */
-  const fit = (text: string, size: number, tracking = 0) =>
-    avail == null ? 1 : Math.min(1, (avail * 0.96) / (emWidth(text) * size * k + tracking * text.length))
-  const labelK = k * fit(label.toUpperCase(), t.statLabel.fontSize, t.statLabel.letterSpacing)
-  const noteK = k * fit(note, t.statNote.fontSize)
-  return (
-    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 10 }}>
-      <View
-        style={{
-          width: discSize,
-          height: discSize,
-          borderRadius: discSize / 2,
-          backgroundColor: disc,
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Icon color={iconColor} size={30 * k} strokeWidth={2.2} fill={iconFill ?? 'none'} />
-      </View>
-      <View style={{ flex: 1 }} onLayout={(e) => setAvail(e.nativeEvent.layout.width)}>
-        <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...scaled(t.statLabel, labelK), color: c.slate }}>
-          {label.toUpperCase()}
-        </Text>
-        {/* Fitted by measurement rather than with `adjustsFontSizeToFit`,
-            which is iOS-only: on Android "12 days" would simply clip. */}
-        <Text
-          className="font-nunito-extrabold"
-          numberOfLines={1}
-          style={{ ...scaled(t.statValue, k * shrink), color: valueColor }}
-        >
-          {value}
-        </Text>
-        <Text className="font-nunito-semibold" numberOfLines={1} style={{ ...scaled(t.statNote, noteK), color: c.slate }}>
-          {note}
-        </Text>
-      </View>
-    </View>
-  )
+/** Duolingo's three boxes: XP, how well it went (the header says how), and how many. */
+function resultBoxes(mode: SessionMode, reviewed: number, correct: number, xpEarned: number): ResultBox[] {
+  const accuracy = reviewed === 0 ? 0 : Math.round((correct / reviewed) * 100)
+  return [
+    { key: 'xp', label: 'TOTAL XP', icon: Zap, filledIcon: true, value: xpEarned, format: (n) => String(n), tone: endBoxes.xp },
+    { key: 'accuracy', label: verdict(accuracy), icon: Target, value: accuracy, format: (n) => `${n}%`, tone: endBoxes.accuracy },
+    {
+      key: 'count',
+      label: mode === 'mixed' ? 'QUESTIONS' : 'CARDS',
+      icon: mode === 'mixed' ? Shuffle : Layers,
+      value: reviewed,
+      format: (n) => String(n),
+      tone: endBoxes.count,
+    },
+  ]
 }
 
-/**
- * A string's advance in Lora, in ems — generous, so the estimate errs towards
- * fitting. Digits are tabular-ish (~0.62em), capitals and the percent sign wide.
- */
-function emWidth(text: string): number {
-  let em = 0
-  for (const ch of text) {
-    if (ch >= '0' && ch <= '9') em += 0.62
-    else if (ch === '%') em += 0.92
-    else if (ch === ' ') em += 0.26
-    else if (ch === '/') em += 0.4
-    else if (ch >= 'A' && ch <= 'Z') em += 0.72
-    else em += 0.54
-  }
-  return Math.max(em, 1)
+/** The accuracy box's header, as Duolingo names a result. */
+function verdict(accuracy: number): string {
+  if (accuracy >= 100) return 'PERFECT'
+  if (accuracy >= 90) return 'AMAZING'
+  if (accuracy >= 75) return 'GREAT'
+  if (accuracy >= 50) return 'GOOD'
+  return 'NICE TRY'
 }

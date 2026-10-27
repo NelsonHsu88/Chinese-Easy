@@ -83,6 +83,9 @@ export function StreakPill({ streak }: { streak: number }) {
  * fixed: a width that clears Shifu's sleeve on a 430pt column sits across it on
  * a 360pt one.
  */
+/** Room round Shifu's bubble inside its fading layer: the tilt's overhang (~5% of its width) plus its shadow. */
+const BUBBLE_BLEED = 22
+
 export function ReviewHero({
   message,
   column,
@@ -138,21 +141,29 @@ export function ReviewHero({
         and the stub of the mockup's tail read as an empty speech bubble.
         Measured from the column's left edge, so the gutter comes off.
       */}
+      {/*
+        The fade's layer is padded (`BUBBLE_BLEED`) so the tilted bubble and its
+        shadow lie wholly inside it. Android draws a fading view into an
+        offscreen layer cut to the view's own, untilted box: without the
+        padding the corners the tilt pushes out (bottom left, top right) were
+        clipped until the fade finished, then popped in. The shadow is inside
+        the same layer, so it arrives with the bubble in one fade — not on a
+        slower ramp of its own.
+      */}
       <Animated.View
         style={[
           {
             position: 'absolute',
-            left: (revHero.bubble.right - revHero.bubble.width) * k - s.screen,
-            top: refY(revHero.bubble.top, column),
-            width: revHero.bubble.width * k,
+            left: (revHero.bubble.right - revHero.bubble.width) * k - s.screen - BUBBLE_BLEED,
+            top: refY(revHero.bubble.top, column) - BUBBLE_BLEED,
+            width: revHero.bubble.width * k + BUBBLE_BLEED * 2,
+            padding: BUBBLE_BLEED,
           },
           text,
         ]}
         needsOffscreenAlphaCompositing
       >
-        <ShadowReveal at={revEntrance.at} duration={revEntrance.for} run={run}>
-          <ShifuBubble message={message} width={revHero.bubble.width * k} fontSize={shifuBubbleFontSize(column)} />
-        </ShadowReveal>
+        <ShifuBubble message={message} width={revHero.bubble.width * k} fontSize={shifuBubbleFontSize(column)} />
       </Animated.View>
     </View>
   )

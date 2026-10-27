@@ -19,7 +19,7 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web'
  * The cover's arrival: a single opacity fade on a soft ease-in-out bezier. It
  * waits for the room image to load, and starts anyway after `waitAtMost` ms.
  */
-const ARRIVE = { duration: 640, easing: Easing.bezier(0.4, 0, 0.2, 1), waitAtMost: 1500 } as const
+const ARRIVE = { duration: 640, easing: Easing.bezier(0.4, 0, 0.2, 1), waitAtMost: 1500, waitForCover: 4000 } as const
 /** A swipe to the left this far, or this fast (px/ms), opens the book as Start Reading does. */
 const OPEN_SWIPE = { distance: 48, speed: 0.3 } as const
 
@@ -113,12 +113,23 @@ export function BookCover({
     if (loaded.current.room && loaded.current.cover) arrive()
   }
   useEffect(() => {
-    // A picture that never reports loading must not leave the cover blank, or the book shut for good.
-    const late = setTimeout(arrive, ARRIVE.waitAtMost)
+    /*
+     * A picture that never reports loading must not leave the cover blank, or
+     * the book shut for good. The room may be given up on early, but the
+     * story's own cover is waited for longer: the room has the general 讀
+     * book painted into it, and arriving without the cover showed that book
+     * for a moment before the story's own (slow in development, where every
+     * image comes from the dev server).
+     */
+    const late = setTimeout(() => {
+      if (loaded.current.cover) arrive()
+    }, ARRIVE.waitAtMost)
+    const latest = setTimeout(arrive, ARRIVE.waitForCover)
     // Backstop for the fade itself: off the native driver a hidden browser tab stalls it (CLAUDE.md, Animation).
-    const backstop = setTimeout(() => shown.setValue(1), ARRIVE.waitAtMost + ARRIVE.duration + 200)
+    const backstop = setTimeout(() => shown.setValue(1), ARRIVE.waitForCover + ARRIVE.duration + 200)
     return () => {
       clearTimeout(late)
+      clearTimeout(latest)
       clearTimeout(backstop)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -269,7 +280,8 @@ export function BookCover({
 
           {/* The front cover, hinged at the spine. */}
           <Animated.View style={[StyleSheet.absoluteFill, { transform: coverTransform }]}>
-            <Animated.View style={[StyleSheet.absoluteFill, { opacity: coverFront }]}>
+            {/* A plain board under the cover image: should the image still be on its way, the painted 讀 book in the room never shows through. */}
+            <Animated.View style={[StyleSheet.absoluteFill, { opacity: coverFront, backgroundColor: c.paperBack, borderRadius: 3 }]}>
               <StoryArt story={story} width={bookW} height={bookH} radius={3} onLoad={onPictureLoad('cover')} />
               {/* The low sun from the window, falling across the board from the left. */}
               <LinearGradient

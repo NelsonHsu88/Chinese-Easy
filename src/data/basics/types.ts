@@ -91,6 +91,12 @@ export type BasicsStep = { only?: Phonetic } & (
       contrast?: { symbol: SoundSymbol; example: ZhItem; note: Phon }
     }
   | {
+      /** Every zhuyin symbol, each tappable to hear its name. */
+      kind: 'symbol-chart'
+      title: Phon
+      body: Phon
+    }
+  | {
       /** A syllable taken apart: tap each part. */
       kind: 'syllable-parts'
       title: Phon

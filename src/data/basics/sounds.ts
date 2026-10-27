@@ -207,6 +207,77 @@ export const FINALS: SoundEntry[] = [
 
 export const SOUNDS: SoundEntry[] = [...INITIALS, ...FINALS]
 
+/**
+ * What each symbol is called when you say it on its own, as a real character
+ * with that reading, so the device voice says it in the right tone. Keyed by
+ * the sound's pinyin.
+ *
+ * Initials take the vowel they're recited with: ㄅㄆㄇㄈ with ㄛ (said close
+ * to "buh, puh, muh, fuh" in Taiwan), ㄉ–ㄏ with ㄜ, ㄐㄑㄒ with ㄧ, and the
+ * rest on their own. They're recited in the 1st tone; where no common
+ * 1st-tone character exists (ㄈ ㄉ ㄊ ㄋ ㄌ ㄖ), the nearest real syllable is
+ * used. Finals are named by their own sound.
+ *
+ * ㄝ and ㄥ have no character that voices reliably, so they're heard in their
+ * example word instead (`spokenName` falls back to it).
+ */
+const NAMES: Record<string, ZhItem> = {
+  b: { zh: '玻', pinyin: 'bō' },
+  p: { zh: '坡', pinyin: 'pō' },
+  m: { zh: '摸', pinyin: 'mō' },
+  f: { zh: '佛', pinyin: 'fó' },
+  d: { zh: '得', pinyin: 'dé' },
+  t: { zh: '特', pinyin: 'tè' },
+  n: { zh: { t: '訥', s: '讷' }, pinyin: 'nè' },
+  l: { zh: '勒', pinyin: 'lè' },
+  g: { zh: '哥', pinyin: 'gē' },
+  k: { zh: '科', pinyin: 'kē' },
+  h: { zh: '喝', pinyin: 'hē' },
+  j: { zh: { t: '雞', s: '鸡' }, pinyin: 'jī' },
+  q: { zh: '七', pinyin: 'qī' },
+  x: { zh: '西', pinyin: 'xī' },
+  zh: { zh: '知', pinyin: 'zhī' },
+  ch: { zh: '吃', pinyin: 'chī' },
+  sh: { zh: { t: '詩', s: '诗' }, pinyin: 'shī' },
+  r: { zh: '日', pinyin: 'rì' },
+  z: { zh: { t: '資', s: '资' }, pinyin: 'zī' },
+  c: { zh: '疵', pinyin: 'cī' },
+  s: { zh: '思', pinyin: 'sī' },
+  i: { zh: '衣', pinyin: 'yī' },
+  u: { zh: { t: '烏', s: '乌' }, pinyin: 'wū' },
+  ü: { zh: '迂', pinyin: 'yū' },
+  a: { zh: '啊', pinyin: 'ā' },
+  o: { zh: '喔', pinyin: 'ō' },
+  e: { zh: '婀', pinyin: 'ē' },
+  ai: { zh: '哀', pinyin: 'āi' },
+  ei: { zh: { t: '誒', s: '诶' }, pinyin: 'ēi' },
+  ao: { zh: '凹', pinyin: 'āo' },
+  ou: { zh: { t: '歐', s: '欧' }, pinyin: 'ōu' },
+  an: { zh: '安', pinyin: 'ān' },
+  en: { zh: '恩', pinyin: 'ēn' },
+  ang: { zh: { t: '骯', s: '肮' }, pinyin: 'āng' },
+  er: { zh: { t: '兒', s: '儿' }, pinyin: 'ér' },
+}
+
+/** The symbol's own name, if it has one that can be voiced. */
+export function symbolName(symbol: SoundSymbol): ZhItem | undefined {
+  return NAMES[symbol.pinyin]
+}
+
+/** All 37 zhuyin symbols in their recited order, ㄅ to ㄩ. */
+export const ZHUYIN_CHART: SoundEntry[] = [
+  ...INITIALS,
+  ...['a', 'o', 'e', 'ê', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'ang', 'eng', 'er', 'i', 'u', 'ü'].map(
+    (p) => FINALS.find((f) => f.pinyin === p)!,
+  ),
+]
+
+/** What plays for a symbol on its own: its name, or else its example word. */
+export function spokenName(entry: SoundEntry): { item: ZhItem; isName: boolean } {
+  const name = NAMES[entry.pinyin]
+  return name ? { item: name, isName: true } : { item: entry.example, isName: false }
+}
+
 export function soundSymbol(pinyin: string): SoundSymbol {
   const found = SOUNDS.find((s) => s.pinyin === pinyin)
   if (!found) throw new Error(`Unknown sound ${pinyin}`)

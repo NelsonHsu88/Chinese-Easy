@@ -22,14 +22,33 @@ export const endColors = {
   donePage: '#FFFFFF',
   /** The tip and stats cards: a shade lighter than either page, on a hairline. */
   panel: '#FFFDF9',
-  /** Accuracy: the number, and the icon on its mint disc. */
-  accuracy: '#2E7D4F',
-  accuracyDisc: '#E8F1E6',
-  /** Streak: the number is gold, the flame orange on a peach disc. */
-  streak: '#D69A2D',
-  flame: '#F07A2F',
-  flameDisc: '#FDEBDF',
+  /* The three stats: each number in its icon's colour, the icon on a pale disc. */
+  /** XP earned: gold. */
+  xp: '#C98A1B',
+  xpDisc: '#FBF0D6',
+  /** Words reviewed: jade. */
+  words: '#2E7D4F',
+  wordsDisc: '#E8F1E6',
+  /** Accuracy: blue. */
+  accuracy: '#3E6FB0',
+  accuracyDisc: '#E5EDF8',
 } as const
+
+/*
+ * The result boxes (Duolingo's lesson-complete boxes): a frame colour (the
+ * header band and the outline), the number's ink, and the sparkles. Gold for
+ * XP, jade for accuracy, blue for the count.
+ */
+export const endBoxes = {
+  xp: { frame: '#F2B33D', ink: '#C98A1B', star: '#F6C658' },
+  accuracy: { frame: '#5BAE5A', ink: '#2E7D4F', star: '#7CC66A' },
+  count: { frame: '#4A93DB', ink: '#2F6FB5', star: '#73B2EE' },
+  body: '#FFFFFF',
+  label: '#FFFFFF',
+} as const
+
+/** The boxes' geometry: the header band, the white body, its outline. */
+export const endBoxSize = { header: 26, body: 62, outline: 3, radius: 16, gap: 10 } as const
 
 export const endType = {
   /** Lora Bold. "Nothing to Review" / "Session Complete!". */
@@ -38,12 +57,6 @@ export const endType = {
   subtitle: { fontSize: 18, lineHeight: 24 },
   /** Lora. The tip beside the scroll. */
   tip: { fontSize: 15, lineHeight: 21 },
-  /** Lora, small capitals by hand: "ACCURACY", "STREAK". */
-  statLabel: { fontSize: 13, lineHeight: 17, letterSpacing: 0.7 },
-  /** Lora Bold, the stat itself. */
-  statValue: { fontSize: 36, lineHeight: 42 },
-  /** Lora, the line under it. */
-  statNote: { fontSize: 14, lineHeight: 19 },
 } as const
 
 export const endSpacing = {
@@ -57,8 +70,6 @@ export const endRadius = { card: 22 } as const
 
 export const endShadow = revShadow
 
-/** The stats card's icon discs, at the 430pt column. */
-export const END_DISC = 64
 
 /*
  * Art proportions, from the trimmed renders. React Native does not size an
@@ -91,9 +102,7 @@ export const endFoot = {
  * the painting before it scrolls. Estimated from the type sizes above; re-measure
  * if anything below the hero changes height.
  */
-export const endContentBelow = { empty: 270, done: 300 } as const
+export const endContentBelow = { empty: 270, done: 280 } as const
 
-/** The hero never shrinks below this share of its natural height. */
-export const END_HERO_MIN = 0.6
 
 export const END_CONTENT_MAX = 430

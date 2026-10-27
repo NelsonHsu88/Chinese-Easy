@@ -2,7 +2,7 @@ import type { BasicsStep } from '../../../data/basics/types'
 import type { Gate, StepProps } from '../lessonParts'
 import { DialogueStep, ExplainStep, ListenStep, RecapStep } from './InfoSteps'
 import { ChoiceStep } from './ChoiceStep'
-import { SoundStep, SyllableBuilderStep, SyllablePartsStep, TonesStep } from './SoundSteps'
+import { SoundStep, SymbolChartStep, SyllableBuilderStep, SyllablePartsStep, TonesStep } from './SoundSteps'
 import { SentenceBuilderStep } from './SentenceBuilderStep'
 import { CharacterExplorerStep } from './CharacterExplorerStep'
 import { StrokePickerStep, StrokeStep } from './StrokeSteps'
@@ -23,6 +23,8 @@ export function StepView(props: StepProps<BasicsStep>) {
       return <ChoiceStep {...props} step={step} />
     case 'sound':
       return <SoundStep {...props} step={step} />
+    case 'symbol-chart':
+      return <SymbolChartStep {...props} step={step} />
     case 'syllable-parts':
       return <SyllablePartsStep {...props} step={step} />
     case 'tones':

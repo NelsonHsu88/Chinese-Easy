@@ -74,7 +74,40 @@ export const bookColors = {
   readingsRing: '#B8B0A0',
 } as const
 
-/** Width over height of the general book cover every story wears (`StoryArt`). */
+/**
+ * The Reading Corner (`Books.tsx`), built to `SS1026 Reading UI Redesign.png`
+ * and sampled from it: a fresh leaf green for what a reader acts on, a deep
+ * forest for progress, warm hairlines round cream cards on the white page.
+ */
+export const cornerColors = {
+  page: '#FFFFFF',
+  card: '#FFFDF8',
+  cardBorder: 'rgba(214,201,178,0.6)',
+  ink: '#1C1A17',
+  inkSoft: '#5F5850',
+  inkFaint: '#8E8576',
+  /** Continue, and the selected shelf chip's rim and shoulder. */
+  green: '#58A053',
+  greenShoulder: '#3E7C3B',
+  greenDark: '#2F6E33',
+  /** The "Continue reading" badge and the selected chip's face. */
+  greenPale: '#EDF5E8',
+  /** The progress bars, and the track they run in. */
+  progress: '#3C7B4A',
+  track: '#EAE3D5',
+  /** Quiet raised faces: See all, unselected chips, the feature card's chevron disc. */
+  quietFace: '#FFFDF9',
+  quietBorder: 'rgba(196,181,152,0.6)',
+  quietShoulder: '#E2D9C8',
+  /** The mist the feature card's title sits in, over its painting. */
+  mist: 'rgba(255,253,248,0.88)',
+  mistClear: 'rgba(255,253,248,0)',
+  shadow: '#3A2A14',
+  /** The paper glow round the heading, over the header painting's feathered edge. */
+  halo: 'rgba(255,255,255,0.95)',
+} as const
+
+/** Width over height of a story's cover (`StoryArt`): the Book Cover paintings and the general cover are both 3:4. */
 export const COVER_RATIO = 3 / 4
 
 /**

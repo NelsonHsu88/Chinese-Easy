@@ -231,6 +231,12 @@ export function StoryReader() {
     if (story && source !== undefined) recordStoryPage(story.id, source)
   }, [story, screens, pageIndex, recordStoryPage])
 
+  /* The library's Continue Reading card follows the book last opened past its cover. */
+  const lastStoryId = settings.lastStoryId
+  useEffect(() => {
+    if (story && !coverShown && lastStoryId !== story.id) updateSettings({ lastStoryId: story.id })
+  }, [story, coverShown, lastStoryId, updateSettings])
+
   /*
    * Speaks whatever the current request asks for, and silences it on the way out.
    *

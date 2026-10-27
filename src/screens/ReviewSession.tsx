@@ -1,9 +1,9 @@
 import { RaisedButton } from '../components/dashboard/parts'
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { View, Text } from 'react-native'
+import { View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams } from 'expo-router'
-import { X, Timer, Sparkles, Layers, Target } from 'lucide-react-native'
+import { X, Timer } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { previewReview } from '../lib/srs'
 import { loadStrokeData, prefetchStrokeData } from '../lib/hanziStrokeData'
@@ -26,10 +26,9 @@ import {
 } from '../lib/mixedDrills'
 import { DrillToast } from '../components/drills/parts'
 import { SessionEnd } from '../components/sessionEnd/SessionEnd'
-import { LessonCompletionCelebration } from '../components/celebration/LessonCompletionCelebration'
 import { PronunciationCheck } from '../components/PronunciationCheck'
 import { RaisedProgressBar } from '../components/progress/RaisedProgressBar'
-import { QuestionContent, QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
+import { QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
 import { isSpeechRecognitionAvailable } from '../lib/speechRecognition'
 import { playCorrectSound, playRetryTone } from '../lib/sound'
 import { correctHaptic } from '../lib/haptics'
@@ -162,7 +161,7 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
     pauseListening,
     xp,
   } = useApp()
-  /* XP at the start, so the celebration can show what this session earned
+  /* XP at the start, so the end screen can show what this session earned
      (grading awards it as it goes — see AppContext's gradeCard). */
   const xpAtStart = useRef(xp).current
   const params = useLocalSearchParams<{ mode?: string }>()
@@ -604,14 +603,14 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
         {stats.reviewed === 0 ? (
           <SessionEnd kind="empty" mode={mode} onBack={finishSession} />
         ) : (
-          <LessonCompletionCelebration
-            subtitle={ranOutOfTime ? 'Your five minutes are up.' : undefined}
-            stats={[
-              { icon: Sparkles, tone: 'xp', value: `+${Math.max(0, xp - xpAtStart)}`, label: 'XP earned' },
-              { icon: Layers, tone: 'words', value: String(stats.reviewed), label: mode === 'mixed' ? 'Questions' : 'Reviewed' },
-              { icon: Target, tone: 'accuracy', value: `${Math.round((stats.correct / stats.reviewed) * 100)}%`, label: 'Accuracy' },
-            ]}
-            onContinue={finishSession}
+          <SessionEnd
+            kind="done"
+            mode={mode}
+            onBack={finishSession}
+            reviewed={stats.reviewed}
+            correct={stats.correct}
+            xpEarned={Math.max(0, xp - xpAtStart)}
+            timedOut={ranOutOfTime}
           />
         )}
       </SessionStage>
@@ -644,19 +643,17 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
   if (speaking && speakingWord) {
     return (
       <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
-          <SessionHeader
-            onClose={() => closeSession()}
-            step={shown.step}
-            total={shown.total}
-            progress={shown.step / shown.total}
-            label="Speaking"
-            secondsLeft={secondsLeft}
-          />
-          <QuestionContent key={speaking} style={{ flex: 1 }}>
-            <PronunciationCheck word={speakingWord} onPass={finishSpeaking} onSkip={finishSpeaking} />
-          </QuestionContent>
-        </SafeAreaView>
+        {/* Owns its whole screen in the Mixed Drills frame — raised progress bar, title, foot — like the drills around it. */}
+        <PronunciationCheck
+          key={speaking}
+          word={speakingWord}
+          onPass={finishSpeaking}
+          onSkip={finishSpeaking}
+          onClose={() => closeSession()}
+          step={shown.step}
+          total={shown.total}
+          secondsLeft={secondsLeft}
+        />
       </SessionStage>
     )
   }
@@ -738,7 +735,6 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
         preview={preview ?? undefined}
         isNew={cardIsNew}
         onGrade={handleGrade}
-        onSkip={skipForNow}
         onClose={() => closeSession()}
         step={shown.step}
         total={shown.total}
@@ -749,76 +745,3 @@ function ReviewSessionBody({ onListeningPaused }: { onListeningPaused: () => voi
   )
 }
 
-function formatClock(seconds: number): string {
-  const m = Math.floor(seconds / 60)
-  const s = seconds % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-function SessionHeader({
-  onClose,
-  step,
-  total,
-  progress,
-  tint = 'brand',
-  unit = 'card',
-  label,
-  secondsLeft,
-}: {
-  onClose: () => void
-  step: number
-  total: number
-  progress: number
-  tint?: 'brand' | 'amber'
-  unit?: 'card' | 'rep'
-  label?: string
-  secondsLeft?: number | null
-}) {
-  const pct = Math.min(100, Math.max(0, progress * 100))
-  // `step` is the card being worked on, not one already finished, so what's
-  // still ahead after this one is total - step.
-  const left = Math.max(0, total - step)
-  return (
-    <View className="px-4 pt-4">
-      <View className="flex-row items-center gap-3">
-        <RaisedButton
-          onPress={onClose}
-          accessibilityLabel="Close review"
-          height={36}
-          width={36}
-          radius={18}
-          fill="#ffffff"
-          border="#e2e8f0"
-          shoulder="#cbd5e1"
-          scaleTo={0.9}
-        >
-          <X size={20} color="#64748b" />
-        </RaisedButton>
-        <RaisedProgressBar progress={pct / 100} accessibilityLabel={`${unit === 'rep' ? 'Rep' : 'Card'} ${step} of ${total}`} />
-        <View
-          className="flex-row items-baseline justify-end"
-          accessibilityLabel={`${unit === 'rep' ? 'Rep' : 'Card'} ${step} of ${total}`}
-        >
-          <Text className={`text-[18px] font-extrabold ${tint === 'amber' ? 'text-amber-600' : 'text-brand-600'}`}>{step}</Text>
-          <Text className="text-[13px] font-bold text-slate-400"> / {total}</Text>
-        </View>
-      </View>
-      <View className="mt-1 flex-row items-center justify-between">
-        {label ? <Text className="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">{label}</Text> : <View />}
-        <View className="flex-row items-center gap-2">
-          {secondsLeft != null && (
-            <View className="flex-row items-center gap-1">
-              <Timer size={12} color={secondsLeft <= 30 ? '#f04747' : '#94a3b8'} />
-              <Text className={`text-[11px] font-extrabold ${secondsLeft <= 30 ? 'text-coral-600' : 'text-slate-400'}`}>
-                {formatClock(secondsLeft)}
-              </Text>
-            </View>
-          )}
-          <Text className="text-[11px] font-semibold text-slate-400">
-            {left === 0 ? `last ${unit}` : `${left} ${unit}${left === 1 ? '' : 's'} left`}
-          </Text>
-        </View>
-      </View>
-    </View>
-  )
-}

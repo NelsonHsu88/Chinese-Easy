@@ -64,6 +64,7 @@ export function DrillShell({
   scroll = true,
   buttons,
   answer,
+  progress,
   children,
 }: {
   title: string
@@ -89,6 +90,12 @@ export function DrillShell({
    * moves) but are hidden and take no touches.
    */
   answer?: AnswerSheetSpec | null
+  /**
+   * The bar's count and where it opens from, when the screen counts its own
+   * progress rather than by question — the speaking step, which follows a
+   * flashcard and keeps the flashcard header's count (see `PronunciationCheck`).
+   */
+  progress?: { shown: number; from: number }
   children: ReactNode
 }) {
   const { column } = useDrillColumn()
@@ -128,7 +135,11 @@ export function DrillShell({
             style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingLeft: DRILL_PAD - 6, paddingRight: DRILL_PAD, paddingTop: 8, height: 52, zIndex: 1 }}
           >
             <BackArrow onPress={onClose} accessibilityLabel="Close drills" />
-            <DrillProgress step={step} total={total} solved={answer?.kind === 'correct'} />
+            {progress ? (
+              <ProgressBar shown={progress.shown} from={progress.from} total={total} />
+            ) : (
+              <DrillProgress step={step} total={total} solved={answer?.kind === 'correct'} />
+            )}
             {headerExtra}
           </View>
 
@@ -190,19 +201,23 @@ const PROGRESS_DELAY_MS = 160
  * where it stands and stays put.
  */
 function DrillProgress({ step, total, solved }: { step: number; total: number; solved: boolean }) {
-  const safeTotal = Math.max(1, total)
   const completed = Math.min(total, step - 1 + (solved ? 1 : 0))
   const from = useSessionProgressStart(completed, total)
+  return <ProgressBar shown={completed} from={from} total={total} />
+}
+
+function ProgressBar({ shown, from, total }: { shown: number; from: number; total: number }) {
+  const safeTotal = Math.max(1, total)
   return (
     <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <RaisedProgressBar
-        progress={completed / safeTotal}
+        progress={shown / safeTotal}
         initialProgress={from / safeTotal}
         delayMs={PROGRESS_DELAY_MS}
-        accessibilityLabel={`${completed} of ${total} completed`}
+        accessibilityLabel={`${shown} of ${total} completed`}
       />
       <Text style={{ fontFamily: 'NunitoSemiBold', ...t.counter, color: c.slate }} importantForAccessibility="no" accessibilityElementsHidden>
-        {completed} / {total}
+        {shown} / {total}
       </Text>
     </View>
   )

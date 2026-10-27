@@ -195,7 +195,7 @@ interface AppContextValue {
   wordsLearnedToday: number
   streak: number
 
-  addToReviewDeck: (wordId: string) => void
+  addToReviewDeck: (wordId: string, options?: { count?: boolean }) => void
   /**
    * Takes words back out of the deck. Exists to undo an add the learner didn't
    * mean — chiefly the dictionary's bulk add, where one tap can drop twenty
@@ -1333,13 +1333,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const addToReviewDeck = useCallback(
-    (wordId: string) => {
+    (wordId: string, options?: { count?: boolean }) => {
       // Already in: nothing was added, so nothing counts toward today's goal.
       if (deckRef.current.some((c) => c.wordId === wordId)) return
       const card = createNewCard(wordId)
       deckRef.current = [...deckRef.current, card]
       setDeck((prev) => (prev.some((c) => c.wordId === wordId) ? prev : [...prev, card]))
-      bumpDailyProgress(1)
+      /* `count: false` re-adds a word already counted today (Home's undo, then add again): removing never rewinds the count, so adding back must not count twice. */
+      if (options?.count !== false) bumpDailyProgress(1)
       registerActivity()
     },
     [bumpDailyProgress, registerActivity],

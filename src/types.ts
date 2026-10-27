@@ -159,6 +159,17 @@ export interface AppSettings {
    * path into one phone's sandbox means nothing on another device.
    */
   avatarUri?: string
+  /**
+   * The story last opened past its cover — the Reading Corner's Continue
+   * Reading card. Device-only, like the avatar: absent until a book is read.
+   */
+  lastStoryId?: string
+  /**
+   * Home's word of the day: picked once per local date and kept all day, even
+   * once added. `counted` records that adding it has already counted toward
+   * today's goal, so undo-then-add doesn't count it twice. Device-only.
+   */
+  wordOfDay?: { date: string; wordId: string; counted?: boolean }
 }
 
 export interface PlacementAnswer {

@@ -3,6 +3,7 @@ import { View, Text, Pressable, Animated, Easing, Platform, ScrollView, useWindo
 import { SafeAreaView } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg'
 import {
+  ArrowRight,
   BookOpen,
   Eye,
   Frown,
@@ -19,7 +20,7 @@ import { displayWord, displayExample, displayPinyin, hanziFont } from '../lib/ha
 import { speak } from '../lib/speech'
 import { ReadingSentence } from './dictionary/ReadingSentence'
 import { HanziStage } from './HanziStage'
-import { PressableScale, LiftedFace } from './dashboard/parts'
+import { PressableScale, LiftedFace, DASH_LIFT } from './dashboard/parts'
 import { onbVerdict } from './onboarding/tokens'
 import { playTints } from './dashboard/tokens'
 import { DiscButton, FlashcardHeader, WritingCard, card, useFlashcardColumn } from './flashcard/parts'
@@ -74,7 +75,6 @@ export function ReviewFlashcard({
   preview,
   isNew = false,
   onGrade,
-  onSkip,
   onClose,
   step,
   total,
@@ -94,9 +94,12 @@ export function ReviewFlashcard({
   preview?: ReviewPreview
   /** A card never reviewed before — the pill says "New word" rather than "Due today". */
   isNew?: boolean
+  /**
+   * The learner's grade. "I don't know" ends here too, as `'again'`, once the
+   * learner has seen the answer and pressed Continue — so the caller treats it
+   * like any miss (a lapse, then the remedial writing reps).
+   */
   onGrade: (grade: Grade) => void
-  /** "I don't know" — sends the word to the back of the session queue ungraded. */
-  onSkip?: () => void
   onClose: () => void
   step: number
   total: number
@@ -107,6 +110,8 @@ export function ReviewFlashcard({
   const { column, cardWidth } = useFlashcardColumn()
 
   const [revealed, setRevealed] = useState(false)
+  /** "I don't know" was pressed: the answer shows, already marked Again, with one Continue. */
+  const [gaveUp, setGaveUp] = useState(false)
   const [hintShown, setHintShown] = useState(false)
   const [attempt, setAttempt] = useState(0)
 
@@ -221,6 +226,12 @@ export function ReviewFlashcard({
     trackLearningEvent({ type: 'WRITING_COMPLETED', characters: [...text].length })
     if (direction === 'production') later(reveal, fcReveal.holdMs)
   }, [direction, trackLearningEvent, text, reveal])
+
+  /* "I don't know": show the answer, marked Again. Continue grades it (`onGrade('again')`). */
+  const dontKnow = () => {
+    setGaveUp(true)
+    reveal()
+  }
 
   const example = word.example ? displayExample(word, settings.script) : ''
 
@@ -341,24 +352,21 @@ export function ReviewFlashcard({
               </PressableScale>
 
               {/*
-                The honest way out, before the answer. It sends the word to the
-                back of the session queue ungraded — a learner who admits they
-                don't know has told the truth, and making them grade themselves
-                "Again" to move on would score that as a miss. Not after the
-                reveal: once the answer is on screen, the learner judges
-                themselves with the four tiles, and nothing else.
+                The honest way out, before the answer: it shows the answer at
+                once, already marked Again, so the learner sees what they
+                didn't know, and Continue commits that Again — the writing reps
+                follow, as for any miss. Not after the reveal: once the answer
+                is on screen, the learner judges themselves with the tiles.
               */}
-              {onSkip && (
-                <Pressable
-                  onPress={onSkip}
-                  accessibilityRole="button"
-                  accessibilityLabel="I don't know this word"
-                  hitSlop={6}
-                  style={{ alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: 4 }}
-                >
-                  <Text style={{ fontFamily: 'NunitoSemiBold', ...t.quiet, color: c.slate }}>I don’t know</Text>
-                </Pressable>
-              )}
+              <Pressable
+                onPress={dontKnow}
+                accessibilityRole="button"
+                accessibilityLabel="I don't know this word"
+                hitSlop={6}
+                style={{ alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: 4 }}
+              >
+                <Text style={{ fontFamily: 'NunitoSemiBold', ...t.quiet, color: c.slate }}>I don’t know</Text>
+              </Pressable>
             </View>
           </Animated.View>
 
@@ -410,20 +418,47 @@ export function ReviewFlashcard({
               </View>
             </View>
 
-            {/* The four grade tiles, trailing the card, each a beat after the last. */}
+            {/* The four grade tiles, trailing the card, each a beat after the last.
+                After "I don't know": the Again tile alone (the grade it got, and
+                when the card comes back) and Continue, in the same row height,
+                so the sheet is the size that was measured. */}
             <View style={{ flexDirection: 'row', gap: fcSize.tileGap, marginTop: 14 }}>
-              {GRADE_BUTTONS.map(({ grade, label: name, Icon }, i) => (
-                <Animated.View key={grade} style={[{ flex: 1 }, rise(tilesIn[i], fcReveal.tileLag)]}>
-                  <GradeTile
-                    grade={grade}
-                    name={name}
-                    Icon={Icon}
-                    interval={preview?.[grade].label}
-                    width={(cardWidth - fcSize.tileGap * 3) / 4}
-                    onPress={() => onGrade(grade)}
-                  />
-                </Animated.View>
-              ))}
+              {gaveUp ? (
+                <>
+                  <Animated.View style={[{ width: (cardWidth - fcSize.tileGap * 3) / 4 }, rise(tilesIn[0], fcReveal.tileLag)]}>
+                    <GradeTile
+                      grade="again"
+                      name="Again"
+                      Icon={GRADE_BUTTONS[0].Icon}
+                      interval={preview?.again.label}
+                      width={(cardWidth - fcSize.tileGap * 3) / 4}
+                    />
+                  </Animated.View>
+                  <Animated.View style={[{ flex: 1 }, rise(tilesIn[1], fcReveal.tileLag)]}>
+                    <PressableScale onPress={() => onGrade('again')} scaleTo={0.97} haptic={false} accessibilityLabel="Continue — practise writing this word">
+                      <LiftedFace height={fcSize.tile - DASH_LIFT} fill={c.green} shoulder={fcShoulders.primary}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={{ fontFamily: 'NunitoExtraBold', ...t.button, color: c.onColor }}>Continue</Text>
+                          <ArrowRight size={20} color={c.onColor} strokeWidth={2.4} />
+                        </View>
+                      </LiftedFace>
+                    </PressableScale>
+                  </Animated.View>
+                </>
+              ) : (
+                GRADE_BUTTONS.map(({ grade, label: name, Icon }, i) => (
+                  <Animated.View key={grade} style={[{ flex: 1 }, rise(tilesIn[i], fcReveal.tileLag)]}>
+                    <GradeTile
+                      grade={grade}
+                      name={name}
+                      Icon={Icon}
+                      interval={preview?.[grade].label}
+                      width={(cardWidth - fcSize.tileGap * 3) / 4}
+                      onPress={() => onGrade(grade)}
+                    />
+                  </Animated.View>
+                ))
+              )}
             </View>
           </Animated.View>
           </View>
@@ -498,7 +533,8 @@ function GradeTile({
   Icon: typeof Smile
   interval?: string
   width: number
-  onPress: () => void
+  /** Absent: the tile only shows the grade (after "I don't know"). */
+  onPress?: () => void
 }) {
   const tone = fcGrades[grade]
   return (

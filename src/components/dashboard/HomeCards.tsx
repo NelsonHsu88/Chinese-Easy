@@ -249,20 +249,19 @@ export function WordCard({
   wordsToday,
   width,
   onSeeAll,
-  onAdd,
-  onSkip,
+  onToggle,
 }: {
-  /** Undefined once the daily goal is met or the pool is empty. */
+  /** The word of the day; undefined only when there is no new word left to offer. */
   word: VocabWord | undefined
   script: ScriptMode
   phoneticScript: PhoneticScript
+  /** The word is in the review deck. */
   added: boolean
   wordsToday: number
   width: number
   onSeeAll: () => void
-  onAdd: () => void
-  /** "Skip word" — or, once the word is added, on to the next one. */
-  onSkip: () => void
+  /** Learn this word — or, once added, take it back out (undo). */
+  onToggle: () => void
 }) {
   const card = homeRefCards.word
   const k = width / card.w
@@ -388,21 +387,17 @@ export function WordCard({
         </View>
 
         {word ? (
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <PressableScale
-              onPress={() => {
-                tapHaptic()
-                onSkip()
-              }}
-              accessibilityLabel={added ? 'Next word' : `Skip ${shown}. It won't be offered again.`}
-              wrapperStyle={{ flex: 0.72 }}
-            >
-              <HomeButton label={added ? 'Next word' : 'Skip word'} variant="secondary" />
-            </PressableScale>
-            <PressableScale onPress={onAdd} accessibilityLabel={added ? `${shown} added to your words` : `Learn ${shown}: add it to your review deck`} wrapperStyle={{ flex: 1 }}>
-              <HomeButton label={added ? 'Added ✓' : 'Learn this word'} />
-            </PressableScale>
-          </View>
+          /* One button across the card: Learn this word, then — once added — a quiet Added ✓ that takes it back out when tapped again. */
+          <PressableScale
+            onPress={onToggle}
+            accessibilityLabel={added ? `${shown} is in your review deck. Tap to undo.` : `Learn ${shown}: add it to your review deck`}
+            accessibilityState={{ checked: added }}
+          >
+            <HomeButton
+              label={added ? 'Added ✓ · Tap to undo' : 'Learn this word'}
+              variant={added ? 'secondary' : 'primary'}
+            />
+          </PressableScale>
         ) : (
           <PressableScale onPress={onSeeAll} accessibilityLabel="See new words">
             <HomeButton label="See new words" />

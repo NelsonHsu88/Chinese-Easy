@@ -852,23 +852,25 @@ export function ProfileSubpage({
   subtitle,
   children,
   footer,
+  fixed = false,
 }: {
   title: string
   subtitle: string
   children: (column: number) => ReactNode
   footer?: ReactNode
+  /** Pin the page to the screen: no scrolling, and the children's root gets the height left under the title (give it `flex: 1`). */
+  fixed?: boolean
 }) {
   const { width } = useWindowDimensions()
   const insets = useSafeAreaInsets()
   const column = Math.min(width, PROF_CONTENT_MAX)
+  const bottomPad = Math.max(fixed ? s.lg : s.xxl, insets.bottom + s.md)
+  const Frame = fixed ? FixedFrame : ScrollFrame
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
       <Stack.Screen options={{ animation: 'slide_from_right' }} />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ alignItems: 'center', paddingBottom: Math.max(s.xxl, insets.bottom + s.md) }}
-      >
-        <View style={{ width: column, paddingHorizontal: s.screen }}>
+      <Frame bottomPad={bottomPad}>
+        <View style={{ width: column, paddingHorizontal: s.screen, ...(fixed ? { flex: 1 } : null) }}>
           <View style={{ height: 48, justifyContent: 'center', alignSelf: 'flex-start' }}>
             <BackArrow
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/profile-tab' as Href))}
@@ -895,8 +897,20 @@ export function ProfileSubpage({
           </Text>
           {children(column - s.screen * 2)}
         </View>
-      </ScrollView>
+      </Frame>
       {footer}
     </SafeAreaView>
   )
+}
+
+function ScrollFrame({ bottomPad, children }: { bottomPad: number; children: ReactNode }) {
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', paddingBottom: bottomPad }}>
+      {children}
+    </ScrollView>
+  )
+}
+
+function FixedFrame({ bottomPad, children }: { bottomPad: number; children: ReactNode }) {
+  return <View style={{ flex: 1, alignItems: 'center', paddingBottom: bottomPad, overflow: 'hidden' }}>{children}</View>
 }

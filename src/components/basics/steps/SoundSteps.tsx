@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { View, Text } from 'react-native'
 import { Check } from 'lucide-react-native'
 import type { BasicsStep, SoundSymbol, Tone, ZhItem } from '../../../data/basics/types'
-import { FINALS, INITIALS } from '../../../data/basics/sounds'
+import { FINALS, INITIALS, spokenName, symbolName, ZHUYIN_CHART } from '../../../data/basics/sounds'
 import { TONE_SHAPES } from '../../../lib/basics'
 import { buildSyllable, combines, toneLabel } from '../../../lib/basicsEngine'
 import { pinyinSyllableToZhuyin } from '../../../lib/zhuyin'
@@ -47,7 +47,11 @@ function Symbol({ symbol, ctx, size }: { symbol: SoundSymbol; ctx: BasicsCtx; si
 
 export function SoundStep({ step, ctx, stepId }: StepProps<Of<'sound'>>) {
   const main = step.examples[0]
-  const mainText = ctx.zh(main.zh)
+  // The big buttons say the symbol's own name where it has one (ㄇ → 摸 ㄇㄛ),
+  // else the first example word.
+  const name = symbolName(step.symbol)
+  const heard = name ?? main
+  const mainText = ctx.zh(heard.zh)
   return (
     <View>
       <BasicsPill label="Sound focus" />
@@ -63,9 +67,18 @@ export function SoundStep({ step, ctx, stepId }: StepProps<Of<'sound'>>) {
           <AudioButton text={mainText} id={`${stepId}-main`} size={64} label={`Play ${mainText}`} />
           <AudioButton text={mainText} id={`${stepId}-main`} size={44} slow label={`Play ${mainText} slowly`} />
         </View>
-        <Text className="font-nunito-semibold" style={{ marginTop: 8, fontSize: 12.5, color: c.textMuted, textAlign: 'center' }}>
-          Heard in {mainText}. A single sound is easiest to hear inside a syllable.
-        </Text>
+        {name ? (
+          <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
+            <Text className="font-nunito-semibold" style={{ fontSize: 12.5, color: c.textMuted }}>
+              Say its name:
+            </Text>
+            <Reading pinyin={name.pinyin} ctx={ctx} size={15} />
+          </View>
+        ) : (
+          <Text className="font-nunito-semibold" style={{ marginTop: 8, fontSize: 12.5, color: c.textMuted, textAlign: 'center' }}>
+            Heard in {mainText}. A single sound is easiest to hear inside a syllable.
+          </Text>
+        )}
       </Card>
 
       <Text className="font-nunito-bold" style={{ marginTop: 18, marginBottom: 8, fontSize: 13, letterSpacing: 1.2, color: c.slate }}>
@@ -110,6 +123,60 @@ function ContrastCard({ symbol, item, ctx, id }: { symbol: SoundSymbol; item: Zh
       <Reading pinyin={item.pinyin} ctx={ctx} size={14} center />
       <AudioIndicator id={id} size={36} />
     </RaisedTap>
+  )
+}
+
+/* ── All the symbols ────────────────────────────────────────────────────── */
+
+const CHART_COLUMNS = 5
+const CHART_GAP = 8
+
+export function SymbolChartStep({ step, ctx, stepId }: StepProps<Of<'symbol-chart'>>) {
+  const [heard, setHeard] = useState<Set<string>>(new Set())
+  const total = ZHUYIN_CHART.length
+  return (
+    <View>
+      <BasicsPill label="All the symbols" />
+      <StepTitle>{ctx.text(step.title)}</StepTitle>
+      <StepBody>{ctx.text(step.body)}</StepBody>
+      <Text className="font-nunito-bold" style={{ marginTop: 12, fontSize: 13, letterSpacing: 1.2, color: c.slate }}>
+        {`HEARD ${heard.size} OF ${total}`}
+      </Text>
+      {/* Five equal columns that span the column edge to edge: each cell carries
+          half the gutter on both sides and the row pulls back by the same, so the
+          outer tiles sit flush with the text above. */}
+      <View style={{ marginTop: 8, marginHorizontal: -CHART_GAP / 2, flexDirection: 'row', flexWrap: 'wrap', rowGap: CHART_GAP }}>
+        {ZHUYIN_CHART.map((entry) => {
+          const { item, isName } = spokenName(entry)
+          const text = ctx.zh(item.zh)
+          const id = `${stepId}-${entry.pinyin}`
+          const done = heard.has(entry.pinyin)
+          return (
+            <View key={entry.pinyin} style={{ width: `${100 / CHART_COLUMNS}%`, paddingHorizontal: CHART_GAP / 2 }}>
+              <RaisedTap
+                onPress={() => {
+                  tickHaptic()
+                  playZh(text, id)
+                  setHeard((s) => (s.has(entry.pinyin) ? s : new Set(s).add(entry.pinyin)))
+                }}
+                accessibilityLabel={`${entry.zhuyin}. ${isName ? 'Name' : 'Heard in'} ${text}. Play`}
+                borderColor={done ? c.sage : undefined}
+                radius={14}
+                wrapperStyle={{ alignSelf: 'stretch' }}
+                style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}
+              >
+                <Text
+                  className="font-nunito-bold"
+                  style={{ fontSize: 28, lineHeight: 34, color: c.navy, textAlign: 'center', includeFontPadding: false }}
+                >
+                  {entry.zhuyin}
+                </Text>
+              </RaisedTap>
+            </View>
+          )
+        })}
+      </View>
+    </View>
   )
 }
 

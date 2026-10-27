@@ -26,6 +26,8 @@ export const profColors = {
   /** The page the hero and garden were keyed against (`processProfileArt.mjs`). */
   background: '#FFFFFF',
   card: '#FDFBF7',
+  /** The garden's decoration cards: one white face for every decoration, set apart by a drop shadow rather than a hue. */
+  decoration: '#FFFFFF',
   /** Reward tiles and the garden panel: a shade warmer than the card they sit in. */
   tile: '#FAF8F3',
   border: '#E6E2DA',
@@ -196,6 +198,15 @@ export const PROF_ART_RATIO = {
 } as const
 
 export const profShadow = chalShadow
+
+/** Under each decoration card in the garden's tray: a soft, slightly deeper drop than a card's, since a white card on the page needs it to stand. */
+export const decorationShadow = {
+  shadowColor: '#1F2A37',
+  shadowOffset: { width: 0, height: 4 },
+  shadowRadius: 10,
+  shadowOpacity: 0.1,
+  elevation: 4,
+} as const
 
 export const profEntrance = { at: 0, for: 380, slideY: 18, slideX: 28 } as const
 

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { View, ScrollView, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { router, useFocusEffect } from 'expo-router'
+import { router } from 'expo-router'
 import { useApp } from '../context/AppContext'
 import { HomeHero } from '../components/dashboard/HomeHero'
 import {
@@ -36,11 +36,10 @@ import {
   type ChallengeContext,
   type ChallengeDef,
 } from '../lib/challenges'
-import { carefulHaptic } from '../lib/haptics'
+import { carefulHaptic, tickHaptic } from '../lib/haptics'
 import { playTapSound } from '../lib/sound'
 import { AppBannerAd } from '../components/ads/AppBannerAd'
 import { TourScrollContext, TourTarget } from '../components/tour/targets'
-import type { VocabWord } from '../types'
 
 /*
  * Home, built to "SS1012 Home Page Redesign UI 2".
@@ -79,6 +78,16 @@ function stepLabel(def: ChallengeDef, target: number): Pick<ChallengeStep, 'verb
   }
 }
 
+/** How many of the pool's front-runners the date chooses between for the word of the day. */
+const WORD_OF_DAY_SPREAD = 8
+
+/** A stable number from a date string, so each day lands on its own word. */
+function dateHash(date: string): number {
+  let h = 0
+  for (let i = 0; i < date.length; i++) h = (h * 31 + date.charCodeAt(i)) >>> 0
+  return h
+}
+
 export function Dashboard() {
   const {
     wordBank,
@@ -91,8 +100,9 @@ export function Dashboard() {
     completedLessonIds,
     claimedChallengeIds,
     addToReviewDeck,
+    removeFromReviewDeck,
+    updateSettings,
     newWordHistory,
-    skipNewWord,
     reportTourAction,
   } = useApp()
 
@@ -127,19 +137,32 @@ export function Dashboard() {
   // --- The word on offer ------------------------------------------------------
 
   /*
-   * Adding a word leaves it on the card as "Added ✓" rather than swapping the
-   * next word in under the finger. The card moves on at the next visit.
+   * The word of the day: chosen once per date from the front of the learner's
+   * new-word pool (skipped words stay out), then remembered, so it stays put
+   * all day — after it is added, after the app restarts. The date picks among
+   * the first few candidates, so the word changes each day even when nothing
+   * else has.
    */
-  const [heldWord, setHeldWord] = useState<VocabWord | null>(null)
-  useFocusEffect(useCallback(() => () => setHeldWord(null), []))
-
-  /* Words skipped here or on New Words stay skipped, so "Not now" really moves on. */
-  const nextWord = useMemo(() => {
+  const today = todayISO()
+  const wordOfDayRecord = settings.wordOfDay
+  const pool = useMemo(() => {
     const skipped = new Set(newWordHistory.filter((h) => h.outcome === 'skipped').map((h) => h.wordId))
-    return newWordsPool(wordBank, deck, settings, NEW_WORDS_SESSION_SEED).find((w) => !skipped.has(w.id))
+    return newWordsPool(wordBank, deck, settings, NEW_WORDS_SESSION_SEED).filter((w) => !skipped.has(w.id))
   }, [wordBank, deck, settings, newWordHistory])
-  const reachedDailyGoal = wordsLearnedToday >= settings.dailyNewWordLimit
-  const offeredWord = heldWord ?? (reachedDailyGoal ? undefined : nextWord)
+  const offeredWord = useMemo(() => {
+    if (wordOfDayRecord?.date === today) {
+      const kept = wordBank.find((w) => w.id === wordOfDayRecord.wordId)
+      if (kept) return kept
+    }
+    if (pool.length === 0) return undefined
+    return pool[dateHash(today) % Math.min(pool.length, WORD_OF_DAY_SPREAD)]
+  }, [wordOfDayRecord, today, wordBank, pool])
+  useEffect(() => {
+    if (offeredWord && (wordOfDayRecord?.date !== today || wordOfDayRecord.wordId !== offeredWord.id)) {
+      updateSettings({ wordOfDay: { date: today, wordId: offeredWord.id } })
+    }
+  }, [offeredWord, wordOfDayRecord, today, updateSettings])
+  const wordAdded = !!offeredWord && deck.some((card) => card.wordId === offeredWord.id)
 
   const [greetingLead, ...greetingRest] = greeting().split(' ')
   const greetingTail = greetingRest.join(' ')
@@ -217,26 +240,26 @@ export function Dashboard() {
                       word={offeredWord}
                       script={settings.script}
                       phoneticScript={settings.phoneticScript}
-                      added={!!heldWord}
+                      added={wordAdded}
                       wordsToday={wordsLearnedToday}
                       width={contentWidth}
                       onSeeAll={() => {
                         playTapSound()
                         router.push('/new-words')
                       }}
-                      onAdd={() => {
-                        if (!offeredWord || heldWord) return
-                        playTapSound()
-                        addToReviewDeck(offeredWord.id)
-                        setHeldWord(offeredWord)
-                        reportTourAction('word:add')
-                      }}
-                      onSkip={() => {
+                      onToggle={() => {
                         if (!offeredWord) return
-                        /* Once added, the left button just moves on; otherwise it's a real skip,
-                           remembered the same way the New Words screen remembers one. */
-                        if (!heldWord) skipNewWord(offeredWord.id)
-                        setHeldWord(null)
+                        if (wordAdded) {
+                          /* Undo: out of the review deck again. */
+                          tickHaptic()
+                          removeFromReviewDeck([offeredWord.id])
+                        } else {
+                          playTapSound()
+                          /* Counts toward today's goal once; an undo doesn't rewind the count, so adding back doesn't count again. */
+                          addToReviewDeck(offeredWord.id, { count: !wordOfDayRecord?.counted })
+                          reportTourAction('word:add')
+                        }
+                        updateSettings({ wordOfDay: { date: today, wordId: offeredWord.id, counted: true } })
                       }}
                     />
                   </TourTarget>

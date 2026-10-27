@@ -1,6 +1,9 @@
-import { RaisedButton } from './dashboard/parts'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { View, Text, Pressable, Animated, Platform } from 'react-native'
+import { View, Text, Animated, Platform } from 'react-native'
+import { PressableScale, LiftedFace, DASH_LIFT } from './dashboard/parts'
+import { DrillShell, DRILL_PAD, useDrillColumn } from './drills/parts'
+import { drillColors as c, drillShoulders, drillShadow, drillSize, drillType as t } from './drills/tokens'
+import { useSessionProgressStart } from './progress/sessionProgress'
 import { Mic, MicOff, Check, ChevronRight } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
@@ -13,11 +16,8 @@ import { celebrateHaptic, tapHaptic, tickHaptic } from '../lib/haptics'
 import type { VocabWord } from '../types'
 import { spacedReading } from './SpacedReading'
 
-/** The raised buttons' faces and shoulders: Tailwind's `brand-500` on `brand-700`, and a quiet white on slate-300. */
-const BRAND = '#22c55e'
-const BRAND_SHOULDER = '#15803d'
-const QUIET = '#ffffff'
-const QUIET_BORDER = '#cbd5e1'
+/** The mic button's diameter. */
+const MIC = 104
 
 type Status =
   /** Waiting for the learner to tap the mic. */
@@ -66,12 +66,28 @@ export function PronunciationCheck({
   word,
   onPass,
   onSkip,
+  onClose,
+  step,
+  total,
+  secondsLeft,
 }: {
   word: VocabWord
   onPass: () => void
   onSkip: () => void
+  onClose: () => void
+  /** The card this word was, 1-based — the card is finished, so the bar counts it. */
+  step: number
+  total: number
+  secondsLeft?: number | null
 }) {
   const { settings } = useApp()
+  const { inner } = useDrillColumn()
+  /*
+   * The bar keeps the flashcard header's count: the card just graded is done,
+   * so it steps forward to `step` here, and the next card (which counts
+   * `step + 1` as its own) opens where this left it rather than replaying.
+   */
+  const progressFrom = useSessionProgressStart(step + 1, total)
   const [status, setStatus] = useState<Status>(() => (isSpeechRecognitionAvailable() ? 'idle' : 'blocked'))
   const [blockedBy, setBlockedBy] = useState<'unavailable' | 'permission'>('unavailable')
   const [heard, setHeard] = useState('')
@@ -244,170 +260,183 @@ export function PronunciationCheck({
   }, [onSkip])
 
   const ringStyle = {
-    transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.1] }) }],
-    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
+    transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.75] }) }],
+    opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.32, 0] }),
   }
 
-  return (
-    <View className="flex-1 justify-between px-4 pb-6 pt-2">
-      <View className="items-center gap-1 pt-2">
-        <Text className="text-xs font-medium uppercase tracking-wide text-slate-400">Say it out loud</Text>
-      </View>
+  /* Hanzi sized to the card: CJK glyphs are ~1em wide, and adjustsFontSizeToFit is iOS-only. */
+  const glyphs = [...character]
+  const hanziSize = Math.round(Math.max(28, Math.min(56, (inner - 110) / Math.max(1, glyphs.length))))
+  const listening = status === 'listening'
 
-      {/* What to say, with the model pronunciation on tap. */}
-      <View className="items-center gap-3 rounded-3xl bg-white p-6 shadow-card dark:bg-slate-900">
-        {/*
-         * Each character turns green as its syllable lands, so on a longer word
-         * you can see which part you've already said and which one to aim at
-         * next — rather than one verdict once the mic closes. Interim results
-         * drive it, so it fills in while you're still speaking.
-         */}
-        <View className="flex-row items-center gap-3">
-          <View className="flex-row">
-            {[...character].map((glyph, i) => (
-              <Text
-                key={`${glyph}-${i}`}
-                className={`${hanziFont(settings.script, 'semibold')} text-[44px] leading-[56px] ${
-                  heardSyllables[i] ? 'text-brand-500 dark:text-brand-400' : 'text-slate-900 dark:text-white'
-                }`}
-              >
-                {glyph}
-              </Text>
-            ))}
-          </View>
-          <SpeakButton text={character} size={20} label="Hear it first" />
+  const caption =
+    status === 'idle'
+      ? 'Tap the mic and say the word'
+      : status === 'listening'
+        ? heard || 'Listening…'
+        : status === 'correct'
+          ? 'Nice — that’s it!'
+          : status === 'miss'
+            ? lastScore === 0
+              ? 'Didn’t catch that — try a little louder'
+              : lastScore >= PASS_THRESHOLD - 0.2
+                ? `Close — ${Math.round(lastScore * 100)}% there. Hear it again, then retry.`
+                : `${Math.round(lastScore * 100)}% there — listen once more and try again.`
+            : ''
+
+  /*
+   * The row under the mic, in the drills' raised buttons: a quiet "I can't
+   * speak now" until the learner has tried; Skip beside Try again once speaking
+   * has failed them; one Continue when the mic isn't an option. A passed word
+   * keeps the row's height so nothing moves while it holds.
+   */
+  const quiet = (label: string) => (
+    <PressableScale onPress={skip} scaleTo={1} haptic={false} wrapperStyle={{ flex: 1 }} accessibilityLabel={label}>
+      <LiftedFace height={drillSize.button} fill={c.card} shoulder={drillShoulders.quiet} border={c.outline} shadow={false}>
+        <Text style={{ fontFamily: 'NunitoBold', ...t.button, color: c.slate }}>{label}</Text>
+      </LiftedFace>
+    </PressableScale>
+  )
+  const primary = (label: string, onPress: () => void, icon: 'mic' | 'next', flex: number) => (
+    <PressableScale onPress={onPress} scaleTo={1} haptic={false} wrapperStyle={{ flex }} accessibilityLabel={label}>
+      <LiftedFace height={drillSize.button} fill={c.green} shoulder={drillShoulders.primary}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {icon === 'mic' && <Mic size={18} color="#FFFFFF" strokeWidth={2.4} />}
+          <Text style={{ fontFamily: 'NunitoBold', ...t.button, color: '#FFFFFF' }}>{label}</Text>
+          {icon === 'next' && <ChevronRight size={18} color="#FFFFFF" strokeWidth={2.4} />}
         </View>
-        <Text className="text-lg font-medium text-slate-400">{spacedReading(displayPinyin(word, settings.phoneticScript), 18)}</Text>
-        <Text className="text-center text-base font-semibold text-slate-700 dark:text-slate-300">{shortGloss(word)}</Text>
-      </View>
+      </LiftedFace>
+    </PressableScale>
+  )
+  const buttons =
+    status === 'blocked' ? (
+      primary('Continue', skip, 'next', 1)
+    ) : status === 'correct' ? (
+      <View style={{ flex: 1, height: drillSize.button + DASH_LIFT }} />
+    ) : status === 'miss' ? (
+      <>
+        {quiet('Skip')}
+        {primary('Try again', listen, 'mic', 1.15)}
+      </>
+    ) : (
+      quiet(attempts > 0 ? 'Skip speaking' : 'I can’t speak now')
+    )
 
-      <View className="items-center gap-4">
-        {status === 'blocked' ? (
-          <View className="items-center gap-2 px-4">
-            <View className="rounded-full bg-slate-100 p-4 dark:bg-slate-800">
-              <MicOff size={28} color="#94a3b8" />
+  return (
+    <DrillShell
+      title="Speaking"
+      step={step}
+      total={total}
+      secondsLeft={secondsLeft}
+      onClose={onClose}
+      scroll={false}
+      sakuraCorner
+      progress={{ shown: Math.min(step, total), from: Math.max(0, progressFrom - 1) }}
+      buttons={buttons}
+    >
+      <View style={{ flex: 1, minHeight: 0, paddingHorizontal: DRILL_PAD, marginTop: 18 }}>
+        {/* What to say, in the drills' card. */}
+        <View
+          style={{
+            alignItems: 'center',
+            borderRadius: drillSize.radius.card,
+            borderWidth: 1,
+            borderColor: c.border,
+            backgroundColor: c.card,
+            paddingHorizontal: 18,
+            paddingTop: 16,
+            paddingBottom: 18,
+            ...drillShadow,
+          }}
+        >
+          <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 11, lineHeight: 14, letterSpacing: 1.2, color: c.greenDark }}>
+            SAY IT OUT LOUD
+          </Text>
+          {/*
+           * Each character turns green as its syllable lands, so on a longer
+           * word you can see which part you've already said and which one to
+           * aim at next. Interim results drive it, so it fills in while you
+           * are still speaking.
+           */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 6 }}>
+            <View style={{ flexDirection: 'row', flexShrink: 1 }} accessible accessibilityLabel={character}>
+              {glyphs.map((glyph, i) => (
+                <Text
+                  key={`${glyph}-${i}`}
+                  className={hanziFont(settings.script, 'semibold')}
+                  style={{ fontSize: hanziSize, lineHeight: Math.round(hanziSize * 1.28), color: heardSyllables[i] ? c.green : c.ink, includeFontPadding: false }}
+                >
+                  {glyph}
+                </Text>
+              ))}
             </View>
-            <Text className="text-center text-base font-bold text-slate-700 dark:text-slate-200">
-              {BLOCKED_COPY[blockedBy].title}
-            </Text>
-            <Text className="text-center text-sm text-slate-500 dark:text-slate-400">{BLOCKED_COPY[blockedBy].body}</Text>
+            <SpeakButton text={character} size={20} label="Hear it first" />
           </View>
-        ) : (
-          <>
-            <Pressable
-              onPress={status === 'listening' ? () => sessionRef.current?.stop() : listen}
-              disabled={status === 'correct'}
-              accessibilityRole="button"
-              accessibilityLabel={status === 'listening' ? 'Stop listening' : 'Start speaking'}
-              className="items-center justify-center"
-            >
-              <View className="h-24 w-24 items-center justify-center">
-                {/* NativeWind drops `className` on an Animated.View, so the ring
-                    carries plain styles and the button below keeps its classes. */}
-                {status === 'listening' && (
+          <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 17, lineHeight: 23, color: c.slate, marginTop: 2, textAlign: 'center' }}>
+            {spacedReading(displayPinyin(word, settings.phoneticScript), 17)}
+          </Text>
+          <Text numberOfLines={2} style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: c.ink, marginTop: 4, textAlign: 'center' }}>
+            {shortGloss(word)}
+          </Text>
+        </View>
+
+        {/* The mic, centred in the room left between the card and the buttons. */}
+        <View style={{ flex: 1, minHeight: MIC + 72, alignItems: 'center', justifyContent: 'center' }}>
+          {status === 'blocked' ? (
+            <View style={{ alignItems: 'center', paddingHorizontal: 12 }}>
+              <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: c.track, alignItems: 'center', justifyContent: 'center' }}>
+                <MicOff size={30} color={c.slate} />
+              </View>
+              <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 17, lineHeight: 23, color: c.ink, textAlign: 'center', marginTop: 14 }}>
+                {BLOCKED_COPY[blockedBy].title}
+              </Text>
+              <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14.5, lineHeight: 20, color: c.slate, textAlign: 'center', marginTop: 4 }}>
+                {BLOCKED_COPY[blockedBy].body}
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={{ width: MIC + 48, height: MIC + 48, alignItems: 'center', justifyContent: 'center' }}>
+                {/* The breathing ring while the mic is open. Plain styles: NativeWind drops className on Animated.View. */}
+                {listening && (
                   <Animated.View
                     pointerEvents="none"
                     style={[
-                      {
-                        position: 'absolute',
-                        height: 88,
-                        width: 88,
-                        borderRadius: 44,
-                        backgroundColor: '#22c55e',
-                      },
+                      { position: 'absolute', top: 24, left: 24, width: MIC, height: MIC, borderRadius: MIC / 2, backgroundColor: c.green },
                       ringStyle,
                     ]}
                   />
                 )}
-                {/* Green in every state rather than the app's usual dark
-                    primary: a lucide icon takes a fixed colour, so a
-                    `dark:bg-white` button would leave a white mic on white. */}
-                <View
-                  className={`h-[88px] w-[88px] items-center justify-center rounded-full shadow-card ${
-                    status === 'listening' ? 'bg-brand-600' : 'bg-brand-500'
-                  }`}
+                <PressableScale
+                  onPress={status === 'correct' ? undefined : listening ? () => sessionRef.current?.stop() : listen}
+                  scaleTo={0.96}
+                  haptic={false}
+                  accessibilityLabel={listening ? 'Stop listening' : 'Start speaking'}
                 >
-                  {status === 'correct' ? (
-                    <Check size={38} color="#ffffff" strokeWidth={3} />
-                  ) : (
-                    <Mic size={34} color="#ffffff" />
-                  )}
-                </View>
+                  <LiftedFace height={MIC} radius={MIC / 2} fill={listening ? c.greenDark : c.green} shoulder={drillShoulders.primary} style={{ width: MIC }}>
+                    {status === 'correct' ? <Check size={40} color="#FFFFFF" strokeWidth={3} /> : <Mic size={38} color="#FFFFFF" strokeWidth={2.2} />}
+                  </LiftedFace>
+                </PressableScale>
               </View>
-            </Pressable>
-
-            <View className="h-12 items-center justify-center px-4">
-              {status === 'idle' && (
-                <Text className="text-center text-sm text-slate-500 dark:text-slate-400">
-                  {attempts === 0 ? 'Tap the mic and say the word' : 'Tap to try again'}
+              {/* A fixed height: the caption changing never moves the mic. */}
+              <View style={{ height: 48, justifyContent: 'center', paddingHorizontal: 8 }} accessibilityLiveRegion="polite">
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    fontFamily: status === 'correct' || listening ? 'NunitoBold' : 'NunitoSemiBold',
+                    fontSize: status === 'correct' ? 17 : 15,
+                    lineHeight: 21,
+                    color: status === 'correct' || listening ? c.greenDark : c.slate,
+                    textAlign: 'center',
+                  }}
+                >
+                  {caption}
                 </Text>
-              )}
-              {status === 'listening' && (
-                <Text className="text-center text-sm font-semibold text-brand-600 dark:text-brand-400">
-                  {heard ? heard : 'Listening…'}
-                </Text>
-              )}
-              {status === 'correct' && (
-                <Text className="text-center text-base font-bold text-brand-600 dark:text-brand-400">Nice — that's it!</Text>
-              )}
-              {/*
-               * The miss copy leads with how close the *sounds* were, not with
-               * the characters the recogniser wrote. Since grading moved to
-               * pronunciation, "Heard 寫寫" is often the engine picking a
-               * homophone off an attempt that was nearly right — which reads as
-               * being marked wrong for saying a word you never said.
-               */}
-              {status === 'miss' && (
-                <Text className="text-center text-sm text-slate-500 dark:text-slate-400">
-                  {lastScore === 0
-                    ? "Didn't catch that — try again a little louder"
-                    : lastScore >= PASS_THRESHOLD - 0.2
-                      ? `Close — ${Math.round(lastScore * 100)}% of the way there. Hear it again, then have another go.`
-                      : `That came out ${Math.round(lastScore * 100)}% of the way there — listen once more and try again.`}
-                </Text>
-              )}
-            </View>
-          </>
-        )}
+              </View>
+            </>
+          )}
+        </View>
       </View>
-
-      <View className="gap-3">
-        {status === 'miss' && (
-          <RaisedButton onPress={listen} accessibilityLabel="Try again" height={56} radius={16} fill={BRAND} shoulder={BRAND_SHOULDER}>
-            <Mic size={20} color="#ffffff" />
-            <Text className="text-lg font-bold text-white">Try again</Text>
-          </RaisedButton>
-        )}
-
-        {/*
-         * The way out. Quiet while the learner hasn't tried yet so it doesn't
-         * read as the expected choice, then a full button once speaking has
-         * failed them — or straight away when the mic isn't an option at all.
-         */}
-        {status === 'blocked' || attempts > 0 ? (
-          <RaisedButton
-            onPress={skip}
-            accessibilityLabel={status === 'blocked' ? 'Continue' : 'Skip speaking'}
-            height={56}
-            radius={16}
-            fill={status === 'blocked' ? BRAND : QUIET}
-            border={status === 'blocked' ? undefined : QUIET_BORDER}
-            shoulder={status === 'blocked' ? BRAND_SHOULDER : QUIET_BORDER}
-          >
-            <Text
-              className={`text-base font-bold ${status === 'blocked' ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}
-            >
-              {status === 'blocked' ? 'Continue' : 'Skip speaking'}
-            </Text>
-            <ChevronRight size={18} color={status === 'blocked' ? '#ffffff' : '#64748b'} />
-          </RaisedButton>
-        ) : (
-          <Pressable onPress={skip} accessibilityRole="button" className="flex-row items-center justify-center gap-1.5 py-2">
-            <Text className="text-sm font-semibold text-slate-400">I can't speak right now</Text>
-            <ChevronRight size={15} color="#94a3b8" />
-          </Pressable>
-        )}
-      </View>
-    </View>
+    </DrillShell>
   )
 }

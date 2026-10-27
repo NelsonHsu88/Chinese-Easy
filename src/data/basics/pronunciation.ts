@@ -225,6 +225,12 @@ export const PRONUNCIATION_LESSONS: BasicsLesson[] = [
       },
       {
         only: 'zhuyin',
+        kind: 'symbol-chart',
+        title: 'Meet all 37',
+        body: 'Tap each symbol to hear its name. In Taiwan children learn them in this order, ㄅ to ㄩ. You don’t need to remember them yet.',
+      },
+      {
+        only: 'zhuyin',
         kind: 'explain',
         title: 'Symbols combine',
         body: 'A syllable is one to three symbols: an initial, sometimes a middle sound (ㄧ ㄨ ㄩ), and a final. ㄇ and ㄚ make ㄇㄚ. ㄒ, ㄧ and ㄠ make ㄒㄧㄠ.',
@@ -745,10 +751,22 @@ export const PRONUNCIATION_LESSONS: BasicsLesson[] = [
       },
       {
         kind: 'sound',
+        symbol: S('t'),
+        how: 'Put your tongue tip just behind your upper teeth, then let go with a strong puff of air.',
+        examples: [{ zh: '他', pinyin: 'tā', gloss: 'he' }, { zh: '土', pinyin: 'tǔ', gloss: 'earth' }],
+      },
+      {
+        kind: 'sound',
         symbol: S('n'),
         how: 'Raise your tongue tip behind your teeth and let the sound go out through your nose.',
         examples: [{ zh: '你', pinyin: 'nǐ', gloss: 'you' }],
         contrast: { symbol: S('l'), example: { zh: '李', pinyin: 'lǐ', gloss: 'plum' }, note: 'Air flows around the sides of the tongue instead of through the nose.' },
+      },
+      {
+        kind: 'sound',
+        symbol: S('l'),
+        how: 'Raise your tongue tip behind your upper teeth and let the air flow around the sides of your tongue.',
+        examples: [{ zh: { t: '來', s: '来' }, pinyin: 'lái', gloss: 'to come' }, { zh: '路', pinyin: 'lù', gloss: 'road' }],
       },
       hearSound({ zh: '他', pinyin: 'tā' }, ['d', 't'], 't', '他 [[tā]]. There’s a puff of air as the tongue lets go.', {
         d: 'There was a puff of air, and that one has none.',
@@ -762,6 +780,12 @@ export const PRONUNCIATION_LESSONS: BasicsLesson[] = [
         how: 'Press the back of your tongue against the soft part of the roof of your mouth, then let go without a puff.',
         examples: [{ zh: '哥', pinyin: 'gē', gloss: 'older brother' }],
         contrast: { symbol: S('k'), example: { zh: '口', pinyin: 'kǒu', gloss: 'mouth' }, note: 'Same place, plus a puff of air.' },
+      },
+      {
+        kind: 'sound',
+        symbol: S('k'),
+        how: 'Press the back of your tongue against the soft part of the roof of your mouth, then let go with a strong puff of air.',
+        examples: [{ zh: '口', pinyin: 'kǒu', gloss: 'mouth' }, { zh: '苦', pinyin: 'kǔ', gloss: 'bitter' }],
       },
       {
         kind: 'sound',
@@ -1046,6 +1070,15 @@ export const PRONUNCIATION_LESSONS: BasicsLesson[] = [
       },
       {
         kind: 'sound',
+        symbol: S('ei'),
+        how: {
+          pinyin: 'Start on the “e” of “hey” and glide toward i.',
+          zhuyin: 'Start on the “e” of “hey” and glide toward ㄧ.',
+        },
+        examples: [{ zh: '黑', pinyin: 'hēi', gloss: 'black' }, { zh: { t: '飛', s: '飞' }, pinyin: 'fēi', gloss: 'to fly' }],
+      },
+      {
+        kind: 'sound',
         symbol: S('ao'),
         how: {
           pinyin: 'Start on a and glide toward rounded lips.',
@@ -1053,6 +1086,15 @@ export const PRONUNCIATION_LESSONS: BasicsLesson[] = [
         },
         examples: [{ zh: '好', pinyin: 'hǎo', gloss: 'good' }],
         contrast: { symbol: S('ou'), example: { zh: '狗', pinyin: 'gǒu', gloss: 'dog' }, note: 'This one starts with the lips already rounded.' },
+      },
+      {
+        kind: 'sound',
+        symbol: S('ou'),
+        how: {
+          pinyin: 'Start with rounded lips on o and close toward u.',
+          zhuyin: 'Start with rounded lips and close toward ㄨ.',
+        },
+        examples: [{ zh: '狗', pinyin: 'gǒu', gloss: 'dog' }, { zh: '口', pinyin: 'kǒu', gloss: 'mouth' }],
       },
       {
         only: 'zhuyin',
@@ -1160,10 +1202,28 @@ export const PRONUNCIATION_LESSONS: BasicsLesson[] = [
       },
       {
         kind: 'sound',
+        symbol: S('ang'),
+        how: {
+          pinyin: 'Say a, then raise the back of your tongue into ng. The tip stays down.',
+          zhuyin: 'Say ㄚ, then raise the back of your tongue into ng. The tip stays down.',
+        },
+        examples: [{ zh: '忙', pinyin: 'máng', gloss: 'busy' }, { zh: '桑', pinyin: 'sāng', gloss: 'mulberry' }],
+      },
+      {
+        kind: 'sound',
         symbol: S('en'),
         how: 'A short, relaxed vowel that closes into a front n.',
         examples: [{ zh: '根', pinyin: 'gēn', gloss: 'root' }],
         contrast: { symbol: S('eng'), example: { zh: '耕', pinyin: 'gēng', gloss: 'to plough' }, note: 'This one closes at the back.' },
+      },
+      {
+        kind: 'sound',
+        symbol: S('eng'),
+        how: {
+          pinyin: 'The back vowel of e, closing into a back ng.',
+          zhuyin: 'The back vowel of ㄜ, closing into a back ng.',
+        },
+        examples: [{ zh: '冷', pinyin: 'lěng', gloss: 'cold' }, { zh: '耕', pinyin: 'gēng', gloss: 'to plough' }],
       },
       {
         kind: 'sound',
@@ -1318,6 +1378,12 @@ export const PRONUNCIATION_LESSONS: BasicsLesson[] = [
         kind: 'explain',
         title: 'Zhuyin in daily life',
         body: 'In Taiwan you’ll see zhuyin printed beside characters in children’s books, and many people use it to type on their phones.',
+      },
+      {
+        only: 'zhuyin',
+        kind: 'symbol-chart',
+        title: 'All 37, one more time',
+        body: 'You’ve now met every symbol. Tap through them all and say each name with the voice.',
       },
       {
         kind: 'recap',
