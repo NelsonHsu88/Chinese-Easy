@@ -4,6 +4,8 @@ import { View, Text, type LayoutChangeEvent, type StyleProp, type TextStyle } fr
 const TONE_MARK = /^(.+?)([ˊˇˋ])$/
 /** The neutral tone's dot, which zhuyin writes before the syllable (˙ㄒㄧㄝ). */
 const NEUTRAL_MARK = /^(˙)(.+)$/
+/** Any zhuyin symbol — tells a first-tone syllable (no mark) from pinyin. */
+const BOPOMOFO = /[ㄅ-ㄯㆠ-ㆿ]/
 /** Word joiners, which prose readings put before a mark so a line can't break there. */
 const JOINER = /⁠/g
 
@@ -50,6 +52,24 @@ export function SyllableText({
   const after = TONE_MARK.exec(clean)
   const before = after ? null : NEUTRAL_MARK.exec(clean)
   if (!after && !before) {
+    /*
+     * A first-tone zhuyin syllable has no mark, but it keeps the same room
+     * either side as a marked one: without it, ㄕㄨㄤ and ㄈㄤ under 雙方 ran
+     * together into one string that no longer read as sitting under its
+     * characters. Symmetric, so it still centres. Pinyin stays plain text.
+     */
+    if (BOPOMOFO.test(clean)) {
+      const room = <View style={{ width: Math.ceil(fontSize * MARK_WIDTH + Math.max(1.5, fontSize * MARK_GAP)) }} />
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+          {room}
+          <Text numberOfLines={1} className={className} style={style} onLayout={reportSymbols}>
+            {text}
+          </Text>
+          {room}
+        </View>
+      )
+    }
     return (
       <Text numberOfLines={1} className={className} style={style} onLayout={reportSymbols}>
         {text}

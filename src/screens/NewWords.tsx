@@ -34,6 +34,7 @@ import { shortGloss } from '../lib/definitions'
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
 import { BackArrow } from '../components/BackArrow'
 import { spacedReading } from '../components/SpacedReading'
+import { RubyWord } from '../components/RubyWord'
 
 /*
  * New Words, built to the Beta 2.1 reference "SS 927 GOAL NEW WORDS UI LEARN
@@ -941,6 +942,9 @@ export function NewWords() {
  * than left as one band of empty paper under the example, which is what a
  * plainly stretched card looked like.
  */
+/** The headword's speaker slot (and the matching spacer opposite it) when zhuyin sits under the characters. */
+const HEADWORD_SPEAKER = 46
+
 function WordCard({
   word,
   width,
@@ -972,6 +976,36 @@ function WordCard({
   const hanzi = displayWord(word, script)
   const example = word.example ? displayExample(word, script) : ''
   const size = hanziSize(hanzi)
+  /* A bare speaker, as the reference draws it — the padding and `hitSlop`
+     keep it a full-size target without a visible circle. */
+  const speaker = (
+    <PressFace
+      onPress={() => {
+        claim()
+        tapHaptic()
+        speakAlternating('word', hanzi)
+      }}
+      face={{ padding: 6 }}
+      accessibilityLabel={`Play pronunciation of ${hanzi}`}
+    >
+      <Volume2 size={26} color={c.green} fill={c.green} strokeWidth={2} />
+    </PressFace>
+  )
+  /*
+   * Zhuyin goes under each character when every character has its syllable.
+   * The reading is sized so its widest syllable — symbols plus the room kept
+   * for a tone mark either side (`SyllableText`) — fits under one glyph, so the
+   * readings never push the characters apart; and never past 24pt.
+   */
+  const zhuyinCells = (() => {
+    if (phoneticScript !== 'zhuyin') return null
+    const syllables = displayPinyin(word, phoneticScript).split(/\s+/).filter(Boolean)
+    if (syllables.length !== [...hanzi].length) return null
+    const widest = Math.max(...syllables.map((sy) => [...sy.replace(/[˙ˊˇˋ⁠]/g, '')].length))
+    // Symbols ~1em each, plus a mark's room (0.45em + 0.2em gap) on both sides.
+    const readingSize = Math.floor(Math.max(14, Math.min(24, size / (widest + 1.3))))
+    return { readingSize, gap: Math.round(size * 0.04) }
+  })()
   /* Small, and down in the corner beside the translation — not behind the example. */
   const artWidth = width * 0.34
 
@@ -1013,31 +1047,45 @@ function WordCard({
       <FlexGap min={22} />
 
       <View style={{ alignItems: 'center', paddingHorizontal: 22 }}>
-        <Text
-          numberOfLines={1}
-          style={{ fontFamily: serif(script), fontSize: size, lineHeight: Math.round(size * 1.25), color: c.navy }}
-        >
-          {hanzi}
-        </Text>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 }}>
-          <Text style={{ fontFamily: 'NunitoBold', fontSize: 26, lineHeight: 32, color: c.textSecondary }}>
-            {spacedReading(displayPinyin(word, phoneticScript), 26)}
-          </Text>
-          {/* A bare speaker, as the reference draws it — the padding and
-              `hitSlop` keep it a full-size target without a visible circle. */}
-          <PressFace
-            onPress={() => {
-              claim()
-              tapHaptic()
-              speakAlternating('word', hanzi)
-            }}
-            face={{ padding: 6 }}
-            accessibilityLabel={`Play pronunciation of ${hanzi}`}
-          >
-            <Volume2 size={26} color={c.green} fill={c.green} strokeWidth={2} />
-          </PressFace>
-        </View>
+        {zhuyinCells ? (
+          /*
+           * Zhuyin sits under each character, centred on its glyph, like every
+           * other zhuyin line in the app — set as one line beside the speaker it
+           * drifted off its characters. The speaker hangs at the reading line's
+           * right, balanced by an equal spacer on the left so the word stays
+           * centred on the card.
+           */
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+            <View style={{ width: HEADWORD_SPEAKER }} />
+            <RubyWord
+              hanzi={hanzi}
+              reading={displayPinyin(word, phoneticScript)}
+              hanziClass=""
+              hanziStyle={{ fontFamily: serif(script), fontSize: size, lineHeight: Math.round(size * 1.25), color: c.navy }}
+              readingClass="font-nunito-bold"
+              readingSize={zhuyinCells.readingSize}
+              readingLineHeight={Math.round(zhuyinCells.readingSize * 1.3)}
+              readingColor={c.textSecondary}
+              gap={zhuyinCells.gap}
+            />
+            <View style={{ width: HEADWORD_SPEAKER, alignItems: 'flex-end' }}>{speaker}</View>
+          </View>
+        ) : (
+          <>
+            <Text
+              numberOfLines={1}
+              style={{ fontFamily: serif(script), fontSize: size, lineHeight: Math.round(size * 1.25), color: c.navy }}
+            >
+              {hanzi}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 4 }}>
+              <Text style={{ fontFamily: 'NunitoBold', fontSize: 26, lineHeight: 32, color: c.textSecondary }}>
+                {spacedReading(displayPinyin(word, phoneticScript), 26)}
+              </Text>
+              {speaker}
+            </View>
+          </>
+        )}
 
         <Text style={{ marginTop: 8, textAlign: 'center', fontFamily: 'NunitoSemiBold', fontSize: 18, lineHeight: 24, color: c.textSecondary }}>
           {shortGloss(word)}
