@@ -107,7 +107,6 @@ export function FlashcardHeader({
   secondsLeft?: number | null
 }) {
   const safeTotal = Math.max(1, total)
-  const left = Math.max(0, total - step)
   /* Reps count within one word, not the session, so only cards share the session's memory. */
   const sessionFrom = useSessionProgressStart(unit === 'card' ? step : -1, unit === 'card' ? total : -1)
   /*
@@ -116,6 +115,12 @@ export function FlashcardHeader({
    * as the next one arrives). Reps keep counting the rep being written.
    */
   const shownCount = unit === 'card' ? step - 1 : step
+  /*
+   * What's left counts the card on screen, so the two numbers always add up:
+   * "0 / 9" and "9 left" on the first card, "8 / 9" and "last card" on the
+   * last. (It used to leave the current card out — "0 / 9" beside "8 left".)
+   */
+  const left = Math.max(0, total - shownCount)
   const from = unit === 'card' ? Math.max(0, sessionFrom - 1) : step - 1
   const urgent = secondsLeft != null && secondsLeft <= 30
   return (
@@ -148,7 +153,7 @@ export function FlashcardHeader({
             </View>
           )}
           <Text style={{ fontFamily: 'NunitoSemiBold', ...t.counter, color: c.slate }}>
-            {left === 0 ? `last ${unit}` : `${left} left`}
+            {left <= 1 ? `last ${unit}` : `${left} left`}
           </Text>
         </View>
       </View>

@@ -97,7 +97,7 @@ function LevelTestRun({ level, onRetry }: { level: number; onRetry: () => void }
   }
 
   const word = getWord(step.kind === 'match' ? '' : step.wordId)
-  if (!word || step.kind === 'match' || step.kind === 'flashcards') return null
+  if (!word || step.kind === 'match' || step.kind === 'flashcards' || step.kind === 'speaking') return null
   const options = step.optionIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)
   const key = `${step.wordId}-${index}`
   const shared = {

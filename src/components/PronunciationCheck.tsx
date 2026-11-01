@@ -3,7 +3,6 @@ import { View, Text, Animated, Platform } from 'react-native'
 import { PressableScale, LiftedFace, DASH_LIFT } from './dashboard/parts'
 import { DrillShell, DRILL_PAD, useDrillColumn, verdictDetailLabel } from './drills/parts'
 import { drillColors as c, drillShoulders, drillShadow, drillSize, drillType as t } from './drills/tokens'
-import { useSessionProgressStart } from './progress/sessionProgress'
 import { Mic, MicOff, Check, ChevronRight } from 'lucide-react-native'
 import { useApp } from '../context/AppContext'
 import { displayWord, displayPinyin, hanziFont } from '../lib/hanzi'
@@ -44,8 +43,8 @@ const BLOCKED_COPY: Record<'unavailable' | 'permission', { title: string; body: 
 }
 
 /**
- * The speaking gate between one card and the next: say the word you just
- * finished, and the card advances once the recogniser hears it.
+ * A Mixed Drills speaking step: say a word from the session out loud, and the
+ * drill moves on once the recogniser hears it.
  *
  * Always escapable. Speaking out loud isn't possible on a bus, in an office, or
  * for everyone at all, so the skip is a permanent fixture rather than a
@@ -69,19 +68,13 @@ export function PronunciationCheck({
   /** "I can't speak now" — like "Can't listen now", it turns speaking off for a while (the session shows the notice); falls back to a skip. */
   onCantSpeak?: () => void
   onClose: () => void
-  /** The card this word was, 1-based — the card is finished, so the bar counts it. */
+  /** This step's place in the session, 1-based, like the drills around it. */
   step: number
   total: number
   secondsLeft?: number | null
 }) {
   const { settings } = useApp()
   const { inner } = useDrillColumn()
-  /*
-   * The bar keeps the flashcard header's count: the card just graded is done,
-   * so it steps forward to `step` here, and the next card (which counts
-   * `step + 1` as its own) opens where this left it rather than replaying.
-   */
-  const progressFrom = useSessionProgressStart(step + 1, total)
   const [status, setStatus] = useState<Status>(() => (isSpeechRecognitionAvailable() ? 'idle' : 'blocked'))
   const [blockedBy, setBlockedBy] = useState<'unavailable' | 'permission'>('unavailable')
   const [heard, setHeard] = useState('')
@@ -342,7 +335,6 @@ export function PronunciationCheck({
       onClose={onClose}
       scroll={false}
       sakuraCorner
-      progress={{ shown: Math.min(step, total), from: Math.max(0, progressFrom - 1) }}
       buttons={buttons}
       /* Heard right: the same correct sheet the Mixed Drills raise — praise, confetti, the word, Continue. */
       answer={

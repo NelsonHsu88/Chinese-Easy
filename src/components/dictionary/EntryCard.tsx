@@ -5,7 +5,8 @@ import { DeckStateButton, HskBadge, IconChip, SpeakChip } from './DictionaryCont
 import { DICT_BG, DICT_CARD_SHADOW } from './shadows'
 import { useRevealedShadow } from '../shadowReveal'
 import type { EntryState } from '../../lib/dictionary'
-import { shortGloss } from '../../lib/definitions'
+import { hasMultipleMeanings, shortGloss } from '../../lib/definitions'
+import { MultipleMeaningsTag } from '../MultipleMeaningsTag'
 import { tapHaptic } from '../../lib/haptics'
 import { displayWord, hanziFont } from '../../lib/hanzi'
 import type { ScriptMode, VocabWord } from '../../types'
@@ -97,14 +98,14 @@ function EntryCardFace({
                 onReadingStart={readingStart.onReadingStart}
               />
               <View style={{ marginTop: 12 }}>
-                <HskBadge level={word.hskLevel} />
+                <HskBadge word={word} />
               </View>
             </View>
           ) : (
             <>
               <View className="flex-row items-center gap-3">
                 <Text className={glyphClass}>{hanzi}</Text>
-                <HskBadge level={word.hskLevel} />
+                <HskBadge word={word} />
               </View>
               <Text className="mt-1 font-sans text-[16px] leading-[21px] text-dict-muted">{pinyin}</Text>
             </>
@@ -122,7 +123,13 @@ function EntryCardFace({
         {shortGloss(word)}
       </Text>
 
-      <View className="mt-4 flex-row justify-end">
+      {/* The tag sits left of Add, under the gloss it qualifies. Plain styles: this row re-renders on Add. */}
+      <View style={{ marginTop: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {hasMultipleMeanings(word) ? (
+          <View style={{ flex: 1, marginLeft: zhuyin ? readingStart.start : 0 }}>
+            <MultipleMeaningsTag />
+          </View>
+        ) : null}
         <DeckStateButton state={state} onAdd={onAdd} compact />
       </View>
     </>

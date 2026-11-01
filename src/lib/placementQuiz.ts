@@ -45,11 +45,10 @@ export interface PlacementQuestion {
   answerIndex: number
   /**
    * The example sentence with the word replaced by a blank — `cloze` only.
-   * Already in the learner's script.
+   * Already in the learner's script. No translation goes with it: the English
+   * names the missing word's meaning, which would answer the question.
    */
   sentence?: string
-  /** The sentence's English translation, shown under it as a hint. */
-  translation?: string
 }
 
 /** What a blank looks like in a cloze sentence. */
@@ -98,84 +97,55 @@ function seededOrder(seed: string, length: number): number[] {
 }
 
 /**
- * Builds the question list.
+ * The question for one word of the test, the `index`th asked.
  *
  * **Wrong answers come from `distractors` — words the test never asks about.**
- * They used to be drawn from the tested items themselves, which quietly handed
- * the learner an elimination: a word that has already been the answer to its own
- * question cannot be the answer to a later one, so every question answered made
- * the rest a little easier. Over eighteen questions that inflates the estimate
- * for anyone paying attention, and the placement is then wrong in the direction
- * that hurts most — a beginner started too high.
+ * `candidates` is every word this attempt *could* ask, and no wrong answer may
+ * print the same label as any of them: 高興 and 快樂 both reduce to "happy", so
+ * excluding the words alone would still let an option be another question's
+ * answer, and the learner could rule it out by elimination.
  *
- * Distractors are still hand-curated words rather than anything from the bulk
- * bank, and are preferred from the target's own HSK level outwards: the bank is
- * full of near-synonyms that would make a question unfairly ambiguous, and a
- * wrong answer that is obviously not beginner vocabulary gives the answer away
- * just as surely as a repeat does.
- *
- * Options are de-duplicated. Two words can reduce to the same short gloss, and
- * a question with the right answer listed twice has no right answer.
+ * Distractors are curated words, preferred from the target's own HSK level
+ * outwards: an HSK 6 option beside an HSK 1 answer gives the answer away. Options
+ * are de-duplicated, since two words can reduce to the same short gloss.
  */
-export function buildPlacementQuestions(
-  items: VocabWord[],
-  distractors: VocabWord[],
-  script: ScriptMode,
-): PlacementQuestion[] {
-  /*
-   * Labels belonging to the words under test, by kind.
-   *
-   * Excluding the *words* is not quite enough: 高興 and 快樂 both reduce to the
-   * gloss "happy", so an untested word can still print the same label as a
-   * tested one and put the elimination back. Matching on the rendered label is
-   * what actually closes it.
-   */
-  const askedGlosses = new Set(items.map(shortGloss))
-  const askedHanzi = new Set(items.map((word) => displayWord(word, script)))
+export function buildPlacementQuestion(
+  item: VocabWord,
+  index: number,
+  { distractors, candidates, script }: { distractors: VocabWord[]; candidates: VocabWord[]; script: ScriptMode },
+): PlacementQuestion {
+  const kind = kindFor(item, index, script)
+  /* Cloze answers are hanzi, like listening: the gap is a word-shaped hole. */
+  const label = (word: VocabWord) => (kind === 'meaning' ? shortGloss(word) : displayWord(word, script))
+  const correct = label(item)
+  const asked = new Set(candidates.map(label))
 
-  return items.map((item, index) => {
-    const kind = kindFor(item, index, script)
-    /* Cloze answers are hanzi, like listening: the gap in the sentence is a
-       word-shaped hole, so filling it with an English gloss would be a
-       different question about a different skill. */
-    const label = (word: VocabWord) => (kind === 'meaning' ? shortGloss(word) : displayWord(word, script))
-    const correct = label(item)
+  const pool: string[] = []
+  for (const candidate of nearestFirst(distractors, item, kind)) {
+    const text = label(candidate)
+    if (text === correct || asked.has(text) || pool.includes(text)) continue
+    pool.push(text)
+    if (pool.length === DISTRACTORS) break
+  }
 
-    const asked = kind === 'meaning' ? askedGlosses : askedHanzi
-
-    const pool: string[] = []
-    for (const candidate of nearestFirst(distractors, item, kind)) {
-      const text = label(candidate)
-      if (text === correct || asked.has(text) || pool.includes(text)) continue
+  /* Should never fire: three slots against eighteen spare words. Kept so a
+     shrunken pool degrades to other candidates rather than a missing option. */
+  if (pool.length < DISTRACTORS) {
+    for (const offset of seededOrder(`${item.id}:${kind}:fallback`, candidates.length)) {
+      const text = label(candidates[offset])
+      if (text === correct || pool.includes(text)) continue
       pool.push(text)
       if (pool.length === DISTRACTORS) break
     }
+  }
 
-    /* Should never fire: three slots against five-plus spare words at every
-       level. Kept so a shrunken pool degrades to a shorter question rather than
-       to one with a missing option — and so it degrades to *other tested items*,
-       the old behaviour, rather than to nothing. */
-    if (pool.length < DISTRACTORS) {
-      for (const offset of seededOrder(`${item.id}:${kind}:fallback`, items.length)) {
-        if (offset === index) continue
-        const text = label(items[offset])
-        if (text === correct || pool.includes(text)) continue
-        pool.push(text)
-        if (pool.length === DISTRACTORS) break
-      }
-    }
+  const choices = [correct, ...pool]
+  const order = seededOrder(`${item.id}:${kind}`, choices.length)
+  const options = order.map((i) => choices[i])
 
-    const choices = [correct, ...pool]
-    const order = seededOrder(`${item.id}:${kind}`, choices.length)
-    const options = order.map((i) => choices[i])
-
-    const question: PlacementQuestion = { kind, word: item, options, answerIndex: options.indexOf(correct) }
-    if (kind === 'cloze') {
-      question.sentence = blankOut(displayExample(item, script), displayWord(item, script))
-      question.translation = item.example?.translation
-    }
-    return question
-  })
+  const question: PlacementQuestion = { kind, word: item, options, answerIndex: options.indexOf(correct) }
+  if (kind === 'cloze') question.sentence = blankOut(displayExample(item, script), displayWord(item, script))
+  return question
 }
 
 /**

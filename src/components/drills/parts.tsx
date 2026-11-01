@@ -65,6 +65,7 @@ export function DrillShell({
   buttons,
   answer,
   progress,
+  header,
   children,
 }: {
   title: string
@@ -96,6 +97,12 @@ export function DrillShell({
    * flashcard and keeps the flashcard header's count (see `PronunciationCheck`).
    */
   progress?: { shown: number; from: number }
+  /**
+   * A header to draw instead of this shell's own (bar, title, clock): the
+   * speaking step inside a flashcard session wears the flashcard header, so
+   * moving from a card to speaking changes the word in it and nothing else.
+   */
+  header?: ReactNode
   children: ReactNode
 }) {
   const { column } = useDrillColumn()
@@ -128,6 +135,11 @@ export function DrillShell({
             </View>
           )}
 
+          {header ? (
+            /* Drawn as given: it brings its own side padding, so it lines up with the screen it came from. */
+            <View style={{ zIndex: 1 }}>{header}</View>
+          ) : (
+          <>
           {/* Header, as Duolingo lays it out: the back arrow and the session's
               progress across the top, and what kind of question this is
               beneath it. */}
@@ -158,6 +170,8 @@ export function DrillShell({
                 {formatClock(secondsLeft)}
               </Text>
             </View>
+          )}
+          </>
           )}
 
           {/* Only the question moves between questions: header, progress,

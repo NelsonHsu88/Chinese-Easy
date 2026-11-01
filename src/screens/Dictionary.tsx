@@ -197,7 +197,7 @@ export function Dictionary() {
   useEffect(() => {
     if (reloadedAt === undefined) return
     setQuery('')
-    setField('all')
+    setField('english')
     setLevelOnly(false)
     setPanelOpen(false)
     setShelf(null)
@@ -324,23 +324,33 @@ export function Dictionary() {
   const deckIndex = useMemo(() => buildDeckIndex(deck, newlyAddedWordIds), [deck, newlyAddedWordIds])
 
   /*
-   * "English" is only the default value of `field` — someone who actually
-   * typed Hanzi is never searching for an English gloss, so that default
-   * steps aside and every field is matched instead. An explicit choice from
-   * the filter panel (`hanzi`, `pinyin`, or picking "All" back) is never
-   * overridden here — only the untouched default is.
+   * Someone who typed Hanzi is searching neither English nor pinyin, so either
+   * of the search field's two modes steps aside and every field is matched
+   * instead. A choice from the filter panel (`hanzi`, or "All") is never
+   * overridden here.
    */
-  const effectiveField = field === 'english' && HAS_HANZI.test(query) ? 'all' : field
+  const effectiveField = (field === 'english' || field === 'pinyin') && HAS_HANZI.test(query) ? 'all' : field
+
+  /*
+   * English finding nothing for Latin letters usually means they were pinyin
+   * ("nihao"), so the pinyin matches are shown instead, with a note saying so.
+   */
+  const pinyinFallback = useMemo(() => {
+    if (!searching || effectiveField !== 'english') return null
+    if (searchWords(wordBank, query, 'english', 1).length > 0) return null
+    const found = searchWords(wordBank, query, 'pinyin')
+    return found.length > 0 ? found : null
+  }, [searching, effectiveField, wordBank, query])
 
   const results = useMemo(() => {
     if (searching) {
-      const found = searchWords(wordBank, query, effectiveField)
+      const found = pinyinFallback ?? searchWords(wordBank, query, effectiveField)
       return levelOnly ? found.filter((w) => w.hskLevel === hskLevel) : found
     }
     if (shelf === 'recents') return recentWords
     if (shelf === 'vocabulary') return vocabulary
     return []
-  }, [searching, wordBank, query, effectiveField, levelOnly, hskLevel, shelf, recentWords, vocabulary])
+  }, [searching, pinyinFallback, wordBank, query, effectiveField, levelOnly, hskLevel, shelf, recentWords, vocabulary])
 
   /** Vocabulary-shelf words not yet in the deck — what bulk add would actually add. */
   const pending = useMemo(() => vocabulary.filter((w) => !isInDeck(w.id, deckIndex)), [vocabulary, deckIndex])
@@ -429,7 +439,7 @@ export function Dictionary() {
               className={`flex-row items-center rounded-[20px] border bg-dict-card pl-4 pr-2 ${
                 focused ? 'border-dict-green/60' : 'border-dict-border'
               }`}
-              style={{ height: 60, gap: 12 }}
+              style={{ height: 60, gap: 8 }}
             >
               <Search size={22} color={focused ? ICON_GREEN : ICON_MUTED} strokeWidth={ICON_STROKE} />
               <TextInput
@@ -437,7 +447,7 @@ export function Dictionary() {
                 onChangeText={setQuery}
                 onFocus={() => setFocused(true)}
                 onBlur={() => setFocused(false)}
-                placeholder="Search Chinese, pinyin or English"
+                placeholder={field === 'pinyin' ? 'e.g. nihao' : 'Search'}
                 placeholderTextColor={ICON_MUTED}
                 returnKeyType="search"
                 autoCorrect={false}
@@ -463,6 +473,8 @@ export function Dictionary() {
                  */
                 style={{ fontFamily: HAS_HANZI.test(query) ? 'NotoSerifTC' : 'Nunito', height: '100%' }}
               />
+              {/* English is the default; Pinyin is one tap away, before or after typing. */}
+              <SearchModeToggle field={field} onField={setField} />
               {query.length > 0 && (
                 <Pressable
                   onPress={() => {
@@ -499,7 +511,7 @@ export function Dictionary() {
                 <HskLevelBar
                   level={hskLevel}
                   panelOpen={panelOpen}
-                  refined={field !== 'all'}
+                  refined={field !== 'english'}
                   onLevel={setHskLevel}
                   onPanel={() => setPanelOpen((open) => !open)}
                 />
@@ -510,7 +522,7 @@ export function Dictionary() {
                   hskLevel={hskLevel}
                   script={settings.script}
                   panelOpen={panelOpen}
-                  refined={field !== 'all'}
+                  refined={field !== 'english'}
                   onScope={setLevelOnly}
                   onScript={() => {
                     /* The script brings its usual reading system with it, as it does
@@ -543,6 +555,11 @@ export function Dictionary() {
             {searching ? (
               <>
                 <Text className="mb-1 mt-7 font-nunito-extrabold text-[21px] leading-[28px] text-dict-heading">Results</Text>
+                {pinyinFallback && (
+                  <Text className="mb-1 font-nunito-semibold text-[14px] leading-[19px] text-dict-soft">
+                    No English matches, so these are pinyin matches.
+                  </Text>
+                )}
                 <ResultList
                   results={results}
                   emptyBody={
@@ -721,5 +738,45 @@ function BrowseResults({
       {action}
       <ResultList emptyTitle={emptyTitle} emptyBody={emptyBody} {...rest} />
     </>
+  )
+}
+
+/**
+ * English | Pinyin, inside the search field: what typed Latin letters are
+ * matched against. English by default. Shown while the field is empty (the
+ * clear button takes its place once there's a query), so it is in view
+ * whenever the learner is about to type. The filter panel's "Search in"
+ * offers the same choice plus Hanzi and All; with one of those picked, neither
+ * half here is lit.
+ */
+function SearchModeToggle({ field, onField }: { field: SearchField; onField: (field: SearchField) => void }) {
+  const option = (value: SearchField, label: string) => {
+    const selected = field === value
+    return (
+      <Pressable
+        key={value}
+        onPress={() => {
+          if (selected) return
+          tickHaptic()
+          onField(value)
+        }}
+        accessibilityRole="button"
+        accessibilityState={{ selected }}
+        accessibilityLabel={`Search in ${label}`}
+        hitSlop={4}
+      >
+        <View className={selected ? 'rounded-full bg-dict-green-pale px-3 py-1.5' : 'rounded-full px-3 py-1.5'}>
+          <Text className={selected ? 'font-nunito-bold text-[13px] text-dict-green-dark' : 'font-nunito-semibold text-[13px] text-dict-muted'}>
+            {label}
+          </Text>
+        </View>
+      </Pressable>
+    )
+  }
+  return (
+    <View className="flex-row items-center rounded-full border border-dict-border p-0.5">
+      {option('english', 'English')}
+      {option('pinyin', 'Pinyin')}
+    </View>
   )
 }

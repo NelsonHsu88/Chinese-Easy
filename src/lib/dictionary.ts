@@ -4,10 +4,11 @@ import { lookupCandidates } from '../data/lookupWords'
 import { KANGXI_RADICALS } from '../data/kangxiRadicals'
 import { RADICALS } from '../data/radicals'
 import { displayExample, displayWord, foldPinyin } from './hanzi'
-import { allSenses, contentRank, isFunctionWord, isTeachableWord, senses, shortGloss } from './definitions'
+import { allSenses, contentRank, isFunctionWord, isTeachableWord, senses, shortGloss, withoutGrammarNotes } from './definitions'
 import { senseKeys, shows, translationStems } from './senseEvidence'
 import { segmentText } from './textSegmentation'
 import { proficiencyFor } from './proficiency'
+import { commonnessBand } from './frequency'
 import type { KangxiRadical, Radical, ScriptMode, SrsCard, VocabWord } from '../types'
 
 /*
@@ -115,11 +116,51 @@ function matchesEnglish(keys: FixedKeys, q: Query): boolean {
  */
 const LEADING_GRAMMAR = /^(?:to |a |an |the )/
 
+/**
+ * A sense as compared for equality. Grammar notes go ("(pronoun) this" is
+ * "this") and so do qualifiers after the gloss: "meter (unit of length)" is an
+ * exact answer to "meter", "to drink (alcohol)" to "drink" (喝 still outranks
+ * it on commonness). A label in front stays — "(Cantonese) to see" and
+ * "(computing) to read" are not what someone typing "see" or "read" means.
+ */
+function withoutNotes(sense: string): string {
+  const plain = withoutGrammarNotes(sense)
+  const lead = plain.match(/^\([^)]*\)\s*/)?.[0] ?? ''
+  const label = OFF_EVERYDAY_LABEL.test(lead.trim()) ? lead : ''
+  return label + plain.slice(lead.length).replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+}
+
+/**
+ * Labels that put a sense outside everyday Mandarin, a specialist field or a
+ * register a learner wouldn't reach for. Region and plain register labels are
+ * not among them: 公尺 "(Taiwan) meter" is the everyday word in Taipei, and
+ * 狗狗 "(colloquial) dog" is a dog.
+ */
+const OFF_EVERYDAY_LABEL =
+  /^\((?:[^)]*\b)?(slang|literary|archaic|old use|dialect|Cantonese|derogatory|vulgar|euphemism|jocular|in former times|historical|mathematics|computing|computer|chemistry|medicine|physics|Buddhism|Taoism|sports|botany|geology|anatomy|military|music|law|finance|linguistics|zoology|biology|astronomy|electronics|economics|geometry|statistics|biochemistry|agriculture|photography|mining|psychology|meteorology|grammar|gaming|Internet)\b[^)]*\)$/i
+
+/** A sense with every note removed, for placing the query in its main text. */
+function mainText(sense: string): string {
+  return sense.replace(/\s*\([^)]*\)\s*/g, ' ').trim()
+}
+
+/**
+ * A sense as searched: leading labels dropped ("(Taiwan) hostess club",
+ * "(slang) Chinese yuan"), trailing qualifiers kept, so "alcohol" still finds
+ * 喝酒 "to drink (alcohol)" but "Taiwan" isn't answered by every word with a
+ * Taiwan-only sense.
+ */
+function searchableSense(sense: string): string {
+  return sense.replace(/^(\s*\([^)]*\)\s*)+/, '')
+}
+
 function normaliseSense(sense: string): string {
   return singularise(
-    sense
+    withoutNotes(sense)
       .toLowerCase()
       .replace(LEADING_GRAMMAR, '')
+      // "to listen to" is what 聽 means by "listen"; the verb's preposition isn't typed.
+      .replace(/^([a-z-]+) (?:to|at)$/, '$1')
       .replace(/[.,;:!?"']+$/, '')
       .trim(),
   )
@@ -221,7 +262,7 @@ function englishRelevance(all: string[], q: Query): { tier: number; senseIndex: 
   const clipped = CLIPPED_FORMS[q.folded]
 
   for (let i = 0; i < all.length; i++) {
-    const sense = all[i].toLowerCase()
+    const sense = mainText(all[i]).toLowerCase()
     const normalised = normaliseSense(all[i])
     let tier: number
     if (normalised === q.folded || normalised === q.singular || (clipped !== undefined && normalised === clipped)) {
@@ -230,6 +271,9 @@ function englishRelevance(all: string[], q: Query): { tier: number; senseIndex: 
       /* Both forms of the query, best placement wins: the singular is a guess
          and must never make an entry rank worse than the letters typed would. */
       tier = 1 + Math.min(placement(sense, q.folded), placement(sense, q.singular))
+      /* Only in a note — "alcohol" in 喝酒's "to drink (alcohol)": found, and
+         ranked with the weakest matches, below 米 "uncooked rice" for "rice". */
+      if (tier >= 4 && placement(searchableSense(all[i]).toLowerCase(), q.folded) < 3) tier = 3
     }
     if (tier >= 4) continue
 
@@ -376,7 +420,7 @@ function fixedKeys(word: VocabWord): FixedKeys {
     pinyin,
     tight: pinyin.replace(/\s+/g, ''),
     syllables: pinyin.split(/\s+/).filter(Boolean),
-    definition: word.definition.toLowerCase(),
+    definition: senses(word.definition).map(searchableSense).join('; ').toLowerCase(),
     senses: senses(word.definition),
     content: contentRank(word),
   }
@@ -426,14 +470,20 @@ function rank(candidates: VocabWord[], q: Query, field: SearchField, limit: numb
         senseIndex: senseIndex < PRIMARY_SENSES ? 0 : senseIndex,
         content: fixed.content,
         /*
-         * Commonness, as the last real tiebreak. `hskLevel` is derived from a
-         * frequency rank when the bank is built, so this genuinely means "the
-         * word a learner is more likely to have meant" — and it is what
+         * Commonness, as the last real tiebreak: the word's frequency band
+         * (not its HSK level, which follows the syllabus), so this genuinely
+         * means "the word a learner is more likely to have meant" — and it is what
          * replaced ordering by character count, which quietly ranked by
          * obscurity: 糕 is one character to 蛋糕's two, and nobody searching
          * "cake" wants the bound morpheme first.
          */
-        level: word.hskLevel,
+        level: commonnessBand(word),
+        /*
+         * Equally common, the word that means the query first wins: "hotel" is
+         * 旅館's first sense and 酒店's third, after "wine shop; pub" (and in
+         * Taiwan 酒店 is a hostess club).
+         */
+        position: senseIndex,
         length: word.traditional.length,
       }
     })
@@ -459,7 +509,8 @@ function rank(candidates: VocabWord[], q: Query, field: SearchField, limit: numb
         a.senseIndex - b.senseIndex ||
         a.content - b.content ||
         a.level - b.level ||
-        a.length - b.length,
+        a.length - b.length ||
+        a.position - b.position,
     )
     .slice(0, limit)
     .map((entry) => entry.word)

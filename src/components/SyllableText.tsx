@@ -12,12 +12,13 @@ const JOINER = /⁠/g
 /** How wide a hanging mark is, as a share of the reading's font size. */
 const MARK_WIDTH = 0.45
 /**
- * The space between the symbols and a hanging mark. Without it the mark sat
- * flush against the last symbol (ㄏㄠˇ read as one squashed run, and in 謝謝 the
- * first syllable's ˋ ran into the second's ˙): printed zhuyin leaves a thin
- * space, and so does this.
+ * The space between the symbols and a hanging mark: a hairline, so the mark
+ * reads as part of its syllable (flush, ㄏㄠˇ squashed into one run; at a fifth
+ * of the font size it floated off on its own). Printed zhuyin leaves about this.
  */
-const MARK_GAP = 0.2
+const MARK_GAP = 0.05
+/** The smallest gap, in points, so tiny readings still separate. */
+const MIN_GAP = 0.75
 
 /**
  * One syllable of reading, centred under its character.
@@ -59,7 +60,7 @@ export function SyllableText({
      * characters. Symmetric, so it still centres. Pinyin stays plain text.
      */
     if (BOPOMOFO.test(clean)) {
-      const room = <View style={{ width: Math.ceil(fontSize * MARK_WIDTH + Math.max(1.5, fontSize * MARK_GAP)) }} />
+      const room = <View style={{ width: Math.ceil(fontSize * MARK_WIDTH + Math.max(MIN_GAP, fontSize * MARK_GAP)) }} />
       return (
         <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
           {room}
@@ -76,7 +77,7 @@ export function SyllableText({
       </Text>
     )
   }
-  const gap = Math.max(1.5, fontSize * MARK_GAP)
+  const gap = Math.max(MIN_GAP, fontSize * MARK_GAP)
   const hang = Math.ceil(fontSize * MARK_WIDTH + gap)
   const symbols = after ? after[1] : before![2]
   const mark = after ? after[2] : before![1]

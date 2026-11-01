@@ -163,6 +163,9 @@ module.exports = {
         // text sits inside Nunito sentences, where the serif reads as a quote
         // from the reader rather than as part of the sentence.
         'hanzi-sans-bold': ['NotoSansTCBold', 'sans-serif'],
+        // Its simplified twin, for sans hanzi that follow `settings.script`
+        // (the placement test). Pick through `hanziSansBold` in lib/hanzi.ts.
+        'hanzi-sans-sc-bold': ['NotoSansSCBold', 'sans-serif'],
         'handwriting-medium': ['CaveatMedium', 'cursive'],
 
         // Traditional-only serif at Regular, for large vocabulary display where

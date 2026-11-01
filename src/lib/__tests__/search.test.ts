@@ -2,6 +2,8 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { hskFrequency } from '../../data/hskFrequency'
 import { searchWords } from '../dictionary'
+import { shortGloss } from '../definitions'
+import { wordById } from '../../data/hskFrequency'
 
 /*
  * Dictionary search should answer an English word with the word for it, the way
@@ -31,5 +33,41 @@ describe('searchWords', () => {
     assert.equal(top('car')[0], '車')
     assert.equal(top('cake')[0], '蛋糕')
     assert.equal(top('water')[0], '水')
+  })
+
+  test('a word that means the query first beats one that means it third', () => {
+    // 酒店 is "wine shop; pub; hotel; … (Taiwan) hostess club".
+    assert.equal(top('hotel')[0], '旅館')
+    assert.equal(top('listen')[0], '聽')
+  })
+
+  test('a note in brackets is found, but ranks below the word itself', () => {
+    assert.ok(top('alcohol', 20).includes('喝酒'))
+    assert.ok(top('rice').indexOf('米') < top('rice').indexOf('酒') || !top('rice').includes('酒'))
+  })
+
+  test('a label in front keeps a specialist sense from being an exact answer', () => {
+    // 睇 is "(Cantonese) to look; to see".
+    assert.notEqual(top('see')[0], '睇')
+  })
+})
+
+describe('glosses', () => {
+  test('a meaning-narrowing note survives onto the card', () => {
+    assert.equal(shortGloss(wordById('cc-喝酒')!), 'to drink (alcohol)')
+  })
+
+  test('grammar labels stay off the card', () => {
+    assert.equal(shortGloss(wordById('cc-他')!), 'he')
+  })
+
+  test('simplified forms stand for the everyday traditional word', () => {
+    for (const [id, trad] of [['cc-几', '幾'], ['cc-叶', '葉'], ['cc-价', '價'], ['cc-听', '聽'], ['cc-于', '於']]) {
+      assert.equal(wordById(id)?.traditional, trad, id)
+    }
+  })
+
+  test('米 is taught as rice, beside a sentence about rice', () => {
+    assert.equal(shortGloss(wordById('cc-米')!), 'uncooked rice')
   })
 })

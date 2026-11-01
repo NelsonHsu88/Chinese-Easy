@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   View,
   Text,
+  Image,
   Pressable,
   ScrollView,
   TextInput,
@@ -33,6 +34,7 @@ import { ShadowRevealProvider, ShadowSurface, useRevealedShadow, useShadowReveal
 import { dashShoulders } from '../dashboard/tokens'
 import { playTapSound } from '../../lib/sound'
 import { BackArrow } from '../BackArrow'
+import { tourShifu } from '../tour/art'
 
 /*
  * The onboarding building blocks.
@@ -510,17 +512,6 @@ export function OnbTopBar({
   )
 }
 
-/** The "Skip" affordance in the top-right. */
-export function OnbSkip({ onPress }: { onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" hitSlop={14} className="active:opacity-60">
-      <Text className="font-nunito-bold" style={{ ...t.link, color: c.blue }}>
-        Skip
-      </Text>
-    </Pressable>
-  )
-}
-
 // --- Type ---------------------------------------------------------------------
 
 /**
@@ -874,12 +865,12 @@ export function toneColors(tone: OnbTone) {
 }
 
 /**
- * A selectable option — the goal screen's four cards.
+ * A selectable option: the goal and start screens' cards.
  *
- * The selected state crossfades over 180ms rather than switching instantly: at
- * this size an abrupt fill change reads as a glitch. The fill is animated as an
- * overlay rather than by interpolating `backgroundColor`, so the card keeps its
- * border and shadow underneath.
+ * The app's raised button (`LiftedFace` in a `PressableScale`): held, the face
+ * sinks onto its shoulder and washes green, then springs back on release. The
+ * picked card stays green on a green shoulder, so the choice reads without a
+ * radio dot.
  */
 export function OnbChoiceCard({
   title,
@@ -889,6 +880,7 @@ export function OnbChoiceCard({
   selected,
   onPress,
   height = 92,
+  badge,
 }: {
   title: string
   body: string
@@ -897,82 +889,134 @@ export function OnbChoiceCard({
   selected: boolean
   onPress: () => void
   height?: number
+  /** A small tag in the card's top-right corner, in the card's tone ("About 3 min"). */
+  badge?: string
 }) {
-  /* Settles in behind the card on the page's entrance (`SlideIn`), rather than
-     showing at full strength first on Android. */
-  const cardShadow = useRevealedShadow(onbShadow)
-  const fill = useRef(new Animated.Value(selected ? 1 : 0)).current
-
-  useEffect(() => {
-    Animated.timing(fill, {
-      toValue: selected ? 1 : 0,
-      duration: onbMotion.select,
-      // The border colour below can't run on the native driver, and both halves
-      // must share a driver or they desynchronise.
-      useNativeDriver: false,
-    }).start()
-  }, [selected, fill])
-
-  const borderColor = fill.interpolate({ inputRange: [0, 1], outputRange: [c.border, c.green] })
-
+  const corner = onbRadius.cardLarge
   return (
-    <Animated.View
-      style={{
-        borderRadius: onbRadius.cardLarge,
-        borderWidth: 1.5,
-        borderColor: borderColor as unknown as string,
-        backgroundColor: c.card,
-        overflow: 'hidden',
-        ...cardShadow,
+    <PressableScale
+      onPress={() => {
+        // Re-tapping the picked card changes nothing, so it gets no tick.
+        if (!selected) tickHaptic()
+        onPress()
       }}
+      scaleTo={0.98}
+      haptic={false}
+      accessibilityLabel={title}
+      accessibilityHint={body}
+      accessibilityState={{ selected }}
     >
-      <Animated.View
-        style={{ position: 'absolute', inset: 0, backgroundColor: c.greenSoft, opacity: fill }}
-      />
-      <Pressable
-        onPress={() => {
-          tickHaptic()
-          onPress()
-        }}
-        accessibilityRole="radio"
-        accessibilityState={{ selected }}
-        accessibilityLabel={title}
-        className="flex-row items-center active:opacity-90"
-        style={{ height, paddingHorizontal: s.lg, gap: s.md }}
+      <LiftedFace
+        height={height}
+        radius={corner}
+        fill={selected ? c.greenSoft : c.card}
+        border={selected ? c.green : c.border}
+        shoulder={selected ? c.greenDark : dashShoulders.quiet}
+        pressTint={c.greenSoft}
+        shadow={false}
       >
-        <View
-          className="items-center justify-center"
-          style={{ width: 52, height: 52, borderRadius: 14, backgroundColor: TONE[tone].soft }}
-        >
-          {icon}
+        <View style={{ flex: 1, alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', paddingHorizontal: s.lg, gap: s.md }}>
+          <View
+            style={{ width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: TONE[tone].soft }}
+          >
+            {icon}
+          </View>
+          <View style={{ flex: 1, paddingRight: badge ? s.lg : 0 }}>
+            <Text className="font-nunito-extrabold" style={{ ...t.cardTitleSerif, color: selected ? c.greenDark : c.navy }}>
+              {title}
+            </Text>
+            <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 3 }}>
+              {body}
+            </Text>
+          </View>
+          {badge ? (
+            /* Tucked into the corner, so the card's height and text are untouched. */
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                paddingHorizontal: 10,
+                paddingVertical: 3,
+                borderTopRightRadius: corner - 1.5,
+                borderBottomLeftRadius: 10,
+                backgroundColor: TONE[tone].solid,
+              }}
+            >
+              <Text className="font-nunito-extrabold text-white" style={{ fontSize: 10.5, lineHeight: 14, letterSpacing: 0.6 }}>
+                {badge.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
         </View>
-        <View className="flex-1">
-          <Text className="font-nunito-extrabold" style={{ ...t.cardTitleSerif, color: c.navy }}>
-            {title}
-          </Text>
-          <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 3 }}>
-            {body}
-          </Text>
-        </View>
-        <Radio selected={selected} size={26} />
-      </Pressable>
-    </Animated.View>
+      </LiftedFace>
+    </PressableScale>
   )
 }
 
 /**
- * One of the two script tiles on the Character Script page.
- *
- * A different shape from `OnbChoiceCard` — a tall tile with the glyph as its
- * subject rather than a row with an icon beside a label — because the character
- * *is* the question here. Someone who cannot yet read either script decides this
- * by looking at 學 next to 学, so the two glyphs need to be big, adjacent and
- * directly comparable.
- *
- * The selected/unselected treatment is the same animation the choice cards use
- * (a mint fill and a jade border crossfading on one non-native driver, since
- * border colour cannot run on the native one and the two halves must not
- * desynchronise), so both selections feel like the same control.
+ * Shifu with a speech bubble, standing in for a page title where the page is
+ * a question he is asking (the start-point page). The painting is the tour's,
+ * so the learner meets the same Shifu here that later shows them around.
+ */
+export function OnbShifuSays({ text, artWidth = 84 }: { text: string; artWidth?: number }) {
+  const art = tourShifu.welcome
+  return (
+    <View className="flex-row items-center" style={{ gap: s.md }}>
+      <Image
+        source={art.source}
+        style={{ width: artWidth, height: artWidth / art.ratio }}
+        resizeMode="contain"
+        accessibilityIgnoresInvertColors
+        accessible={false}
+      />
+      <View className="flex-1" style={{ justifyContent: 'center' }}>
+        <View
+          style={{
+            backgroundColor: c.card,
+            borderWidth: 1.5,
+            borderColor: c.border,
+            borderRadius: onbRadius.cardLarge,
+            paddingHorizontal: s.lg,
+            paddingVertical: s.md,
+          }}
+        >
+          <Text
+            className="font-nunito-extrabold"
+            accessibilityRole="header"
+            style={{ fontSize: 19, lineHeight: 25, color: c.navy }}
+          >
+            {text}
+          </Text>
+        </View>
+        {/* The tail: a square turned 45°, bordered on the two sides that face Shifu,
+            sitting over the bubble's edge so the border reads as one line. */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: -6,
+            top: '50%',
+            marginTop: -6,
+            width: 12,
+            height: 12,
+            backgroundColor: c.card,
+            borderLeftWidth: 1.5,
+            borderBottomWidth: 1.5,
+            borderColor: c.border,
+            transform: [{ rotate: '45deg' }],
+          }}
+        />
+      </View>
+    </View>
+  )
+}
+
+/**
+ * One of the script page's two cards: the same raised button as the choice
+ * cards (sinks and washes green while held, springs back, stays green once
+ * picked).
  */
 export function OnbScriptCard({
   glyph,
@@ -981,7 +1025,10 @@ export function OnbScriptCard({
   body,
   selected,
   onPress,
+  compact = false,
 }: {
+  /** A short phone: a smaller glyph and less padding, so the page's painting keeps its room. */
+  compact?: boolean
   glyph: string
   /** Which face draws `glyph`. 學 must not be drawn through the SC font, or vice versa. */
   script: ScriptMode
@@ -990,94 +1037,63 @@ export function OnbScriptCard({
   selected: boolean
   onPress: () => void
 }) {
-  /* Settles in behind the card on the page's entrance (`SlideIn`), rather than
-     showing at full strength first on Android. */
-  const cardShadow = useRevealedShadow(onbShadow)
-  const fill = useRef(new Animated.Value(selected ? 1 : 0)).current
-
-  useEffect(() => {
-    Animated.timing(fill, {
-      toValue: selected ? 1 : 0,
-      duration: onbMotion.select,
-      useNativeDriver: false,
-    }).start()
-  }, [selected, fill])
-
-  const borderColor = fill.interpolate({ inputRange: [0, 1], outputRange: [c.border, c.green] })
-
   return (
-    <Animated.View
-      style={{
-        flex: 1,
-        borderRadius: onbRadius.cardLarge,
-        borderWidth: 1.5,
-        borderColor: borderColor as unknown as string,
-        backgroundColor: c.card,
-        overflow: 'hidden',
-        ...cardShadow,
+    <PressableScale
+      onPress={() => {
+        // Only on a real change. Re-tapping the selected card is a no-op, and
+        // a tick for nothing teaches people to distrust the feel.
+        if (!selected) tickHaptic()
+        onPress()
       }}
+      wrapperStyle={{ flex: 1 }}
+      scaleTo={0.98}
+      haptic={false}
+      accessibilityLabel={`${label} Chinese, ${selected ? 'selected' : 'not selected'}`}
+      accessibilityHint={body}
+      accessibilityState={{ selected }}
     >
-      <Animated.View style={{ position: 'absolute', inset: 0, backgroundColor: c.greenSoft, opacity: fill }} />
-      <Pressable
-        onPress={() => {
-          // Only on a real change. Re-tapping the selected card is a no-op, and
-          // a tick for nothing teaches people to distrust the feel.
-          if (!selected) tickHaptic()
-          onPress()
-        }}
-        accessibilityRole="radio"
-        accessibilityState={{ selected }}
-        accessibilityLabel={`${label} Chinese, ${selected ? 'selected' : 'not selected'}`}
-        accessibilityHint={body}
-        className="active:opacity-90"
-        style={{ paddingHorizontal: s.md, paddingTop: s.xl, paddingBottom: s.md }}
+      <LiftedFace
+        height={compact ? SCRIPT_CARD_HEIGHT.compact : SCRIPT_CARD_HEIGHT.full}
+        radius={onbRadius.cardLarge}
+        fill={selected ? c.greenSoft : c.card}
+        border={selected ? c.green : c.border}
+        shoulder={selected ? c.greenDark : dashShoulders.quiet}
+        pressTint={c.greenSoft}
+        shadow={false}
       >
-        {/*
-          The glyph. Sized in the component rather than by the tile so the two
-          cards' characters share a baseline whatever their labels do — 學 and 学
-          have very different stroke counts and the eye reads any mismatch as one
-          card being bigger than the other.
-        */}
-        <Text
-          className={hanziFont(script)}
-          style={{ fontSize: 68, lineHeight: 84, color: c.navy, textAlign: 'center' }}
-        >
-          {glyph}
-        </Text>
-
-        <Text
-          className="font-nunito-extrabold"
-          style={{ fontSize: 19, lineHeight: 24, color: selected ? c.greenDark : c.navy, textAlign: 'center', marginTop: s.md }}
-        >
-          {label}
-        </Text>
-        <Text
-          className="font-nunito-semibold"
-          style={{ ...t.cardBody, color: c.textSecondary, textAlign: 'center', marginTop: 4 }}
-        >
-          {body}
-        </Text>
-
-        {/* Bottom-right, as drawn. A tick rather than the `Radio` dot: this is a
-            choice you commit to, and a filled tick reads as done. */}
-        <View className="mt-2 flex-row justify-end">
-          <View
-            className="items-center justify-center rounded-full"
-            style={{
-              width: 28,
-              height: 28,
-              borderWidth: selected ? 0 : 2,
-              borderColor: c.dotInactive,
-              backgroundColor: selected ? c.green : 'transparent',
-            }}
+        <View style={{ flex: 1, alignSelf: 'stretch', justifyContent: 'center', paddingHorizontal: s.md }}>
+          {/*
+            The glyph. Sized in the component rather than by the tile so the two
+            cards' characters share a baseline whatever their labels do — 學 and 学
+            have very different stroke counts and the eye reads any mismatch as one
+            card being bigger than the other.
+          */}
+          <Text
+            className={hanziFont(script)}
+            style={{ fontSize: compact ? 52 : 68, lineHeight: compact ? 66 : 84, color: c.navy, textAlign: 'center' }}
           >
-            {selected && <Check size={16} color="#FFFFFF" strokeWidth={3} />}
-          </View>
+            {glyph}
+          </Text>
+          <Text
+            className="font-nunito-extrabold"
+            style={{ fontSize: 19, lineHeight: 24, color: selected ? c.greenDark : c.navy, textAlign: 'center', marginTop: compact ? s.xs : s.md }}
+          >
+            {label}
+          </Text>
+          <Text
+            className="font-nunito-semibold"
+            style={{ ...t.cardBody, color: c.textSecondary, textAlign: 'center', marginTop: 4 }}
+          >
+            {body}
+          </Text>
         </View>
-      </Pressable>
-    </Animated.View>
+      </LiftedFace>
+    </PressableScale>
   )
 }
+
+/** The script cards' face heights: glyph, label and a two-line note, with breathing room. */
+const SCRIPT_CARD_HEIGHT = { full: 204, compact: 156 }
 
 /** The filled-ring selection indicator used by choice cards and quiz answers. */
 export function Radio({ selected, size = 22, color = c.green }: { selected: boolean; size?: number; color?: string }) {

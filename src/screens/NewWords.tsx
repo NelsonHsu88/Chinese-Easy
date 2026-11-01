@@ -28,9 +28,9 @@ import { PressableScale, LiftedFace, usePressClaim, RaisedButton } from '../comp
 import { TourTarget } from '../components/tour/targets'
 import { useReduceMotion } from '../components/tour/useReduceMotion'
 import { SLOW_SPEECH_RATE, SPEECH_RATE, speak } from '../lib/speech'
-import { RaisedProgressBar } from '../components/progress/RaisedProgressBar'
 import { tapHaptic, tickHaptic } from '../lib/haptics'
-import { shortGloss } from '../lib/definitions'
+import { hasMultipleMeanings, shortGloss } from '../lib/definitions'
+import { MultipleMeaningsTag } from '../components/MultipleMeaningsTag'
 import type { PhoneticScript, ScriptMode, VocabWord } from '../types'
 import { BackArrow } from '../components/BackArrow'
 import { spacedReading } from '../components/SpacedReading'
@@ -101,9 +101,11 @@ const ADD_SHOULDER = '#2B6A3C'
 /** Skip: warm white, a warm grey hairline. */
 const SKIP = { fill: '#FFFDFC', border: '#D8D4CB', shoulder: '#CFC8BA' } as const
 
-/** Practice: the full-width mint pill under the pair. */
-/* Dark green, like Add to my words beside it, by request. */
-const PRACTICE = { fill: '#3A8650', shoulder: '#2B6A3C' } as const
+/**
+ * Practice: the full-width pill under the pair. Mint with green ink, a step
+ * below Add to my words, which is the main action and keeps the solid green.
+ */
+const PRACTICE = { fill: '#EAF5EC', border: '#BFDCC6', shoulder: '#BFDCC6', ink: '#2B6A3C' } as const
 
 /**
  * A button whose look lives on a plain `View`, with the press tracked here
@@ -578,7 +580,6 @@ export function NewWords() {
   // never whether Add works.
   const limit = settings.dailyNewWordLimit
   const limitReached = wordsLearnedToday >= limit
-  const progress = limit > 0 ? Math.min(1, wordsLearnedToday / limit) : 0
 
   /*
    * The goal note plays whenever the goal becomes reached: on arrival if it
@@ -679,21 +680,11 @@ export function NewWords() {
             </Pressable>
           </View>
 
-          {/* Today's progress towards the daily new-word goal. */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 2 }}>
-            {/* The app's raised jade bar, as on Challenges and the review sessions. */}
-            <RaisedProgressBar
-              progress={progress}
-              size="compact"
-              accessibilityLabel={`Today's new words: ${wordsLearnedToday} of ${limit}`}
-            />
-            <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 14, lineHeight: 19, color: c.textMuted }}>
-              {wordsLearnedToday} / {limit}
-            </Text>
-          </View>
-
           {/*
-            Floats over the top of the card, so its fade moves nothing.
+            Floats over the top of the card, so its fade moves nothing. There is
+            no counter or bar (by request): this note is the only sign of the
+            daily goal, shown each time New Words opens with the goal met and
+            the moment an Add reaches it.
 
             Faded as one picture. `needsOffscreenAlphaCompositing` (and the
             hardware texture on Android) renders the box, its padding, text and
@@ -710,7 +701,7 @@ export function NewWords() {
               renderToHardwareTextureAndroid
               style={{
                 position: 'absolute',
-                top: 50 + 34 + 10 - GOAL_NOTE.room,
+                top: 50 + 10 - GOAL_NOTE.room,
                 left: GUTTER - GOAL_NOTE.room,
                 right: GUTTER - GOAL_NOTE.room,
                 padding: GOAL_NOTE.room,
@@ -903,9 +894,9 @@ export function NewWords() {
                 wrapperStyle={{ marginTop: 12 }}
                 accessibilityLabel="Practice writing this word"
               >
-                <LiftedFace height={BUTTON_HEIGHT} fill={PRACTICE.fill} shoulder={PRACTICE.shoulder} shadow={false}>
-                  <PenLine size={20} color="#ffffff" strokeWidth={2} />
-                  <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: '#ffffff' }}>
+                <LiftedFace height={BUTTON_HEIGHT} fill={PRACTICE.fill} shoulder={PRACTICE.shoulder} border={PRACTICE.border} shadow={false}>
+                  <PenLine size={20} color={PRACTICE.ink} strokeWidth={2} />
+                  <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: PRACTICE.ink }}>
                     Practice writing this word
                   </Text>
                 </LiftedFace>
@@ -976,6 +967,7 @@ function WordCard({
   const hanzi = displayWord(word, script)
   const example = word.example ? displayExample(word, script) : ''
   const size = hanziSize(hanzi)
+  const multipleMeanings = hasMultipleMeanings(word)
   /* A bare speaker, as the reference draws it — the padding and `hitSlop`
      keep it a full-size target without a visible circle. */
   const speaker = (
@@ -1023,6 +1015,13 @@ function WordCard({
       }}
     >
       {/* No painting inside the card, by request: the word stands on plain paper. */}
+      {/* Top left, across from the star: a corner tag takes none of the
+          card's fixed height, which the example sentence already fills. */}
+      {multipleMeanings ? (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 16, left: 16, zIndex: 1 }}>
+          <MultipleMeaningsTag />
+        </View>
+      ) : null}
       {/* The star, top right as the reference draws it. Claims its press like
           the speaker, so starring doesn't also open writing practice. */}
       <View style={{ position: 'absolute', top: 12, right: 12, zIndex: 1 }}>

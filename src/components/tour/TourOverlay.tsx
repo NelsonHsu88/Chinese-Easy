@@ -16,10 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useApp } from '../../context/AppContext'
 import {
   SAVED_TOAST,
-  TOUR_STEPS,
   WELCOME_COPY,
   hasTabBar,
   tourStepById,
+  tourStepsFor,
   type TourStep,
   type TourStepId,
 } from '../../lib/tour'
@@ -70,7 +70,7 @@ const HEIGHT_TOLERANCE = 2
 const SKIP_HINT = 'Ends the tour. You can replay it from Settings, General.'
 
 export function TourOverlay() {
-  const { tour, onboardingComplete, startTour, endTour, advanceTour } = useApp()
+  const { tour, onboardingComplete, startTour, endTour, advanceTour, markScreenTourSeen } = useApp()
   const pathname = usePathname()
   const insets = useSafeAreaInsets()
   const { width: screenW, height: screenH } = useWindowDimensions()
@@ -153,6 +153,20 @@ export function TourOverlay() {
     if (step?.id === 'new-words' && pathname === '/new-words') advanceTour('new-words')
   }, [step?.id, pathname, advanceTour])
 
+  /*
+   * The Basics step: the tour has just shown the learner the Learn tab, so its
+   * own screen guide would only repeat it — marked seen. Opening Chinese Basics,
+   * by the real card or the tooltip's button, ends the tour there.
+   */
+  useEffect(() => {
+    if (step?.id !== 'basics') return
+    markScreenTourSeen('learn')
+    if (pathname === '/basics') {
+      successHaptic()
+      endTour('completed')
+    }
+  }, [step?.id, pathname, endTour, markScreenTourSeen])
+
   // --- 4. Wandered off ----------------------------------------------------------
 
   const [wandered, setWandered] = useState(false)
@@ -210,6 +224,8 @@ export function TourOverlay() {
           },
         }
       case 'review':
+        /* A beginner's tour carries on to Chinese Basics. */
+        if (tour.withBasics) return { label: 'Next', onPress: () => advanceTour('review') }
         return {
           label: s.primaryLabel ?? 'Got it',
           onPress: () => {
@@ -217,6 +233,8 @@ export function TourOverlay() {
             endTour('completed')
           },
         }
+      case 'basics':
+        return { label: s.primaryLabel ?? 'Start Basics', onPress: () => router.push('/basics') }
     }
   }
 
@@ -272,7 +290,8 @@ export function TourOverlay() {
     )
   }
 
-  const progress = { index: TOUR_STEPS.findIndex((s) => s.id === step.id), count: TOUR_STEPS.length }
+  const steps = tourStepsFor(tour.withBasics ?? false)
+  const progress = { index: steps.findIndex((s) => s.id === step.id), count: steps.length }
 
   if (!onScreen) {
     if (!wandered) return null
@@ -354,8 +373,9 @@ export function TourOverlay() {
 
 /** The route a step lives on. Back to the Dashboard is a pop where there is one to pop. */
 function goToScreen(step: TourStep) {
-  if (step.screen === '/') {
-    router.navigate('/')
+  /* Tabs are navigated to, never pushed — a push stacks a second tab bar. */
+  if (step.screen === '/' || step.screen === '/lessons-tab') {
+    router.navigate(step.screen)
     return
   }
   router.push(step.screen)

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { conciseDefinition, plainEnglish, senses } from '../src/lib/definitions.ts'
 import { senseKeys, shows, translationStems } from '../src/lib/senseEvidence.ts'
+import { pinyinForCharacter } from '../src/lib/characterReading.ts'
 
 /**
  * Repairs example sentences so each one shows its word, in the sense the card
@@ -329,6 +330,65 @@ for (const word of words) {
   }
 }
 
+/*
+ * 4. **Authored sentences** (`scripts/data/authoredExamples.json`), for words
+ *    whose corpus sentence shows a different sense from the card's gloss, or
+ *    only paraphrases it. Written by hand in simplified; the traditional is
+ *    rebuilt phrase by phrase through the bank (`traditionalFrom`), and the
+ *    reading from the tokens' own entries. Marked `authored: true`, so they
+ *    never pass for corpus sentences. Held to the same rules: the word must
+ *    survive segmentation in both scripts, and the translation must show one of
+ *    its listed senses — one that fails is reported and not applied.
+ */
+const AUTHORED = path.join(process.cwd(), 'scripts/data/authoredExamples.json')
+const authored = fs.existsSync(AUTHORED) ? JSON.parse(fs.readFileSync(AUTHORED, 'utf8')) : {}
+const byId = new Map(words.map((word) => [word.id, word]))
+const authoredFailures = []
+let authoredApplied = 0
+for (const [id, { zh, en }] of Object.entries(authored)) {
+  const word = byId.get(id)
+  if (!word) {
+    authoredFailures.push(`${id}: no such entry`)
+    continue
+  }
+  const traditional = traditionalFrom(zh).map((part) => part.ch).join('')
+  const example = { simplified: zh, traditional, pinyin: readingOf(traditional), translation: en, authored: true }
+  if (!containedIds(example).has(id)) {
+    authoredFailures.push(`${id}: not a token in ${zh} / ${traditional}`)
+    continue
+  }
+  if (fitRank(senseKeysFor(word), example) === 2) {
+    authoredFailures.push(`${id}: "${en}" shows none of: ${word.definition}`)
+    continue
+  }
+  if (!word.example) had++
+  word.example = example
+  authoredApplied++
+}
+
+/** A sentence's reading, token by token from the bank (what the app shows anyway). */
+function readingOf(text) {
+  const out = []
+  let i = 0
+  while (i < text.length) {
+    let len = Math.min(MAX_WORD_LEN, text.length - i)
+    for (; len >= 1; len--) {
+      const found = byText.get(text.slice(i, i + len))
+      if (found) {
+        out.push(found.pinyin)
+        break
+      }
+    }
+    if (len === 0) {
+      // Not a bank word (了 on its own): the character's common reading, as the app shows.
+      if (/[\p{Script=Han}]/u.test(text[i])) out.push(pinyinForCharacter(text[i]) ?? text[i])
+      len = 1
+    }
+    i += len
+  }
+  return out.join(' ')
+}
+
 const total = kept + swappedWrong + swappedBetterSense
 console.log(`entries:                         ${words.length}`)
 console.log(`sentences with fixed characters: ${conversionFixes}`)
@@ -342,6 +402,8 @@ console.log(`now showing an example:          ${total}  (${((100 * total) / had)
 console.log(`  translation shows best sense:  ${fits[0]}`)
 console.log(`  shows another listed sense:    ${fits[1]}`)
 console.log(`  shows no listed sense:         ${fits[2]}`)
+console.log(`authored sentences applied:      ${authoredApplied} of ${Object.keys(authored).length}`)
+for (const failure of authoredFailures) console.log(`  REJECTED ${failure}`)
 
 if (DRY) {
   console.log('\n--dry: nothing written')

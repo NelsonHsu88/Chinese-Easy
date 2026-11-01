@@ -33,9 +33,9 @@ import {
   wordsWith,
 } from '../lib/dictionary'
 import { tapHaptic } from '../lib/haptics'
-import { allSenses, shortGloss } from '../lib/definitions'
+import { allSenses, hasMultipleMeanings, shortGloss } from '../lib/definitions'
 import { displayPinyin } from '../lib/hanzi'
-import { LOOKUP_HSK_LEVEL } from '../data/lookupWords'
+import { LOOKUP_HSK_LEVEL, hskLevelLabel } from '../data/lookupWords'
 import { DeckStateButton, FavoriteButton } from '../components/dictionary/DictionaryControls'
 import type { VocabWord } from '../types'
 
@@ -157,7 +157,7 @@ export function CharacterDetail() {
 
   const senses = entry ? allSenses(entry) : []
   const rank = entry ? frequencyRank(entry) : null
-  const level = entry ? (entry.hskLevel < LOOKUP_HSK_LEVEL ? `HSK ${entry.hskLevel}` : 'Rare') : null
+  const level = entry ? hskLevelLabel(entry) : null
   const openCharacter = (char: string) => {
     tapHaptic()
     openCharacterDetail(char, inTab)
@@ -225,6 +225,7 @@ export function CharacterDetail() {
           glyph={glyph}
           reading={entry ? displayPinyin(entry, settings.phoneticScript) : ''}
           meaning={entry ? shortGloss(entry) : undefined}
+          multipleMeanings={entry ? hasMultipleMeanings(entry) : false}
           facts={facts}
           availableHeight={availableHeight}
           onWatch={() => {

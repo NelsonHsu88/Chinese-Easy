@@ -2,7 +2,8 @@ import { useCallback, useRef, useState } from 'react'
 import { Image, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native'
 import type { ViewInstance } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { onbSpacing as s } from './tokens'
+import { LinearGradient } from 'expo-linear-gradient'
+import { onbColors, onbSpacing as s } from './tokens'
 import { ONB_CONTENT_MAX } from './parts'
 
 /*
@@ -68,11 +69,12 @@ function useColumn() {
  * physical top of the screen, as every reference draws it, so it lifts itself
  * back by the inset.
  */
-export function CornerBranch({ piece, side }: { piece: ArtPiece; side: 'left' | 'right' }) {
+export function CornerBranch({ piece, side, scale = 1 }: { piece: ArtPiece; side: 'left' | 'right'; scale?: number }) {
   const column = useColumn()
   const insets = useSafeAreaInsets()
   const art = ART[piece]
-  const width = (art.w / REF_WIDTH) * column
+  /* `scale` below 1 keeps the branch off a title a short phone has raised. */
+  const width = (art.w / REF_WIDTH) * column * scale
   return (
     <View pointerEvents="none" style={{ position: 'absolute', top: -insets.top, [side]: 0 }}>
       <Image source={art.source} style={{ width, height: (width * art.h) / art.w }} resizeMode="contain" />
@@ -199,6 +201,7 @@ export function HeroArt({
   overhang = 0,
   maxOverhang = overhang,
   maxSink = 0,
+  cropTop,
 }: {
   piece: ArtPiece
   align?: 'start' | 'end' | 'center'
@@ -232,11 +235,22 @@ export function HeroArt({
    * taken off the window) left bare paper down both sides.
    */
   maxSink?: number
+  /**
+   * Short of room, keep the column's full width and give up the top of the
+   * scene — sky and far peaks — up to this share of its height, under a fade
+   * to the page so the cut reads as mist. Past that it narrows (the subject
+   * must stay whole). With `maxSink`, the bottom may first sink behind what is
+   * below. Replaces `overhang`: nothing reaches up behind the text above.
+   */
+  cropTop?: number
 }) {
   const column = useColumn()
   const art = ART[piece]
   const natural = (column * art.h) / art.w
   const [slot, setSlot] = useState(0)
+  if (cropTop !== undefined) {
+    return <CroppedHero art={art} column={column} natural={natural} slot={slot} setSlot={setSlot} fill={fill} cropTop={cropTop} maxSink={maxSink} />
+  }
   const room = slot / (1 - overhang)
   let height = Math.max(0, fill ? Math.min(natural * HERO_FILL_MAX, room) : Math.min(natural, room))
   let lift = height * overhang
@@ -273,6 +287,75 @@ export function HeroArt({
             resizeMode="contain"
             style={{ position: 'absolute', width, height, top: 0, left: (column - width) / 2 }}
           />
+        </View>
+      )}
+    </View>
+  )
+}
+
+/** Fade over a cropped top edge: tall enough to soften the cut, no taller. */
+const CROP_FADE = 32
+
+/** `HeroArt` with `cropTop` — see the prop. Bottom-aligned on its slot. */
+function CroppedHero({
+  art,
+  column,
+  natural,
+  slot,
+  setSlot,
+  fill,
+  cropTop,
+  maxSink,
+}: {
+  art: { source: number; w: number; h: number }
+  column: number
+  natural: number
+  slot: number
+  setSlot: (update: (prev: number) => number) => void
+  fill: boolean
+  cropTop: number
+  maxSink: number
+}) {
+  let height = natural
+  let sink = 0
+  if (slot >= natural) {
+    // Room to spare: grow as `fill` does, cropping the sides.
+    height = fill ? Math.min(natural * HERO_FILL_MAX, slot) : natural
+  } else if (slot > 0) {
+    sink = Math.min(natural * maxSink, natural - slot)
+    const cut = natural - slot - sink
+    if (cut > natural * cropTop) {
+      // Cutting more would reach the subject: narrow instead, at the limits.
+      height = slot / (1 - cropTop - maxSink)
+      sink = height * maxSink
+    }
+  }
+  const width = (height * art.w) / art.h
+  const cut = Math.max(0, height - slot - sink)
+  return (
+    <View
+      pointerEvents="none"
+      onLayout={(e) => {
+        const next = Math.round(e.nativeEvent.layout.height)
+        setSlot((prev) => (Math.abs(prev - next) < 1 ? prev : next))
+      }}
+      style={{ flex: 1, minHeight: Math.min(HERO_MIN, natural), marginHorizontal: -s.screen }}
+    >
+      {slot > 0 && (
+        /* Clips the top at the slot's edge and the sides at the column's; the
+           bottom may run `sink` past the slot, behind what is below. */
+        <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: -sink, overflow: 'hidden' }}>
+          <Image
+            source={art.source}
+            resizeMode="contain"
+            style={{ position: 'absolute', width, height, bottom: 0, left: (column - width) / 2 }}
+          />
+          {cut > 0 && (
+            <LinearGradient
+              colors={[onbColors.page, `${onbColors.page}00`]}
+              style={{ position: 'absolute', left: 0, right: 0, top: 0, height: Math.min(CROP_FADE, slot * 0.3) }}
+            />
+          )}
         </View>
       )}
     </View>

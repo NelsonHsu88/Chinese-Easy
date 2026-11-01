@@ -3,7 +3,7 @@ import path from 'node:path'
 import { CEDICT_LINE, chooseRow, cleanGloss, loadCommonReadings, readingKey, toPinyin } from './lib/cedict.mjs'
 
 /**
- * Re-picks the CC-CEDICT reading of tier-1 single characters in place.
+ * Re-picks the CC-CEDICT reading of tier-1 entries in place.
  *
  * `buildWordBank.mjs` used to keep the first CC-CEDICT row for each form, and
  * for about two hundred common characters that row is a rare reading: 看 kān
@@ -42,7 +42,6 @@ for (const line of fs.readFileSync(path.join(DATA_DIR, 'cedict'), 'utf8').split(
 
 let changed = 0
 for (const word of words) {
-  if ([...word.simplified].length !== 1) continue
   const rows = (rowsBySimp.get(word.simplified) ?? []).filter((row) => row.trad === word.traditional)
   if (rows.length < 2) continue
   const row = chooseRow(word.simplified, rows, common.get(word.simplified))

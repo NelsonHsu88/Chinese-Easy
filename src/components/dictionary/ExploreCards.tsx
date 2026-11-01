@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Image, Text, View, type StyleProp, type ViewStyle } from 'react-native'
+import { Text, View, type StyleProp, type ViewStyle } from 'react-native'
 import { ChevronRight, FileText, BookOpen, Play, PencilLine, type LucideIcon } from 'lucide-react-native'
 import { PressScale } from './PressScale'
 import { DICT_BG } from './shadows'
@@ -23,8 +23,6 @@ import { spacedReading } from '../SpacedReading'
  * badge. Plain style objects throughout — see `DetailHero` for why NativeWind
  * is kept off controls on these pages.
  */
-
-const SPRIG = { source: require('../../assets/images/onboarding/sakura-sprig.png'), ratio: 320 / 151 }
 
 const T = {
   title: { fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: C.heading },
@@ -167,23 +165,14 @@ export function SheetHeader({
 
 // --- Overview ----------------------------------------------------------------
 
-/** The headline sense, the others as a bullet run, a sprig of blossom in the corner. */
+/** The headline sense and the others as a bullet run, on plain paper (the blossom sprig was removed by request). */
 export function MeaningSheetCard({ senses }: { senses: string[] }) {
   const [gloss, ...others] = senses
-  /* A single meaning gets a compact card: no reserved height, a smaller sprig
-     that still fits inside it, and the text centred on the badge. */
+  /* A single meaning sits centred on the badge. */
   const compact = others.length === 0
-  const sprigWidth = compact ? 112 : 150
   return (
-    <SheetCard style={{ overflow: 'hidden', ...(compact ? null : { minHeight: 124 }) }}>
-      <View pointerEvents="none" style={{ position: 'absolute', right: -12, bottom: compact ? -4 : -6 }}>
-        <Image
-          source={SPRIG.source}
-          style={{ width: sprigWidth, height: sprigWidth / SPRIG.ratio, opacity: 0.9 }}
-          resizeMode="contain"
-        />
-      </View>
-      <View style={{ flexDirection: 'row', alignItems: compact ? 'center' : 'flex-start', gap: 12, paddingRight: compact ? 84 : 96 }}>
+    <SheetCard>
+      <View style={{ flexDirection: 'row', alignItems: compact ? 'center' : 'flex-start', gap: 12 }}>
         <Badge kind="meaning" icon={BookOpen} size={44} />
         <View style={{ flex: 1 }}>
           <Text style={T.title} accessibilityRole="header">
@@ -194,7 +183,7 @@ export function MeaningSheetCard({ senses }: { senses: string[] }) {
             <>
               <Text style={[T.small, { marginTop: 10 }]}>Also means</Text>
               <View style={{ marginTop: 2, flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 2 }}>
-                {others.slice(0, 6).map((sense, i) => (
+                {others.slice(0, 12).map((sense, i) => (
                   <Text key={`${sense}-${i}`} style={[T.small, { color: C.body, fontSize: 14 }]}>
                     •  {sense}
                   </Text>

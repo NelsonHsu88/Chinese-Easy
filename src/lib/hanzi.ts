@@ -63,6 +63,11 @@ export function hanziFont(
   return HANZI_FONTS[script][weight]
 }
 
+/** The bold sans hanzi face for this script (placement test). Literal class names for Tailwind's scan. */
+export function hanziSansBold(script: ScriptMode): string {
+  return script === 'simplified' ? 'font-hanzi-sans-sc-bold' : 'font-hanzi-sans-bold'
+}
+
 /**
  * Word-level pinyin (one syllable per character) can be shown as zhuyin.
  * Example-sentence pinyin is always left as pinyin prose.

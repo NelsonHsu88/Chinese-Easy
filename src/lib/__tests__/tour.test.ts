@@ -1,6 +1,15 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { INITIAL_TOUR, TOUR_STEPS, normalizeTour, tourAfterAction, type TourState } from '../tour'
+import {
+  INITIAL_TOUR,
+  TOUR_STEPS,
+  nextTourStep,
+  normalizeTour,
+  tourAfterAction,
+  tourIncludesBasics,
+  tourStepsFor,
+  type TourState,
+} from '../tour'
 import { placeTooltip, scrollToReveal, type Bounds } from '../tourPlacement'
 
 /*
@@ -63,9 +72,30 @@ describe('tourAfterAction', () => {
 
   test('the tour is four steps and ends at Review', () => {
     assert.deepEqual(
-      TOUR_STEPS.map((s) => s.id),
+      tourStepsFor(false).map((s) => s.id),
       ['home', 'new-words', 'save', 'review'],
     )
+  })
+
+  test("a beginner's tour ends on Chinese Basics, on the Learn tab", () => {
+    assert.deepEqual(
+      tourStepsFor(true).map((s) => s.id),
+      ['home', 'new-words', 'save', 'review', 'basics'],
+    )
+    assert.equal(TOUR_STEPS.find((s) => s.id === 'basics')?.screen, '/lessons-tab')
+    assert.equal(nextTourStep('review', true), 'basics')
+    assert.equal(nextTourStep('review', false), null)
+  })
+
+  test('only a learner placed at HSK 1 is shown Basics', () => {
+    assert.equal(tourIncludesBasics(1), true)
+    assert.equal(tourIncludesBasics(2), false)
+    assert.equal(tourIncludesBasics(5), false)
+  })
+
+  test("adding a word keeps a beginner's run headed for Basics", () => {
+    const state: TourState = { status: 'in_progress', step: 'save', withBasics: true }
+    assert.deepEqual(tourAfterAction(state, 'word:add'), { status: 'in_progress', step: 'review', withBasics: true })
   })
 })
 

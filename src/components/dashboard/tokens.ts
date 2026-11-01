@@ -54,6 +54,17 @@ export const dashColors = {
 } as const
 
 /**
+ * The small yellow "Multiple meanings" tag (`components/MultipleMeaningsTag.tsx`),
+ * on the dictionary's cards and New Words. Brown ink on butter yellow, so it
+ * reads at 11pt.
+ */
+export const multipleMeaningsTag = {
+  fill: '#FFF0C2',
+  border: '#F3D27C',
+  ink: '#875A0F',
+} as const
+
+/**
  * Per-card surface tints.
  *
  * Each card is a fill plus a border a step darker than it, rather than a fill

@@ -21,6 +21,7 @@ import {
   requeueMissed,
   sessionProgress,
   withoutListening,
+  withoutSpeaking,
   LISTENING_PAUSE_MINUTES,
   type DrillStep,
 } from '../lib/mixedDrills'
@@ -166,6 +167,7 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
     getWord,
     gradeCard,
     completePracticeRep,
+    markWordUnknown,
     trackLearningEvent,
     matchHistory,
     noteWordsMatched,
@@ -206,6 +208,9 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
       matchedAt: matchHistory,
       // "Can't listen now" pressed in the last half hour: gaps and boards only.
       listening: !isListeningPaused(listeningPausedUntil),
+      // Speaking lives in the drills, never after a flashcard. Read once here:
+      // a device with no recogniser gets no speaking steps rather than dead ends.
+      speaking: isSpeechRecognitionAvailable(),
     })
 
     return [...flashcardSteps, ...drillSteps]
@@ -240,8 +245,6 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
 
   const [index, setIndex] = useState(0)
   const [practice, setPractice] = useState<PracticeState | null>(null)
-  /** Word waiting on a spoken answer before the session moves on, if any. */
-  const [speaking, setSpeaking] = useState<string | null>(null)
   const [stats, setStats] = useState({ reviewed: 0, correct: 0 })
   const [finished, setFinished] = useState(steps.length === 0)
   const [celebrateKey, setCelebrateKey] = useState(0)
@@ -259,16 +262,6 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
    */
   const leavingRef = useRef(false)
   const [secondsLeft, setSecondsLeft] = useState(mode === 'quick' ? QUICK_SESSION_SECONDS : null)
-
-  /*
-   * Whether to gate cards behind saying the word out loud. Read once at mount:
-   * it can't change while the session runs, and a step that appeared halfway
-   * through would be a rule change mid-drill. On a device with no recogniser
-   * the step is skipped entirely rather than shown as a dead end.
-   */
-  const [speakingEnabled] = useState(isSpeechRecognitionAvailable)
-  /* "I can't speak now": no more speaking steps this session. */
-  const [speakingOff, setSpeakingOff] = useState(false)
 
   // Quick review is time-boxed: it ends when the clock does, wherever the learner is.
   useEffect(() => {
@@ -370,23 +363,20 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
     else setIndex((i) => i + 1)
   }
 
-  /**
-   * Finishes a written card by asking for it out loud, then advances.
-   *
-   * Reading and writing a character is not the same as being able to say it, so
-   * the speaking step sits between the two — after the learner has committed to
-   * an answer, before the next card. It never blocks the session: the check
-   * screen carries its own way past.
-   */
-  const advanceThroughSpeaking = (wordId: string) => {
-    if (speakingEnabled && !speakingOff && getWord(wordId)) setSpeaking(wordId)
-    else advance()
+  /* A speaking step, passed or skipped. Never graded: practice, like a match board. */
+  const finishSpeaking = () => {
+    if (slidingOut.current) return
+    slideForward(advance)
   }
 
-  const finishSpeaking = () => {
+  /* "I can't speak now": this step and every speaking step after it go. */
+  const cantSpeakNow = () => {
+    if (slidingOut.current) return
+    onSpeakingPaused()
+    const next = withoutSpeaking(steps, index)
     slideForward(() => {
-      setSpeaking(null)
-      advance()
+      setSteps(next)
+      if (index >= next.length) setFinished(true)
     })
   }
 
@@ -412,7 +402,7 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
     const wordId = step.wordId
     slideForward(() => {
       if (grade === 'again') setPractice({ wordId, remaining: settings.wrongAnswerReps, total: settings.wrongAnswerReps })
-      else advanceThroughSpeaking(wordId)
+      else advance()
     })
   }
 
@@ -490,7 +480,9 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
    * Not a grade of any kind, and that is the point: making the learner press
    * "Again" to get past a word they have honestly not learnt records a lapse
    * against a card they never really attempted, and teaches them to guess
-   * instead of admitting it. The card's schedule is left exactly as it was.
+   * instead of admitting it. The card's schedule is left exactly as it was,
+   * but the miss is counted (`markWordUnknown`), so the word shows under Weak
+   * words and in the Mistakes drill.
    *
    * Appending a *copy of an existing step* does not violate the fixed-plan rule
    * above — the plan is fixed against the **deck**, so that grading cannot
@@ -520,6 +512,8 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
     }
 
     skippedOnce.current.add(wordId)
+    /* Not a grade, but it is a miss: the word shows under Weak words and in Mistakes. */
+    markWordUnknown(wordId)
     const requeued = { ...step, retry: true }
     slideForward(() => {
       setSteps((prev) => [...prev, requeued])
@@ -551,10 +545,9 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
     completePracticeRep(practice.wordId)
     if (practice.remaining - 1 <= 0) {
       /* The last rep leaves like a question; the reps before it slide on by themselves (`PracticeRep`). */
-      const wordId = practice.wordId
       slideForward(() => {
         setPractice(null)
-        advanceThroughSpeaking(wordId)
+        advance()
       })
     } else {
       setPractice((p) => (p ? { ...p, remaining: p.remaining - 1 } : p))
@@ -638,6 +631,7 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
           key={stepKey}
           words={step.wordIds.map((id) => getWord(id)).filter((w): w is VocabWord => !!w)}
           onComplete={handleMatchComplete}
+          onDontKnow={(ids) => ids.forEach(markWordUnknown)}
           onClose={() => closeSession()}
           step={shown.step}
           total={shown.total}
@@ -649,25 +643,16 @@ function ReviewSessionBody({ onListeningPaused, onSpeakingPaused }: { onListenin
 
   if (!word || !step) return null
 
-  // `advanceThroughSpeaking` only sets this for a word it could resolve, so the
-  // lookup failing means the bank changed underneath — fall through to the card
-  // rather than stranding the learner on an empty screen.
-  const speakingWord = speaking ? getWord(speaking) : undefined
-
-  if (speaking && speakingWord) {
+  if (step.kind === 'speaking') {
     return (
       <SessionStage motion={questionMotion.motion} celebrate={celebrateKey}>
-        {/* Owns its whole screen in the Mixed Drills frame — raised progress bar, title, foot — like the drills around it. */}
+        {/* Owns its whole screen in the Mixed Drills frame, like the drills around it. */}
         <PronunciationCheck
-          key={speaking}
-          word={speakingWord}
+          key={stepKey}
+          word={word}
           onPass={finishSpeaking}
           onSkip={finishSpeaking}
-          onCantSpeak={() => {
-            setSpeakingOff(true)
-            onSpeakingPaused()
-            finishSpeaking()
-          }}
+          onCantSpeak={cantSpeakNow}
           onClose={() => closeSession()}
           step={shown.step}
           total={shown.total}

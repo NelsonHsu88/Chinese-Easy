@@ -24,7 +24,7 @@
 /** Where the tour is, in the terms the rest of the app cares about. */
 export type TourStatus = 'not_started' | 'in_progress' | 'completed' | 'dismissed'
 
-export type TourStepId = 'home' | 'new-words' | 'save' | 'review'
+export type TourStepId = 'home' | 'new-words' | 'save' | 'review' | 'basics'
 
 /** A control a step can put the spotlight on. Registered by `TourTarget`. */
 export type TourTargetId =
@@ -48,6 +48,10 @@ export type TourTargetId =
   | 'review-stats'
   | 'review-drills'
   | 'review-sessions'
+  | 'profile-garden'
+  | 'profile-journey'
+  | 'profile-level-test'
+  | 'profile-achievements'
 
 /** Something the learner does that a step can be waiting for. */
 export type TourAction = 'word:add'
@@ -67,7 +71,7 @@ export type TourShifu = 'welcome' | 'point' | 'celebrate' | 'thinking'
 export interface TourStep {
   id: TourStepId
   /** The route this step is about. The overlay opens it if the learner is elsewhere. */
-  screen: '/' | '/new-words'
+  screen: '/' | '/new-words' | '/lessons-tab'
   targetId?: TourTargetId
   title: string
   body: string
@@ -123,7 +127,32 @@ export const TOUR_STEPS: readonly TourStep[] = [
     primaryLabel: 'Got it',
     shifu: 'thinking',
   },
+  /* Beginners only (`tourStepsFor`): where someone brand new should start. */
+  {
+    id: 'basics',
+    screen: '/lessons-tab',
+    targetId: 'learn-third',
+    title: 'New to Chinese?',
+    body: 'Start with Chinese Basics. Pinyin and the tones make every new word easier.',
+    completion: 'targetPress',
+    primaryLabel: 'Start Basics',
+    shifu: 'welcome',
+  },
 ]
+
+/**
+ * The steps this learner's tour runs. Everyone learns the loop (new words →
+ * save → review); a beginner then finishes on Chinese Basics, which a learner
+ * placed above HSK 1 doesn't need pointing at.
+ */
+export function tourStepsFor(withBasics: boolean): readonly TourStep[] {
+  return withBasics ? TOUR_STEPS : TOUR_STEPS.filter((step) => step.id !== 'basics')
+}
+
+/** Whether a learner at this HSK level is shown Chinese Basics at the end of the tour. */
+export function tourIncludesBasics(hskLevel: number): boolean {
+  return hskLevel <= 1
+}
 
 export const WELCOME_COPY = {
   title: 'Welcome to Chinese Easy!',
@@ -140,15 +169,18 @@ export function tourStepById(id: TourStepId | null): TourStep | null {
 }
 
 /** The step after this one, or null at the end. */
-export function nextTourStep(id: TourStepId): TourStepId | null {
-  const index = TOUR_STEPS.findIndex((step) => step.id === id)
-  return TOUR_STEPS[index + 1]?.id ?? null
+export function nextTourStep(id: TourStepId, withBasics = false): TourStepId | null {
+  const steps = tourStepsFor(withBasics)
+  const index = steps.findIndex((step) => step.id === id)
+  return steps[index + 1]?.id ?? null
 }
 
 /** What the app persists. One object under the existing `tourStep` key. */
 export interface TourState {
   status: TourStatus
   step: TourStepId | null
+  /** This run ends on Chinese Basics (a beginner). Only meaningful while in progress. */
+  withBasics?: boolean
 }
 
 export const INITIAL_TOUR: TourState = { status: 'not_started', step: null }
@@ -196,8 +228,8 @@ export function tourAfterAction(state: TourState, action: TourAction): TourState
   const step = tourStepById(state.step)
   if (!step) return state
   if (step.awaits === action || (action === 'word:add' && step.id === 'new-words')) {
-    const next = step.id === 'new-words' ? 'review' : nextTourStep(step.id)
-    return next ? { status: 'in_progress', step: next } : { status: 'completed', step: null }
+    const next = step.id === 'new-words' ? 'review' : nextTourStep(step.id, state.withBasics)
+    return next ? { ...state, step: next } : { status: 'completed', step: null }
   }
   return state
 }

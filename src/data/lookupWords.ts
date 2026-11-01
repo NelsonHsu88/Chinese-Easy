@@ -36,6 +36,15 @@ import type { VocabWord } from '../types'
  */
 export const LOOKUP_HSK_LEVEL = 7
 
+/**
+ * A word's level as shown: "HSK n" up to 6; above that, "HSK 7–9" for words
+ * on the syllabus's top band and "Rare" for everything else.
+ */
+export function hskLevelLabel(word: { hskLevel: number; hskOfficial?: boolean }): string {
+  if (word.hskLevel < LOOKUP_HSK_LEVEL) return `HSK ${word.hskLevel}`
+  return word.hskOfficial ? 'HSK 7–9' : 'Rare'
+}
+
 /** Ids carry their own prefix so a tier-2 word is recognisable wherever it lands. */
 const ID_PREFIX = 'lk-'
 

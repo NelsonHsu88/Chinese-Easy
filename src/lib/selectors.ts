@@ -35,24 +35,33 @@ export function dueCountFor(deck: SrsCard[]): number {
   return deck.filter((c) => c.practiceQueue === 0 && isCardDue(c)).length
 }
 
-/**
- * Cards the learner has slipped on at least once. Surfaced as the "Weak words"
- * counter on the Review hub — a wider net than {@link mistakeCardsFor}, which is
- * what the Mistakes drill actually runs.
- */
-export function weakCardsFor(deck: SrsCard[]): SrsCard[] {
-  return deck.filter((c) => c.lapses >= 1)
+/** Missed and not yet paid back by a later right answer — an Again, a wrong drill answer or an "I don't know". */
+function missedRecently(c: SrsCard): boolean {
+  return (c.recentLapses ?? 0) >= 1
 }
 
 /**
- * Cards the learner *consistently* gets wrong — two or more lapses, not just one
- * bad day. Hardest (highest FSRS difficulty) first, so a Mistakes session opens on the worst
- * offender.
+ * Cards the learner has slipped on: a lapse ever, or a recent miss (an
+ * "I don't know" included). Surfaced as the "Weak words" counter on the Review
+ * hub — a wider net than {@link mistakeCardsFor}.
+ */
+export function weakCardsFor(deck: SrsCard[]): SrsCard[] {
+  return deck.filter((c) => c.lapses >= 1 || missedRecently(c))
+}
+
+/**
+ * What the Mistakes drill runs: words missed recently (an "I don't know"
+ * counts; a later right answer pays each miss back), plus words the learner
+ * *consistently* gets wrong — two or more lapses. Hardest first, so a session
+ * opens on the worst offender.
  */
 export function mistakeCardsFor(deck: SrsCard[]): SrsCard[] {
   return deck
-    .filter((c) => c.lapses >= 2)
-    .sort((a, b) => b.lapses - a.lapses || b.difficulty - a.difficulty)
+    .filter((c) => c.lapses >= 2 || missedRecently(c))
+    .sort(
+      (a, b) =>
+        (b.recentLapses ?? 0) - (a.recentLapses ?? 0) || b.lapses - a.lapses || b.difficulty - a.difficulty,
+    )
 }
 
 /**
@@ -88,11 +97,9 @@ function hasExampleSentence(word: VocabWord): boolean {
  * for HSK 1 vocabulary, so levels below theirs are excluded rather than merely
  * sorted last. Sorting still puts their own level ahead of the stretch level.
  *
- * Once both are used up the queue doesn't end: it carries on with the rest of
- * the bank's teachable words, commonest first — everything above the window,
- * then anything left below it. Frequency is what makes a word worth learning,
- * so after the HSK-shaped start a learner keeps meeting practical vocabulary
- * rather than an empty screen.
+ * Once both are used up the queue carries on with the harder levels above the
+ * window, commonest first — never easier ones: a learner who has run through
+ * their own level has no use for the levels below it.
  *
  * Three further gates keep the cards teachable: only one- and two-character
  * words, only words that already carry an example sentence, and only words that
@@ -136,15 +143,15 @@ export function newWordsPool(
   const frequencyRank = new Map(allWords.map((w, i) => [w.id, i]))
   const rank = (w: VocabWord) =>
     (frequencyRank.get(w.id) ?? 0) + (seed === undefined ? 0 : jitter(w.id, seed) * NEW_WORD_JITTER)
-  const ordered = candidates.sort((a, b) => a.hskLevel - b.hskLevel || rank(a) - rank(b))
+  /* The syllabus's own words for these levels first; words off the syllabus
+     (whose level is only an estimate) after them. */
+  const offSyllabus = (w: VocabWord) => (w.hskOfficial ? 0 : 1)
+  const ordered = candidates.sort((a, b) => offSyllabus(a) - offSyllabus(b) || a.hskLevel - b.hskLevel || rank(a) - rank(b))
 
-  /* After the window, in bank (frequency) order: above it first, then below.
-     Kept apart from the window's ordering so goal-weighting never pulls these
-     ahead of the learner's own level. */
-  const beyond = [
-    ...teachable.filter((w) => w.hskLevel > level + 1),
-    ...teachable.filter((w) => w.hskLevel < level),
-  ]
+  /* After the window, harder levels only, in bank (frequency) order. Kept
+     apart from the window's ordering so goal-weighting never pulls these ahead
+     of the learner's own level. */
+  const beyond = teachable.filter((w) => w.hskLevel > level + 1)
 
   return [
     ...spreadHeadCharacters(weightTowardsGoal(ordered, settings.learningGoal)),
@@ -203,9 +210,10 @@ export const HSK_MAX_LEVEL = 6
  *
  * New Words serves each level commonest-first, so 60% of it is the words a
  * learner will meet most. The other 40% is the long tail, which takes far longer
- * to learn and gives far less back. Measured against the teachable pool (626 at
- * HSK 1, 1,264 at HSK 4), not the raw level, because the rest of the level
- * (names, three-character compounds, words with no example) is never offered.
+ * to learn and gives far less back. Measured against the level's teachable
+ * syllabus words, not the raw level: the rest (three-character compounds, words
+ * with no example) is never offered, and words off the syllabus only carry an
+ * estimated level.
  */
 const LEVEL_UP_SHARE = 0.6
 
@@ -216,7 +224,7 @@ export function levelUpTarget(allWords: VocabWord[], level: number): number {
   let counts = teachableCounts.get(allWords)
   if (!counts) {
     counts = new Map()
-    for (const w of allWords) if (isNewWordCandidate(w)) counts.set(w.hskLevel, (counts.get(w.hskLevel) ?? 0) + 1)
+    for (const w of allWords) if (w.hskOfficial && isNewWordCandidate(w)) counts.set(w.hskLevel, (counts.get(w.hskLevel) ?? 0) + 1)
     teachableCounts.set(allWords, counts)
   }
   return Math.max(1, Math.round((counts.get(level) ?? 0) * LEVEL_UP_SHARE))

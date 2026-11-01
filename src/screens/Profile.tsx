@@ -2,8 +2,12 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNod
 import { Animated, Image, Platform, Pressable, Text, View, useWindowDimensions } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { router, useLocalSearchParams, type Href } from 'expo-router'
-import { Award, ChevronRight, Clock3, Flame, Lock, Pencil, Plus, Settings as SettingsIcon, TrendingDown, Zap } from 'lucide-react-native'
+import { Award, ChevronRight, Clock3, Flame, Lock, Pencil, Plus, Settings as SettingsIcon, TrendingDown, Trophy, Zap } from 'lucide-react-native'
+import type { ScrollViewInstance } from 'react-native'
+import { TourScrollContext, TourTarget } from '../components/tour/targets'
+import { nextTestLevel } from '../lib/levelTest'
 import { DEFAULT_SETTINGS, useApp } from '../context/AppContext'
+import { useAuth } from '../context/AuthContext'
 import { dueCountFor, weakCardsFor, HSK_MAX_LEVEL, levelUpTarget, studiedByLevel } from '../lib/selectors'
 import { getLevelFromXp, levelTitle } from '../lib/progression/levels'
 import { PROFILE_REWARDS } from '../lib/progression/profileRewards'
@@ -68,6 +72,8 @@ type IconType = ComponentType<{ size: number; color: string; strokeWidth: number
 export function Profile() {
   const { settings, xp, streak, progression, achievementStats, deck, wordBank, getWord } = useApp()
   const { sakura, ink } = useProfileCosmetics()
+  /* A guest has no account: the card under Edit profile offers one. */
+  const { userId } = useAuth()
   const { width } = useWindowDimensions()
   const column = Math.min(width, PROF_CONTENT_MAX)
   const content = column - s.screen * 2
@@ -96,6 +102,20 @@ export function Profile() {
 
   const level = getLevelFromXp(xp)
   const hsk = Math.min(HSK_MAX_LEVEL, Math.max(1, settings.hskLevel))
+  /** The level the level-up test would move them to; null at HSK 6. */
+  const testLevel = nextTestLevel(hsk)
+
+  /*
+   * The Profile guide spotlights the HSK Journey and the level-up test, both
+   * below the fold — so it can ask for a scroll. The offset is tracked rather
+   * than read back, which a ScrollView cannot do.
+   */
+  const scrollRef = useRef<ScrollViewInstance>(null)
+  const scrollOffset = useRef(0)
+  const tourScrollBy = useMemo(
+    () => (dy: number) => scrollRef.current?.scrollTo({ y: Math.max(0, scrollOffset.current + dy), animated: true }),
+    [],
+  )
   const name = settings.username.trim() || DEFAULT_SETTINGS.username
   const stats = useMemo(() => ({ due: dueCountFor(deck), weak: weakCardsFor(deck).length }), [deck])
 
@@ -148,14 +168,22 @@ export function Profile() {
       </View>
 
       <Animated.ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
-        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: NATIVE })}
+        onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+          useNativeDriver: NATIVE,
+          listener: (e: { nativeEvent: { contentOffset: { y: number } } }) => {
+            scrollOffset.current = e.nativeEvent.contentOffset.y
+          },
+        })}
         contentContainerStyle={{ alignItems: 'center', paddingBottom: s.xxl * 2 }}
       >
+        <TourScrollContext.Provider value={tourScrollBy}>
         {/* The banner: the learner's Scholar's Garden behind the big avatar.
             Two sibling targets, never nested (nested Pressables double-fire on
             web): the garden opens the garden, the avatar changes the photo. */}
+        <TourTarget id="profile-garden" radius={0} style={{ alignSelf: 'stretch' }}>
         <View style={{ alignSelf: 'stretch', height: bannerHeight, backgroundColor: c.tile, overflow: 'hidden' }}>
           <Pressable
             onPress={go('/profile/garden')}
@@ -177,6 +205,7 @@ export function Profile() {
             </Pressable>
           </View>
         </View>
+        </TourTarget>
 
         <View style={{ width: column, paddingHorizontal: s.screen }}>
           {/* The showcase: up to three awards chosen on the Achievements page
@@ -224,7 +253,23 @@ export function Profile() {
               <ProfileButton label="Edit profile" icon={Pencil} tone="quiet" onPress={edit} />
             </View>
 
-            {stepsLeft > 0 && <FinishCard stepsLeft={stepsLeft} onContinue={edit} />}
+            {!userId ? (
+              <FinishCard
+                title="Save your progress"
+                caption="Add an email and username"
+                accessibilityLabel="Create an account to save your progress"
+                onContinue={go('/settings/account')}
+              />
+            ) : (
+              stepsLeft > 0 && (
+                <FinishCard
+                  title="Finish your profile!"
+                  caption={`${stepsLeft} ${stepsLeft === 1 ? 'step' : 'steps'} left`}
+                  accessibilityLabel="Continue setting up your profile"
+                  onContinue={edit}
+                />
+              )
+            )}
           </Reveal>
 
           <Reveal from="bottom" {...beat}>
@@ -239,6 +284,7 @@ export function Profile() {
             </View>
 
             <SectionLabel title="HSK Journey" onPress={go('/settings/progress')} />
+            <TourTarget id="profile-journey" radius={profRadius.medium}>
             <PressableScale onPress={go('/settings/progress')} scaleTo={0.985} accessibilityLabel={`HSK ${hsk}. ${journey.studied} of ${journey.target} words. Open progress`}>
               <View style={{ borderRadius: profRadius.medium, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.card, padding: s.lg }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -278,6 +324,25 @@ export function Profile() {
                 </Text>
               </View>
             </PressableScale>
+            </TourTarget>
+
+            {/* The level-up test, one tap from Profile rather than buried in
+                Progress: a learner who already knows the words needn't study
+                hundreds of them to move up. A sibling of the card, not inside
+                it — nested Pressables double-fire on web. */}
+            {testLevel != null && (
+              <TourTarget id="profile-level-test" radius={25} style={{ marginTop: s.md }}>
+                <View style={{ flexDirection: 'row' }}>
+                  <ProfileButton
+                    label={`Take the HSK ${testLevel} test`}
+                    icon={Trophy}
+                    tone="quiet"
+                    trailing
+                    onPress={go('/level-test')}
+                  />
+                </View>
+              </TourTarget>
+            )}
 
             <SectionLabel title="Rewards" onPress={go('/profile/rewards')} />
             <GridRow>
@@ -323,6 +388,7 @@ export function Profile() {
             </GridRow>
 
             <SectionLabel title="Achievements" onPress={go('/profile/achievements')} />
+            <TourTarget id="profile-achievements" radius={profRadius.medium}>
             <GridRow>
               {medals.map((def) => {
                 const earned = !!progression.achievements.unlocked[def.id]
@@ -347,8 +413,10 @@ export function Profile() {
                 )
               })}
             </GridRow>
+            </TourTarget>
           </Reveal>
         </View>
+        </TourScrollContext.Provider>
       </Animated.ScrollView>
       <EditProfileSheet visible={editing} onClose={() => setEditing(false)} />
     </SafeAreaView>
@@ -476,8 +544,21 @@ function OverviewTile({ width, icon: Icon, tint, value, label }: { width: number
   )
 }
 
-/** Duolingo's "Finish your profile!" card: Shifu, the steps left, and a Continue that opens the editor. */
-function FinishCard({ stepsLeft, onContinue }: { stepsLeft: number; onContinue: () => void }) {
+/**
+ * Duolingo's "Finish your profile!" card: Shifu, a caption, and a Continue.
+ * A guest sees it as "Save your progress", opening the account screen.
+ */
+function FinishCard({
+  title,
+  caption,
+  accessibilityLabel,
+  onContinue,
+}: {
+  title: string
+  caption: string
+  accessibilityLabel: string
+  onContinue: () => void
+}) {
   return (
     <View
       style={{
@@ -495,12 +576,12 @@ function FinishCard({ stepsLeft, onContinue }: { stepsLeft: number; onContinue: 
         resizeMode="contain"
         style={{ position: 'absolute', right: 6, top: 4, width: 112, height: 112 * (116 / 164) }}
       />
-      <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 19, lineHeight: 24, color: c.navy }}>Finish your profile!</Text>
+      <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 19, lineHeight: 24, color: c.navy }}>{title}</Text>
       <Text style={{ ...t.caps, fontFamily: 'NunitoBold', color: c.caps, textTransform: 'uppercase', marginTop: 4 }}>
-        {stepsLeft} {stepsLeft === 1 ? 'step' : 'steps'} left
+        {caption}
       </Text>
       <View style={{ marginTop: s.lg }}>
-        <PressableScale onPress={onContinue} scaleTo={0.97} accessibilityLabel="Continue setting up your profile">
+        <PressableScale onPress={onContinue} scaleTo={0.97} accessibilityLabel={accessibilityLabel}>
           <LiftedFace height={46} fill={c.jade} shoulder={c.jadeDark}>
             <Text style={{ fontFamily: 'NunitoExtraBold', fontSize: 15, letterSpacing: 0.8, color: c.onJade }}>CONTINUE</Text>
           </LiftedFace>

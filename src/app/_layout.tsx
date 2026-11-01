@@ -54,6 +54,7 @@ const NotoSerifSC_400Regular = require('../assets/fonts/NotoSerifSC_400Regular.t
 const NotoSerifSC_500Medium = require('../assets/fonts/NotoSerifSC_500Medium.ttf')
 const NotoSerifSC_600SemiBold = require('../assets/fonts/NotoSerifSC_600SemiBold.ttf')
 const NotoSansTC_700Bold = require('../assets/fonts/NotoSansTC_700Bold.ttf')
+const NotoSansSC_700Bold = require('../assets/fonts/NotoSansSC_700Bold.ttf')
 const NotoSerifTC_400Regular = require('../assets/fonts/NotoSerifTC_400Regular.ttf')
 const NotoSerifTC_500Medium = require('../assets/fonts/NotoSerifTC_500Medium.ttf')
 const NotoSerifTC_600SemiBold = require('../assets/fonts/NotoSerifTC_600SemiBold.ttf')
@@ -103,6 +104,9 @@ const APP_FONTS = {
   // dictionary use the serif. A different typeface, so registered separately.
   // Bold only: nothing set Regular or Medium, which were 7MB together.
   NotoSansTCBold: NotoSansTC_700Bold,
+  // Its simplified twin: the TC face lacks simplified-only glyphs (们 这 谢 时),
+  // which fell back to a system font of another weight in the placement test.
+  NotoSansSCBold: NotoSansSC_700Bold,
 
   NotoSerifTCMedium: NotoSerifTC_500Medium,
   NotoSerifTCSemiBold: NotoSerifTC_600SemiBold,

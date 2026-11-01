@@ -3,6 +3,7 @@ import type {
   AppSettings,
   DailyProgress,
   Grade,
+  PlacementAnswer,
   PlacementResult,
   ReviewLogEntry,
   SrsCard,
@@ -23,6 +24,7 @@ import {
 import {
   INITIAL_TOUR,
   nextTourStep,
+  tourIncludesBasics,
   normalizeTour,
   tourAfterAction,
   type TourAction,
@@ -91,10 +93,12 @@ import {
 export const DEFAULT_SETTINGS: AppSettings = {
   username: 'Learner',
   email: '',
-  script: 'traditional',
-  /* Matches `defaultPhoneticFor('traditional')`. Existing installs keep their
-     stored value — the settings blob hydrates over these defaults. */
-  phoneticScript: 'zhuyin',
+  /* Simplified + pinyin: what most learners, and most courses, start with.
+     Existing installs keep their stored value — the settings blob hydrates
+     over these defaults. */
+  script: 'simplified',
+  /* Matches `defaultPhoneticFor('simplified')`. */
+  phoneticScript: 'pinyin',
   reviewDirection: 'production',
   dailyReviewLimit: 30,
   dailyNewWordLimit: 5,
@@ -162,6 +166,23 @@ export interface WordListened {
 interface OnboardingState {
   complete: boolean
   result?: PlacementResult
+  /** Where an unfinished onboarding was left, so reopening the app picks it up there. */
+  progress?: OnboardingProgress
+}
+
+/**
+ * An unfinished onboarding, saved as the learner goes. Dropped when onboarding
+ * completes (`completeOnboarding` writes a fresh state without it).
+ */
+export interface OnboardingProgress {
+  /** The page they were on (an `Onboarding.tsx` step name). */
+  step: string
+  /** The pages behind it, so Back still walks the way they came. */
+  history: string[]
+  /** The placement test's seed, so a resumed test asks the same words. */
+  placementSeed?: number
+  /** Answers given so far; the test resumes at the next question. */
+  answers?: PlacementAnswer[]
 }
 
 interface StreakState {
@@ -270,6 +291,12 @@ interface AppContextValue {
    */
   finishBasicsLesson: (key: string, result: { correct: number; total: number }) => boolean
   completePracticeRep: (wordId: string) => void
+  /**
+   * "I don't know" on a drill question: counts as a miss for Weak words and
+   * Mistakes (`recentLapses`) without grading the card, so its schedule is
+   * untouched. A flashcard's "I don't know" is an Again and counts through that.
+   */
+  markWordUnknown: (wordId: string) => void
 
   /*
    * ── Progression ──────────────────────────────────────────────────────────
@@ -311,6 +338,10 @@ interface AppContextValue {
    */
   loadedUserId: string | null
   placementResult?: PlacementResult
+  /** Where an unfinished onboarding was left, if anywhere. Read once, at the onboarding screen's mount. */
+  onboardingProgress?: OnboardingProgress
+  /** Saves (or, with null, forgets) the unfinished onboarding's place. Ignored once onboarding is complete. */
+  saveOnboardingProgress: (progress: OnboardingProgress | null) => void
   completeOnboarding: (result: PlacementResult) => void
   retakePlacementTest: () => void
   /**
@@ -1545,7 +1576,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const offerTour = useCallback(() => setTour(INITIAL_TOUR), [])
-  const startTour = useCallback(() => setTour({ status: 'in_progress', step: 'home' }), [])
+  /* A beginner's run ends on Chinese Basics; read once, as the tour starts. */
+  const startTour = useCallback(
+    () => setTour({ status: 'in_progress', step: 'home', withBasics: tourIncludesBasics(settings.hskLevel) }),
+    [settings.hskLevel],
+  )
 
   /* Real time, not `devNow()`: this is a wall-clock promise to the learner
      ("for 30 minutes"), and a frozen developer clock would make it never end. */
@@ -1561,8 +1596,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const advanceTour = useCallback((from: TourStepId) => {
     setTour((prev) => {
       if (prev.status !== 'in_progress' || prev.step !== from) return prev
-      const next = nextTourStep(from)
-      return next ? { status: 'in_progress', step: next } : { status: 'completed', step: null }
+      const next = nextTourStep(from, prev.withBasics)
+      return next ? { ...prev, step: next } : { status: 'completed', step: null }
     })
   }, [])
 
@@ -1586,9 +1621,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
+  const markWordUnknown = useCallback((wordId: string) => {
+    setDeck((prev) =>
+      prev.map((c) => (c.wordId === wordId ? { ...c, recentLapses: (c.recentLapses ?? 0) + 1 } : c)),
+    )
+  }, [])
+
   const completeOnboarding = useCallback((result: PlacementResult) => {
     setOnboarding({ complete: true, result })
     setSettings((prev) => ({ ...prev, hskLevel: result.estimatedHsk }))
+  }, [])
+
+  const saveOnboardingProgress = useCallback((progress: OnboardingProgress | null) => {
+    setOnboarding((prev) => {
+      if (prev.complete) return prev
+      if (progress === null) {
+        if (!prev.progress) return prev
+        const { progress: _dropped, ...rest } = prev
+        return rest
+      }
+      return { ...prev, progress }
+    })
   }, [])
 
   const retakePlacementTest = useCallback(() => {
@@ -1824,6 +1877,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addCustomWord,
     gradeCard,
     completePracticeRep,
+    markWordUnknown,
     progression,
     achievementStats,
     awardXp,
@@ -1840,6 +1894,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onboardingComplete: onboarding.complete,
     loadedUserId,
     placementResult: onboarding.result,
+    onboardingProgress: onboarding.progress,
+    saveOnboardingProgress,
     completeOnboarding,
     retakePlacementTest,
     resetToFirstRun,

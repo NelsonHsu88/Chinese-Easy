@@ -361,8 +361,11 @@ export function LaunchIntro({ appReady, onVisible, onDone }: Props) {
         </View>
       )}
 
-      {/* The wave. Its origin is the front crest's top line. */}
-      {!reduceMotion && (
+      {/* The wave. Its origin is the front crest's top line. Not drawn until its
+          act begins: parked "just off-screen" it still peeked in under the
+          video wherever the window is shorter than the screen (Android's
+          navigation bar). It starts below the edge, so mounting late is unseen. */}
+      {!reduceMotion && waving && (
         <Animated.View
           pointerEvents="none"
           style={{

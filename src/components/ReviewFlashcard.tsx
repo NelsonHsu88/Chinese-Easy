@@ -22,6 +22,7 @@ import { ReadingSentence } from './dictionary/ReadingSentence'
 import { HanziStage } from './HanziStage'
 import { PressableScale, LiftedFace, DASH_LIFT } from './dashboard/parts'
 import { onbVerdict } from './onboarding/tokens'
+import { drillColors, drillShoulders, drillType } from './drills/tokens'
 import { playTints } from './dashboard/tokens'
 import { DiscButton, FlashcardHeader, WritingCard, card, useFlashcardColumn } from './flashcard/parts'
 import {
@@ -341,8 +342,21 @@ export function ReviewFlashcard({
               </View>
             </View>
 
-            <View style={{ marginTop: 14 }}>
-              <PressableScale onPress={reveal} scaleTo={1} haptic={false} accessibilityLabel="Show answer">
+            {/*
+              "I don't know" beside Show Answer, the same quiet button as in the
+              drills. The honest way out, before the answer: it shows the answer
+              at once, already marked Again, and Continue commits that Again —
+              the writing reps follow, as for any miss. Not after the reveal:
+              once the answer is on screen, the learner judges themselves with
+              the tiles.
+            */}
+            <View style={{ marginTop: 14, flexDirection: 'row', gap: 12 }}>
+              <PressableScale onPress={dontKnow} scaleTo={1} haptic={false} wrapperStyle={{ flex: 1 }} accessibilityLabel="I don't know this word">
+                <LiftedFace height={fcSize.button} fill={drillColors.card} shoulder={drillShoulders.quiet} border={drillColors.outline} shadow={false}>
+                  <Text style={{ fontFamily: 'NunitoBold', ...drillType.button, color: drillColors.slate }}>I don’t know</Text>
+                </LiftedFace>
+              </PressableScale>
+              <PressableScale onPress={reveal} scaleTo={1} haptic={false} wrapperStyle={{ flex: 1.15 }} accessibilityLabel="Show answer">
                 <LiftedFace height={fcSize.button} fill={c.green} shoulder={fcShoulders.primary}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Eye size={20} color={c.onColor} />
@@ -350,23 +364,6 @@ export function ReviewFlashcard({
                   </View>
                 </LiftedFace>
               </PressableScale>
-
-              {/*
-                The honest way out, before the answer: it shows the answer at
-                once, already marked Again, so the learner sees what they
-                didn't know, and Continue commits that Again — the writing reps
-                follow, as for any miss. Not after the reveal: once the answer
-                is on screen, the learner judges themselves with the tiles.
-              */}
-              <Pressable
-                onPress={dontKnow}
-                accessibilityRole="button"
-                accessibilityLabel="I don't know this word"
-                hitSlop={6}
-                style={{ alignSelf: 'center', paddingVertical: 12, paddingHorizontal: 16, marginTop: 4 }}
-              >
-                <Text style={{ fontFamily: 'NunitoSemiBold', ...t.quiet, color: c.slate }}>I don’t know</Text>
-              </Pressable>
             </View>
           </Animated.View>
 

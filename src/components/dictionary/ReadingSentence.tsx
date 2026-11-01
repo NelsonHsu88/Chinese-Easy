@@ -1,5 +1,5 @@
-import { useMemo, type ReactNode } from 'react'
-import { View, Text, Animated } from 'react-native'
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { View, Text, Animated, type LayoutChangeEvent } from 'react-native'
 import { useApp } from '../../context/AppContext'
 import { useReadingFade } from '../readingFade'
 import { displayPinyin, hanziFont } from '../../lib/hanzi'
@@ -87,6 +87,64 @@ export function ReadingSentence({
   const face = hanziFont(script ?? settings.script)
   const segments = useMemo(() => segmentText(text, wordBank), [text, wordBank])
 
+  /*
+   * Flush line starts. A column is as wide as its reading, with the glyph
+   * centred in it, so a line that opens on a wide reading ("zhuàng", ㄋㄥˊ)
+   * starts its glyph a few points in, and the next line, opening on a narrow
+   * one, sticks out past it. After layout, each line is slid left by its first
+   * glyph's inset, so every line's first character sits on the same edge (the
+   * reading under it hangs into the margin instead).
+   *
+   * A translate, not a margin: it moves nothing else, so the wrap can't change
+   * and flip back. If layout never reports (it doesn't always on web), lines
+   * simply stay where they were.
+   */
+  const groupBoxes = useRef(new Map<number, { x: number; y: number }>())
+  const glyphInsets = useRef(new Map<number, number>())
+  /* A new sentence (or reading script, or size) remounts the lines and starts
+     measuring afresh; shifts measured for the old one are ignored. */
+  const layoutKey = `${text}|${settings.phoneticScript}|${size}`
+  const measuredFor = useRef(layoutKey)
+  if (measuredFor.current !== layoutKey) {
+    measuredFor.current = layoutKey
+    groupBoxes.current.clear()
+    glyphInsets.current.clear()
+  }
+  const [shiftState, setShiftState] = useState<{ key: string; shifts: Record<number, number> }>({ key: layoutKey, shifts: {} })
+  const lineShift = shiftState.key === layoutKey ? shiftState.shifts : {}
+  const relayout = useCallback(() => {
+    const lines = new Map<number, { x: number; inset: number }>()
+    for (const [key, box] of groupBoxes.current) {
+      const inset = glyphInsets.current.get(key)
+      if (inset === undefined) continue
+      const y = Math.round(box.y)
+      const line = lines.get(y)
+      if (!line || box.x < line.x) lines.set(y, { x: box.x, inset })
+    }
+    const next: Record<number, number> = {}
+    for (const [key, box] of groupBoxes.current) {
+      const inset = lines.get(Math.round(box.y))?.inset ?? 0
+      if (inset > 0.5) next[key] = Math.round(inset * 2) / 2
+    }
+    const key = measuredFor.current
+    setShiftState((prev) => {
+      const a = Object.keys(prev.shifts)
+      const b = Object.keys(next)
+      if (prev.key === key && a.length === b.length && b.every((k) => prev.shifts[+k] === next[+k])) return prev
+      return { key, shifts: next }
+    })
+  }, [])
+  const onGroupLayout = (key: number) => (e: LayoutChangeEvent) => {
+    const { x, y } = e.nativeEvent.layout
+    groupBoxes.current.set(key, { x, y })
+    relayout()
+  }
+  /* The first glyph's x inside its column is exactly how far it sits in. */
+  const onFirstGlyphLayout = (key: number) => (e: LayoutChangeEvent) => {
+    glyphInsets.current.set(key, Math.max(0, e.nativeEvent.layout.x))
+    relayout()
+  }
+
   const palette = TONES[tone]
   const hanzi = size === 'compact' ? 'text-[17px] leading-[24px]' : 'text-[19px] leading-[26px]'
   const reading = size === 'compact' ? 'text-[10px] leading-[14px]' : 'text-[11px] leading-[15px]'
@@ -138,7 +196,12 @@ export function ReadingSentence({
       <View style={{ flexDirection: 'row', gap: charGap }}>
         {cells.map((cell, k) => (
           <View key={k} style={{ alignItems: 'center', minWidth: punctuation ? 0 : glyph }}>
-            <Text className={`${face} ${hanzi} ${isTerm ? palette.term : palette.hanzi}`}>{cell.glyph}</Text>
+            <Text
+              onLayout={k === 0 ? onFirstGlyphLayout(i) : undefined}
+              className={`${face} ${hanzi} ${isTerm ? palette.term : palette.hanzi}`}
+            >
+              {cell.glyph}
+            </Text>
             {/*
               An empty line still reserves its height. Without it the words that
               do have a reading sit lower than the ones that don't, and the
@@ -181,9 +244,17 @@ export function ReadingSentence({
   })
 
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: wordGap }}>
+    <View key={layoutKey} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: wordGap }}>
       {groups.map((group) => (
-        <View key={group.key} style={{ flexDirection: 'row', gap: charGap }}>
+        <View
+          key={group.key}
+          onLayout={onGroupLayout(group.key)}
+          style={{
+            flexDirection: 'row',
+            gap: charGap,
+            transform: lineShift[group.key] ? [{ translateX: -lineShift[group.key] }] : undefined,
+          }}
+        >
           {group.word}
           {group.trail}
         </View>

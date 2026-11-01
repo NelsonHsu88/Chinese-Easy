@@ -35,6 +35,36 @@ const COMMENTARY =
   /^(used |used\b|indicating|indicates|classifier|abbr\.|abbreviation|variant of|old variant|see |also written|surname\b|erhua variant|lit\.)|\b(particle|interjection)\b/i
 
 /**
+ * A note saying a sense is outside everyday standard Mandarin. Such a sense
+ * stays listed but shouldn't be the one a card leads with.
+ */
+const RESTRICTED_USE = /\((?:[^)]*\b)?(slang|archaic|literary|old use|dialect|Cantonese|derogatory|euphemism|vulgar|in former times|historical)\b[^)]*\)/i
+
+/**
+ * A note about grammar rather than meaning: "(pronoun) this", "(third-person
+ * singular) he", "to be (followed by substantives only)". The word page lists
+ * them; a card leaves them off, and search ignores them.
+ */
+const GRAMMAR_NOTE =
+  /^\((?:pronoun|specifier|adjective|adverb|noun|verb|conjunction|preposition|prefix|suffix|noun suffix|verb suffix|third-person singular|directional complement|transitive|intransitive|transitive or intransitive|[^)]*particle|negative prefix[^)]*|(?:followed by|before|after|between|joining|used)\b[^)]*)\)$/i
+
+/**
+ * A sense without any notes, for tests on how it starts: "(Taiwan) meter" and
+ * "(of an insect) to drink" begin with their gloss.
+ */
+function withoutNotes(sense: string): string {
+  return sense.replace(/\s*\([^)]*\)\s*/g, ' ').replace(/\s{2,}/g, ' ').trim()
+}
+
+/** A sense without its grammar notes. */
+export function withoutGrammarNotes(sense: string): string {
+  return sense
+    .replace(/\s*\([^)]*\)\s*/g, (note) => (GRAMMAR_NOTE.test(note.trim()) ? ' ' : note))
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+/**
  * CC-CEDICT's shorthand, spelled out.
  *
  * "to do sth more quickly" is dictionary notation leaking onto a flashcard —
@@ -115,11 +145,14 @@ function isPlainWord(raw: string): boolean {
  * second-guessing the source across the board.
  */
 function senseScore(sense: string, position: number): number {
-  const plain = plainEnglish(sense)
+  // A note qualifies the sense rather than lengthening it: "to drink (alcohol)"
+  // is a two-word gloss. A note that limits where it's used costs instead.
+  const plain = plainEnglish(sense.replace(/\([^)]*\)/g, ' '))
   const words = plain.split(/\s+/).filter(Boolean)
 
   let score = position * 3
   if (COMMENTARY.test(sense)) score += 100
+  if (RESTRICTED_USE.test(sense)) score += 12
   for (const raw of words) {
     const token = raw.replace(/[^A-Za-z-]/g, '')
     if (!token) continue
@@ -208,7 +241,9 @@ export function shortGloss(word: VocabWord, maxSenses = DEFAULT_MAX_SENSES): str
   if (maxSenses !== 1) return conciseDefinition(word.definition, maxSenses)
   const ranked = rankedSenses(word.definition)
   if (ranked.length === 0) return plainEnglish(word.definition)
-  return plainEnglish(ranked[exampleSenseIndex(word, ranked)].sense)
+  // Meaning notes stay ("to drink (alcohol)"); grammar notes are for the word page.
+  const sense = ranked[exampleSenseIndex(word, ranked)].sense
+  return plainEnglish(withoutGrammarNotes(sense) || sense)
 }
 
 /**
@@ -225,6 +260,154 @@ export function allSenses(word: VocabWord): string[] {
 }
 
 /**
+ * A label that puts a sense outside everyday Mandarin: a specialist field or a
+ * register a learner wouldn't reach for. 能 "(physics) energy" is real, but it
+ * isn't why a learner should know 能 means more than "can".
+ */
+const SPECIALIST_LABEL =
+  /^\((?:[^)]*\b)?(slang|literary|archaic|old use|dialect|Cantonese|derogatory|vulgar|euphemism|euph\.|jocular|in former times|historical|mathematics|computing|computer|chemistry|medicine|physics|Buddhism|Taoism|sports|botany|geology|anatomy|military|music|law|finance|linguistics|zoology|biology|astronomy|electronics|economics|geometry|statistics|biochemistry|agriculture|photography|mining|psychology|meteorology|grammar|gaming|Internet)\b[^)]*\)/i
+
+/** "haven't" → "have not", so it shares a word with "to not have". */
+function expandContractions(sense: string): string {
+  return sense
+    .replace(/\bcan't\b/gi, 'can not')
+    .replace(/\bwon't\b/gi, 'will not')
+    .replace(/n't\b/gi, ' not')
+}
+
+/*
+ * Whether a word has more than one distinct meaning: 說 "to speak … theory",
+ * 被 "quilt … (passive)", 等 "to wait … rank". The flag on a card says the
+ * gloss shown isn't the whole story.
+ *
+ * CC-CEDICT lists synonyms as separate senses (我 "I; me; my", 知道 "to know;
+ * to become aware of"), so counting senses would flag nearly every word.
+ * Instead, senses are merged into meanings:
+ *
+ * - senses that share a content word are one meaning ("to thank; thanks");
+ * - neighbouring senses of the same kind, both verbs ("to …") or both not, are
+ *   one meaning — CC-CEDICT lists a meaning's synonyms together and starts a
+ *   new run when the meaning changes;
+ * - commentary, cross-references, surnames, suffixes and specialist or
+ *   off-everyday senses don't count at all.
+ *
+ * It errs towards leaving the flag off: 月 "moon; month" (two nouns) goes
+ * unflagged. A flag on a synonym list would teach the learner to ignore it.
+ */
+/*
+ * Words whose meanings differ but which the rules below can't see: two nouns
+ * side by side read like CC-CEDICT synonyms ("big; large"), and 米 "uncooked
+ * rice; meter" or 月 "moon; month" are exactly that shape. No offline signal
+ * tells them apart (a thesaurus built from the bank's own co-listings flagged
+ * 人 "person; people" and 媽媽 "mama; mother"), so these are listed by hand,
+ * chosen from the common words where the rules split nothing.
+ *
+ * Keyed by traditional form, each with the sense that makes it a second
+ * meaning. The flag only applies while the entry still lists that sense, so a
+ * bank rebuild can't leave it on a different reading.
+ */
+const LISTED_MULTIPLE_MEANINGS: Record<string, string> = {
+  米: 'meter', 月: 'month', 天: 'sky', 飯: 'fan', 先生: 'husband', 馬上: 'on horseback',
+  才: 'just now', 剛: 'just', 所: 'place', 派: 'faction', 門: 'family', 盾: 'currency',
+  貓: 'modem', 種: 'species', 子: 'seed', 塔: 'tart', 聲: 'reputation', 元: 'first',
+  菜: 'weak', 空: 'sky', 票: 'banknote', 洞: 'zero', 紅: 'popular', 麥: 'mic', 煙: 'smoke',
+  酷: 'cool', 額: 'specified number', 牌: 'brand', 情: 'situation', 皮: 'naughty',
+  利: 'profit', 腔: 'accent', 戲: 'trick', 熟: 'familiar', 機: 'opportunity', 蠻: 'quite',
+  案: 'table', 單: 'single', 數: 'several', 秀: 'show', 草: 'draft', 師: 'army division',
+  碼: 'yard', 座: 'constellation', 東: 'host', 沙: 'hoarse', 方: 'direction', 堡: 'burger',
+  胸: 'mind', 極: 'pole', 風: 'news',
+  // Reviewed 2026-10-27 against the 2,500 commonest teachable words.
+  好: 'easy to', 要: 'important', 想: 'to miss', 就: 'merely', 快: 'almost', 找: 'to return',
+  點: 'to order', 看: 'to visit', 過: 'to celebrate', 坐: 'to take', 穿: 'to wear', 回: 'to reply',
+  老: 'always', 拉: 'to play', 拍: 'to take', 賣: 'to betray', 算: 'to regard as', 謝: 'to wither',
+  棒: 'smart', 活: 'work', 間: 'room', 吹: 'to boast', 自: 'from', 輸: 'to transport',
+  邊: 'simultaneously', 推: 'to refuse', 背: 'to learn by heart', 修: 'to repair',
+  交: 'to make friends', 牛: 'awesome', 還是: 'or', 等等: 'wait a minute', 明白: 'to understand',
+  所有: 'to possess', 對不起: 'to let down', 加油: 'to make an extra effort', 開心: 'to make fun of',
+  寶貝: 'darling', 厲害: 'amazing', 案子: 'case', 將軍: 'to check', 老大: 'boss', 酒店: 'hotel',
+  太陽: 'temple', 好看: 'in an embarrassing situation', 垃圾: 'of poor quality', 一塊: 'one yuan',
+  便宜: 'a petty advantage', 帽子: 'label', 出口: 'to export', 陽光: 'upbeat', 對象: 'boyfriend',
+  學會: 'institute', 千萬: 'one must', 左右: 'approximately', 回頭: 'later', 制服: 'uniform',
+}
+
+/*
+ * The other direction: common words the rules split but whose senses are one
+ * idea seen from different sides — 歌 "song; to sing", 偷 "to steal; thief",
+ * 能 "can; ability". Keyed by traditional form; these never carry the tag.
+ */
+const LISTED_SINGLE_MEANING = new Set([
+  '能', '忙', '完', '病', '吻', '歌', '尿', '餓', '累', '犯', '偷', '姓', '綁', '臭', '傳說',
+  '感受', '恐怕', '加上', '少', '錯', '變', '短', '噓', '哼', '課', '辦', '組', '賈', '無', '祝', '替',
+])
+
+function listedAsMultiple(word: VocabWord): boolean {
+  const sense = LISTED_MULTIPLE_MEANINGS[word.traditional]
+  if (!sense) return false
+  const escaped = sense.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|;)\\s*(\\([^)]*\\)\\s*)*${escaped}\\b`, 'i').test(word.definition)
+}
+
+const multipleMeaningsCache = new WeakMap<VocabWord, boolean>()
+export function hasMultipleMeanings(word: VocabWord): boolean {
+  const cached = multipleMeaningsCache.get(word)
+  if (cached !== undefined) return cached
+  if (listedAsMultiple(word)) {
+    multipleMeaningsCache.set(word, true)
+    return true
+  }
+  if (LISTED_SINGLE_MEANING.has(word.traditional)) {
+    multipleMeaningsCache.set(word, false)
+    return false
+  }
+
+  const kept = senses(word.definition)
+    .filter((sense) => {
+      const main = withoutNotes(sense)
+      if (!/[a-z]/i.test(main) || /^[-~.]/.test(main)) return false
+      return !COMMENTARY.test(main) && !RESTRICTED_USE.test(sense) && !SPECIALIST_LABEL.test(sense.trim())
+    })
+    .map((sense) => expandContractions(plainEnglish(withoutGrammarNotes(sense) || sense)))
+
+  const parent = kept.map((_, i) => i)
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])))
+  const join = (a: number, b: number) => {
+    parent[root(b)] = root(a)
+  }
+
+  /* Keys plus a five-letter root of each longer word, so a verb meets its own
+     noun or adjective: "to despair; desperate", "to stipulate; stipulations". */
+  const keys = kept.map((sense) => {
+    const set = senseKeys(sense)
+    for (const key of [...set]) if (key.length >= 6) set.add(`${key.slice(0, 5)}…`)
+    return set
+  })
+  for (let i = 0; i < kept.length; i++) {
+    for (let j = i + 1; j < kept.length; j++) {
+      for (const key of keys[i]) {
+        if (keys[j].has(key)) {
+          join(i, j)
+          break
+        }
+      }
+    }
+  }
+  // "to this day", "to one's surprise" and "to a certain extent" aren't verbs.
+  const isVerb = (sense: string) =>
+    /^to (?!(this|that|these|those|one's|a|an|the|some|what|which|my|his|her|its|our|their|your|date|me|him|them|us|and|or)\b)/i.test(
+      withoutNotes(sense),
+    )
+  for (let i = 1; i < kept.length; i++) if (isVerb(kept[i]) === isVerb(kept[i - 1])) join(i - 1, i)
+
+  /* A longer word asks for three. Its senses mostly alternate a verb with the
+     same idea as a noun (旅行 "to travel; journey", 記憶 "to remember;
+     memory"), which the runs above can't tell from a new meaning. */
+  const needed = [...word.simplified].length > 1 ? 3 : 2
+  const result = new Set(kept.map((_, i) => root(i))).size >= needed
+  multipleMeaningsCache.set(word, result)
+  return result
+}
+
+/**
  * Whether a word is a good candidate for the New Words drill.
  *
  * The imported bank is a full dictionary, so it carries plenty of entries that
@@ -238,9 +421,10 @@ export function isTeachableWord(word: VocabWord): boolean {
   if (all.length === 0) return false
 
   // Every sense is commentary — nothing here to translate.
-  if (all.every((s) => COMMENTARY.test(s))) return false
+  // Judged on the gloss, not its notes: 喲 "Oh! (interjection …)" is a word.
+  if (all.every((s) => COMMENTARY.test(withoutNotes(s)))) return false
 
-  const first = all[0]
+  const first = withoutNotes(all[0])
 
   // Transliterated names: a lone capitalised token with nothing after it —
   // "Jack", "John", "Roger". Capitalisation alone is too blunt a test, since it
@@ -298,7 +482,7 @@ const PARTICLES = new Set([
 
 export function isFunctionWord(word: VocabWord): boolean {
   if (PARTICLES.has(word.traditional) || PARTICLES.has(word.simplified)) return true
-  return senses(word.definition).every((s) => FUNCTION_WORD_SENSE.some((re) => re.test(s)))
+  return senses(word.definition).every((s) => FUNCTION_WORD_SENSE.some((re) => re.test(withoutNotes(s))))
 }
 
 /**
@@ -321,7 +505,7 @@ const GRAMMAR_ADJACENT = new Set([
  */
 export function contentRank(word: VocabWord): number {
   const all = senses(word.definition)
-  const first = all[0] ?? ''
+  const first = withoutNotes(all[0] ?? '')
 
   if (isFunctionWord(word)) return 3
   if (GRAMMAR_ADJACENT.has(word.traditional) || GRAMMAR_ADJACENT.has(word.simplified)) return 2

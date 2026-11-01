@@ -279,14 +279,47 @@ export function General() {
  * it: the row opens a confirmation that says exactly what goes, and only the
  * coral button on it deletes. No `Alert` — it does nothing on the web build.
  *
- * Shown only while signed in; a guest has no account to delete.
+ * A guest has no account to delete, so they get the way to make one instead.
  */
 function AccountSection() {
   const { userId, email, deleteAccount } = useAuth()
+  const leave = useLeave()
   const [stage, setStage] = useState<'idle' | 'confirm' | 'working'>('idle')
   const [error, setError] = useState<string | null>(null)
 
-  if (!userId) return null
+  if (!userId) {
+    return (
+      <ControlGroup title="Account">
+        <Card>
+          <PressRow
+            onPress={() => leave(() => router.push('/settings/account'))}
+            accessibilityLabel="Create an account"
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              minHeight: setRow.minHeight,
+              paddingHorizontal: setRow.padding,
+              paddingVertical: s.md,
+            }}
+          >
+            <IconCircle icon={Mail} tint={c.slateSoft} color={c.slate} />
+            <View style={{ flex: 1, marginLeft: setRow.iconGap, marginRight: s.sm }}>
+              <Text className="font-nunito-bold" style={{ fontSize: 16, lineHeight: 21, color: c.navy }}>
+                Create an account
+              </Text>
+              <Text
+                className="font-nunito-semibold"
+                style={{ fontSize: 13.5, lineHeight: 18, color: c.textSecondary, marginTop: 1 }}
+              >
+                You’re using Chinese Easy as a guest
+              </Text>
+            </View>
+            <ChevronRight size={20} color={c.textMuted} strokeWidth={2.2} />
+          </PressRow>
+        </Card>
+      </ControlGroup>
+    )
+  }
 
   async function confirmDelete() {
     setStage('working')
@@ -561,20 +594,24 @@ function CredentialRows() {
   )
 }
 
-function SettingsInput({
+export function SettingsInput({
   label,
   value,
   onChangeText,
   secure = false,
   keyboardType = 'default',
   autoComplete,
+  autoCapitalize = 'none',
+  maxLength,
 }: {
   label: string
   value: string
   onChangeText: (text: string) => void
   secure?: boolean
   keyboardType?: 'default' | 'email-address'
-  autoComplete?: 'email' | 'current-password' | 'new-password'
+  autoComplete?: 'email' | 'current-password' | 'new-password' | 'username'
+  autoCapitalize?: 'none' | 'words'
+  maxLength?: number
 }) {
   return (
     <TextInput
@@ -586,9 +623,9 @@ function SettingsInput({
       secureTextEntry={secure}
       keyboardType={keyboardType}
       autoComplete={autoComplete}
-      autoCapitalize="none"
+      autoCapitalize={autoCapitalize}
       autoCorrect={false}
-      maxLength={secure ? MAX_PASSWORD_LENGTH : 254}
+      maxLength={maxLength ?? (secure ? MAX_PASSWORD_LENGTH : 254)}
       className="font-nunito-semibold"
       style={{
         height: 48,

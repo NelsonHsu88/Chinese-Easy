@@ -17,6 +17,9 @@
  *    words (`MATCH_MIN_DECK`). Which words it shows is **rotated** through the
  *    deck by when each was last matched, so a learner meets every word in turn
  *    instead of the same five every session.
+ *  - **speaking** — say a word just asked out loud. Practice like match: never
+ *    graded, so it can't move a schedule. Follows every `SPEAK_EVERY`th
+ *    question, on that question's word, only where speech recognition exists.
  */
 
 import { segmentText, type TextSegment } from './textSegmentation'
@@ -30,6 +33,7 @@ export type DrillStep = (
   | { kind: 'listening'; wordId: string; optionIds: string[] }
   | { kind: 'fillGap'; wordId: string; optionIds: string[] }
   | { kind: 'match'; wordIds: string[] }
+  | { kind: 'speaking'; wordId: string }
 ) & {
   /** A second go at an earlier step (a miss or "I don't know"), not part of the planned count. */
   retry?: boolean
@@ -301,6 +305,18 @@ export function withoutListening(
   return [...steps.slice(0, from), ...rest]
 }
 
+// --- Speaking -------------------------------------------------------------------
+
+/** A speaking step follows the first question and then every this many after it. */
+export const SPEAK_EVERY = 3
+/** At most this many speaking steps in one session. */
+export const MAX_SPEAKING = 4
+
+/** The session with every speaking step from `from` onwards dropped — what "I can't speak now" does. */
+export function withoutSpeaking(steps: DrillStep[], from: number): DrillStep[] {
+  return [...steps.slice(0, from), ...steps.slice(from).filter((s) => s.kind !== 'speaking')]
+}
+
 // --- Missed questions --------------------------------------------------------
 
 /** A missed question comes back at least this many questions later, when there are that many left. */
@@ -381,7 +397,9 @@ export function pickMatchWords(
  * listening — so the session doesn't run as one kind followed by another. A
  * word with no usable sentence is always a listening question. Boards go in
  * only when there is at least one question (an empty queue stays "Nothing to
- * review") and only for a deck of more than five words.
+ * review") and only for a deck of more than five words. With `speaking`, a
+ * speaking step on the same word follows the first question and every
+ * `SPEAK_EVERY`th one after it (at most `MAX_SPEAKING`).
  */
 export function buildMixedSteps({
   dueWords,
@@ -390,6 +408,7 @@ export function buildMixedSteps({
   script,
   matchedAt,
   listening = true,
+  speaking = false,
   random = Math.random,
 }: {
   dueWords: VocabWord[]
@@ -399,7 +418,44 @@ export function buildMixedSteps({
   matchedAt: Record<string, string>
   /** False while the learner can't listen: every question is a gap, and a word with no usable sentence sits this session out. */
   listening?: boolean
+  /** True to add speaking steps — only where the device can recognise speech. Off by default (the level test has none). */
+  speaking?: boolean
   random?: Random
+}): DrillStep[] {
+  const questions = questionSteps({ dueWords, deckWords, wordBank, script, matchedAt, listening, random })
+  if (!speaking) return questions
+  const out: DrillStep[] = []
+  let asked = 0
+  let spoken = 0
+  for (const s of questions) {
+    out.push(s)
+    if (s.kind === 'match') continue
+    if (asked % SPEAK_EVERY === 0 && spoken < MAX_SPEAKING) {
+      out.push({ kind: 'speaking', wordId: s.wordId })
+      spoken++
+    }
+    asked++
+  }
+  return out
+}
+
+/** Listening, gaps and boards — `buildMixedSteps` before any speaking goes in. */
+function questionSteps({
+  dueWords,
+  deckWords,
+  wordBank,
+  script,
+  matchedAt,
+  listening,
+  random,
+}: {
+  dueWords: VocabWord[]
+  deckWords: VocabWord[]
+  wordBank: VocabWord[]
+  script: ScriptMode
+  matchedAt: Record<string, string>
+  listening: boolean
+  random: Random
 }): DrillStep[] {
   const questions: DrillStep[] = []
   const usedSentences = new Set<string>()

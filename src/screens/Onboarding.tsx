@@ -25,12 +25,13 @@ import {
   Sunrise,
   Sun,
   Moon,
+  BookOpen,
+  Compass,
 } from 'lucide-react-native'
-import { DEFAULT_SETTINGS, useApp } from '../context/AppContext'
+import { DEFAULT_SETTINGS, useApp, type OnboardingProgress } from '../context/AppContext'
 import {
   OnbShell,
   OnbTopBar,
-  OnbSkip,
   OnbScriptCard,
   OnbTitle,
   OnbBody,
@@ -49,6 +50,7 @@ import {
   toneColors,
   type OnbTone,
 } from '../components/onboarding/parts'
+
 import { GoogleMark } from '../components/onboarding/GoogleMark'
 import { AppleSignInButton } from '../components/auth/AppleSignInButton'
 import { useCaptcha } from '../components/auth/Captcha'
@@ -69,10 +71,10 @@ import {
   onbShadow,
   type VerdictKind,
 } from '../components/onboarding/tokens'
-import { newPlacementSeed, placementDistractorPool, samplePlacementItems } from '../data/placementTest'
-import { buildPlacementQuestions } from '../lib/placementQuiz'
-import { computeEstimatedHsk } from '../lib/placement'
-import { displayWord, displayPinyin, defaultPhoneticFor, hanziFont } from '../lib/hanzi'
+import { newPlacementSeed, placementSplit } from '../data/placementTest'
+import { buildPlacementQuestion } from '../lib/placementQuiz'
+import { estimatePlacement, planPlacement, PLACEMENT_QUESTIONS } from '../lib/placement'
+import { displayWord, displayPinyin, defaultPhoneticFor, hanziFont, hanziSansBold } from '../lib/hanzi'
 import { speak } from '../lib/speech'
 import { todayISO } from '../lib/date'
 import { playCorrectSound, playPositiveChime, playRetryTone, playFanfare, playTapSound } from '../lib/sound'
@@ -108,7 +110,7 @@ import { spacedReading } from '../components/SpacedReading'
  * title and sizes, and only its scenery changed.
  */
 
-type Step = 'welcome' | 'script' | 'goal' | 'pace' | 'account' | 'profile' | 'notifications' | 'test' | 'ready'
+type Step = 'welcome' | 'script' | 'goal' | 'pace' | 'account' | 'profile' | 'notifications' | 'start' | 'test' | 'ready'
 
 /**
  * Page order, and the single source both indicators are derived from.
@@ -117,7 +119,7 @@ type Step = 'welcome' | 'script' | 'goal' | 'pace' | 'account' | 'profile' | 'no
  * script page was inserted after welcome and nothing else had to be renumbered
  * by hand.
  */
-const STEP_ORDER: Step[] = ['welcome', 'script', 'goal', 'pace', 'account', 'profile', 'notifications', 'test', 'ready']
+const STEP_ORDER: Step[] = ['welcome', 'script', 'goal', 'pace', 'account', 'profile', 'notifications', 'start', 'test', 'ready']
 
 /** Dot index per page, for the screens that show dots. */
 const DOT_INDEX = Object.fromEntries(STEP_ORDER.map((step, i) => [step, i])) as Record<Step, number>
@@ -134,7 +136,8 @@ const DOT_TOTAL = STEP_ORDER.length
  * since the account already knows the name. Same screen, same artwork — only
  * the field list differs.
  */
-type AuthMode = 'provider' | 'email' | 'login'
+/** `guest`: no account yet. The details page asks for a name only; an email can be added later from Profile. */
+type AuthMode = 'provider' | 'email' | 'login' | 'guest'
 
 const GOALS: { id: LearningGoal; title: string; body: string; icon: typeof Sprout; tone: OnbTone }[] = [
   {
@@ -189,6 +192,28 @@ const REMINDER_SLOTS: { id: ReminderSlot; label: string; time: string; display: 
   { id: 'evening', label: 'Evening', time: '20:00', display: '8:00 PM' },
 ]
 
+/** Pages a quit onboarding can reopen on. Profile reopens on the account page before it, whose form state is gone. */
+const RESUMABLE: Step[] = ['script', 'goal', 'pace', 'account', 'notifications', 'start', 'test']
+
+/** Turns a saved place into the page to open and the way back from it, or null to start at the welcome. */
+function resumePoint(
+  progress: OnboardingProgress | undefined,
+): { step: Step; history: Step[]; placementSeed?: number; answers: PlacementAnswer[] } | null {
+  if (!progress) return null
+  const step = (progress.step === 'profile' ? 'account' : progress.step) as Step
+  if (!RESUMABLE.includes(step)) return null
+  let history = progress.history.filter((h): h is Step => STEP_ORDER.includes(h as Step) && h !== 'profile')
+  const at = history.indexOf(step)
+  if (at >= 0) history = history.slice(0, at)
+  /* Answers only count with the seed that drew their questions. */
+  const answers = step === 'test' && progress.placementSeed !== undefined ? (progress.answers ?? []) : []
+  /* Keep only the answers that still fit this attempt's adaptive path — and none if it had already ended. */
+  const plan =
+    progress.placementSeed !== undefined ? planPlacement(placementSplit(progress.placementSeed).questionWords, answers) : null
+  const kept = plan && plan.next ? answers.slice(0, plan.asked.length) : []
+  return { step, history, placementSeed: progress.placementSeed, answers: kept }
+}
+
 export function Onboarding() {
   const {
     ready,
@@ -197,6 +222,8 @@ export function Onboarding() {
     settings,
     onboardingComplete,
     placementResult,
+    onboardingProgress,
+    saveOnboardingProgress,
     loadedUserId,
     offerTour,
     endTour,
@@ -224,10 +251,17 @@ export function Onboarding() {
    */
   const [isRetake] = useState(retake === '1' || (!onboardingComplete && placementResult !== undefined))
   const [alreadyOnboarded] = useState(onboardingComplete && !isRetake)
+  /* Where an unfinished onboarding was left. Read once: a learner who closed
+     the app part-way through comes back to the same page, not the welcome. */
+  const [resume] = useState(() => (isRetake || alreadyOnboarded ? null : resumePoint(onboardingProgress)))
   /* `?step=<page>` opens a page directly — development builds only, for
      checking a page's layout without walking the flow to it. */
   const [step, setStep] = useState<Step>(() =>
-    isRetake ? 'test' : __DEV__ && STEP_ORDER.includes(devStep as Step) ? (devStep as Step) : 'welcome',
+    isRetake
+      ? 'test'
+      : __DEV__ && STEP_ORDER.includes(devStep as Step)
+        ? (devStep as Step)
+        : (resume?.step ?? 'welcome'),
   )
   /*
    * The script choice, held locally until Continue commits it.
@@ -238,7 +272,7 @@ export function Onboarding() {
    * second opinion about it living here.
    */
   const [script, setScript] = useState<ScriptMode>(settings.script)
-  const [history, setHistory] = useState<Step[]>([])
+  const [history, setHistory] = useState<Step[]>(() => resume?.history ?? [])
   /** Which way the next page should slide in from. */
   const [direction, setDirection] = useState<'forward' | 'back'>('forward')
 
@@ -257,6 +291,8 @@ export function Onboarding() {
   /** Arrived by the welcome page's "Log in": the account page offers sign-in, not sign-up. */
   const [loggingIn, setLoggingIn] = useState(false)
   const viaProvider = authMode === 'provider'
+  /** Google, Apple, or a guest: the details page asks for a name and nothing else. */
+  const nameOnly = viaProvider || authMode === 'guest'
   /* Two widgets, one per page: the page transition mounts both pages at once,
      and one Turnstile token can't serve two forms. Inert until a site key is set. */
   const captcha = useCaptcha()
@@ -315,7 +351,7 @@ export function Onboarding() {
       : trimmedName.length > 0 && emailInput.trim().length > 0 && passwordInput.length > 0 && confirmInput.length > 0
   const canSubmitProfile =
     confirmSentTo !== null ||
-    (!emailBusy && (viaProvider ? trimmedName.length > 0 : captcha.ready && formFilled))
+    (!emailBusy && (nameOnly ? trimmedName.length > 0 : captcha.ready && formFilled))
 
   /*
    * The details page doesn't scroll, so on a short phone (an iPhone SE is 667)
@@ -323,7 +359,10 @@ export function Onboarding() {
    * of its fields doesn't otherwise clear the button.
    */
   const { height: windowHeight } = useWindowDimensions()
-  const compactProfile = windowHeight < 720 && confirmSentTo === null && !viaProvider
+  const compactProfile = windowHeight < 720 && confirmSentTo === null && !nameOnly
+  /* A short phone (an iPhone SE, or a phone browser with its bars showing):
+     the welcome and script pages tighten so their paintings keep their room. */
+  const short = windowHeight < SHORT_SCREEN
 
   /* Where each sign-in page's form ends, so its painting can start below it. */
   const accountClearance = useClearance()
@@ -357,6 +396,23 @@ export function Onboarding() {
     goTo('profile')
   }
 
+  /**
+   * No account for now. Everything is kept on this device, and an email
+   * sign-up from Profile later carries it into the new account (see
+   * `maybeAdoptGuestProgress`). A name typed on an email route stays.
+   */
+  const startGuest = () => {
+    if (authMode === 'provider') setNameInput('')
+    setEmailInput('')
+    setPasswordInput('')
+    setConfirmInput('')
+    setEmailError(null)
+    setJudged(new Set())
+    setServerFieldError(null)
+    setAuthMode('guest')
+    goTo('profile')
+  }
+
   /** Signed in by Google or Apple: same next step either way. */
   const providerSignedIn = (account: { email: string; name: string } | undefined) => {
     setAuthMode('provider')
@@ -378,8 +434,12 @@ export function Onboarding() {
      doesn't throw them forward again. */
   const leftFirstPage = useRef(false)
   if (step !== 'welcome') leftFirstPage.current = true
+  /* A resumed onboarding that reopened on the account page counts as fresh
+     here too, until the learner moves off it. */
+  const resumedAtAccount = useRef(resume?.step === 'account')
+  if (step !== 'account') resumedAtAccount.current = false
   useEffect(() => {
-    if (isRetake || leftFirstPage.current || !session || isReturningAccount(session.user)) return
+    if (isRetake || (leftFirstPage.current && !resumedAtAccount.current) || !session || isReturningAccount(session.user)) return
     const provider = session.user.app_metadata?.provider
     if (provider !== 'google' && provider !== 'apple') return
     const account = accountFor(session.user)
@@ -520,7 +580,7 @@ export function Onboarding() {
 
   const submitProfile = async () => {
     // Google or Apple has already signed in, and a sent confirmation has nothing left to do.
-    if (viaProvider || confirmSentTo !== null) {
+    if (nameOnly || confirmSentTo !== null) {
       finishProfile(trimmedName || settings.username)
       return
     }
@@ -573,21 +633,13 @@ export function Onboarding() {
    * built from. A retake gets a new seed and therefore a different test, which
    * is the whole point: the old fixed eighteen were memorable after one sitting.
    */
-  const [placementSeed] = useState(newPlacementSeed)
-  const placementItems = useMemo(() => samplePlacementItems(placementSeed), [placementSeed])
-  /* Wrong answers come from the curated words this attempt does *not* ask
-     about, so no option is ever another question's answer. */
-  const placementDistractors = useMemo(() => placementDistractorPool(placementItems), [placementItems])
-  /*
-   * Built against the chosen script, so a simplified learner is tested on the
-   * characters they have just said they read. The words and the answers are the
-   * same either way — only the forms on screen change.
-   */
-  const questions = useMemo(
-    () => buildPlacementQuestions(placementItems, placementDistractors, settings.script),
-    [placementItems, placementDistractors, settings.script],
-  )
-  const [questionIndex, setQuestionIndex] = useState(0)
+  const [placementSeed] = useState(() => resume?.placementSeed ?? newPlacementSeed())
+  /* This attempt's words: the ones it may ask, per level, and the ones kept back as wrong answers. */
+  const placementWords = useMemo(() => placementSplit(placementSeed), [placementSeed])
+  const placementCandidates = useMemo(() => placementWords.questionWords.flat(), [placementWords])
+  /** The start-point page's card: from scratch (no test, HSK 1) or find my level (the test). Nothing picked until tapped. */
+  const [startChoice, setStartChoice] = useState<'scratch' | 'find' | null>(null)
+  const [questionIndex, setQuestionIndex] = useState(() => resume?.answers.length ?? 0)
   const [picked, setPicked] = useState<number | null>(null)
   /**
    * The verdict, once confirmed. `null` means the learner is still choosing —
@@ -596,17 +648,70 @@ export function Onboarding() {
    * key off.
    */
   const [verdict, setVerdict] = useState<VerdictKind | null>(null)
-  const [answers, setAnswers] = useState<PlacementAnswer[]>([])
+  const [answers, setAnswers] = useState<PlacementAnswer[]>(() => resume?.answers ?? [])
   /** Question to question: the card drifts left and fades, the next rises in (see `QuestionContent`). */
   const questionMotion = useQuestionTransition()
 
-  const estimatedHsk = useMemo(() => computeEstimatedHsk(placementItems, answers), [answers])
+  /*
+   * The test adapts (see `planPlacement`): the word on screen is worked out from
+   * the answers *before* it, so recording an answer doesn't swap the card while
+   * it is still sliding away — only `questionIndex` moving on does.
+   */
+  const currentPlan = useMemo(
+    () => planPlacement(placementWords.questionWords, answers.slice(0, questionIndex)),
+    [placementWords, answers, questionIndex],
+  )
+  /*
+   * Built against the chosen script, so a simplified learner is tested on the
+   * characters they have just said they read.
+   */
+  const question = useMemo(
+    () =>
+      currentPlan.next
+        ? buildPlacementQuestion(currentPlan.next, questionIndex, {
+            distractors: placementWords.distractors,
+            candidates: placementCandidates,
+            script: settings.script,
+          })
+        : undefined,
+    [currentPlan, questionIndex, placementWords, placementCandidates, settings.script],
+  )
+  /* Whether the confirmed answer ends the test — known only once it's in, since the test adapts to it. */
+  const answerEndsTest = useMemo(
+    () =>
+      !!verdict &&
+      !!question &&
+      planPlacement(placementWords.questionWords, [
+        ...answers.slice(0, questionIndex),
+        { wordId: question.word.id, rating: verdict === 'correct' ? 'know' : 'unknown' },
+      ]).next === null,
+    [verdict, question, placementWords, answers, questionIndex],
+  )
+  const estimatedHsk = useMemo(() => {
+    const plan = planPlacement(placementWords.questionWords, answers)
+    return estimatePlacement(plan.asked, answers)
+  }, [placementWords, answers])
 
   useEffect(() => {
     if (step === 'ready') {
       completeOnboarding({ estimatedHsk, completedAt: todayISO() })
     }
   }, [step, estimatedHsk, completeOnboarding])
+
+  /*
+   * Saved as the learner goes, so quitting part-way resumes here. Not for a
+   * retake (it only redoes the test), a finished run, or "Log in" (a returning
+   * learner, who is sent home once signed in). Back on the welcome page with
+   * nothing behind it, there is nothing to resume.
+   */
+  useEffect(() => {
+    if (isRetake || alreadyOnboarded || step === 'ready') return
+    if (loggingIn || (step === 'welcome' && history.length === 0)) {
+      saveOnboardingProgress(null)
+      return
+    }
+    saveOnboardingProgress({ step, history, placementSeed, answers })
+  }, [step, history, placementSeed, answers, loggingIn, isRetake, alreadyOnboarded, saveOnboardingProgress])
 
   const goTo = (next: Step) => {
     setDirection('forward')
@@ -626,8 +731,8 @@ export function Onboarding() {
     setStep(prev)
   }
 
-  /** Skip lands on the test — the one step whose answer can't be guessed. */
-  const skipToTest = () => goTo('test')
+  /** Writes the script card to the one global preference (Settings reads the same field). */
+  const commitScript = () => updateSettings({ script, phoneticScript: defaultPhoneticFor(script) })
 
   /*
    * Out of onboarding and onto the Dashboard, where Shifu offers the tour once
@@ -646,8 +751,6 @@ export function Onboarding() {
 
   // --- Placement -------------------------------------------------------------
 
-  const question = questions[questionIndex]
-
   /*
    * Listening questions play themselves on arrival. The learner should not have
    * to discover a button before the question has said anything, and a replay
@@ -665,7 +768,7 @@ export function Onboarding() {
   }
 
   const confirm = () => {
-    if (picked === null || verdict) return
+    if (picked === null || verdict || !question) return
     const right = picked === question.answerIndex
     setVerdict(right ? 'correct' : 'incorrect')
     if (right) {
@@ -694,10 +797,13 @@ export function Onboarding() {
      * known — but only one of them was honest, which is why they are told apart
      * in the toast and not here.
      */
+    if (!question) return
     const rating: PlacementAnswer['rating'] = verdict === 'correct' ? 'know' : 'unknown'
-    setAnswers((a) => [...a, { wordId: question.word.id, rating }])
+    const recorded = [...answers.slice(0, questionIndex), { wordId: question.word.id, rating }]
+    setAnswers(recorded)
 
-    if (questionIndex + 1 >= questions.length) {
+    /* The test may end early (a missed warm-up) or at its full length. */
+    if (planPlacement(placementWords.questionWords, recorded).next === null) {
       setPicked(null)
       setVerdict(null)
       setStep('ready')
@@ -748,11 +854,11 @@ export function Onboarding() {
           <ArtLayer>
             {/* The branch enters from the side it grows from. */}
             <SlideIn from="left" fill delay={onbMotion.enterStagger}>
-              <CornerBranch piece="welcome-branch" side="left" />
+              <CornerBranch piece="welcome-branch" side="left" scale={short ? 0.78 : 1} />
             </SlideIn>
             {/* The flowers along the foot, as the reference runs its painting to the bottom edge. */}
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
-              <PageFoot piece="welcome-foot" buttonCenter={WELCOME_BUTTON_CENTER} />
+              <PageFoot piece="welcome-foot" buttonCenter={short ? WELCOME_BUTTON_CENTER_SHORT : WELCOME_BUTTON_CENTER} />
             </SlideIn>
           </ArtLayer>
         }
@@ -767,7 +873,7 @@ export function Onboarding() {
         scroll={false}
         footer={
           <SlideIn from="bottom" delay={onbMotion.enterStagger * 3}>
-            <View style={{ gap: s.lg }}>
+            <View style={{ gap: short ? s.md : s.lg }}>
               <OnbButton
                 label="Let's get started"
                 icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
@@ -792,16 +898,13 @@ export function Onboarding() {
         }
       >
         {/*
-          As "Onboarding New UI Redesign" draws it: the app mark, the wordmark
-          and its line, standing in the landscape. Above the scene in z-order;
-          the scene rises behind them (its title patch is clear paper).
+          The wordmark and its line, standing in the landscape (the reference's
+          app mark above them was removed by request). Above the scene in
+          z-order; the scene rises behind them (its title patch is clear paper).
         */}
         <SlideIn from="bottom" delay={0} style={{ zIndex: 2 }}>
-          <View className="items-center" style={{ paddingTop: s.xxl }}>
-            <AppMark />
-            <View style={{ marginTop: s.lg }}>
-              <OnbTitle hero>Chinese Easy</OnbTitle>
-            </View>
+          <View className="items-center" style={{ paddingTop: short ? WELCOME_TITLE_DROP.short : WELCOME_TITLE_DROP.tall }}>
+            <OnbTitle hero>Chinese Easy</OnbTitle>
             <OnbBody style={{ marginTop: s.sm }}>{'Learn Mandarin the natural,\nstress-free way.'}</OnbBody>
           </View>
         </SlideIn>
@@ -815,33 +918,38 @@ export function Onboarding() {
         <SlideIn
           from="bottom"
           delay={onbMotion.enterStagger * 2}
-          style={{ flex: 1, minHeight: 0, zIndex: 1 }}
+          style={{ flex: 1, minHeight: 0, zIndex: 1, marginTop: short ? s.sm : s.lg }}
         >
-          <HeroArt piece="welcome-scene" fill overhang={WELCOME_SCENE_OVERHANG} maxOverhang={WELCOME_SCENE_MAX_OVERHANG} maxSink={WELCOME_SCENE_MAX_SINK} />
+          {/* Starts below the subtitle, never behind it; short of room it
+              gives up its sky under a fade rather than its width. */}
+          <HeroArt piece="welcome-scene" fill cropTop={WELCOME_SCENE_CROP} maxSink={WELCOME_SCENE_MAX_SINK} />
         </SlideIn>
 
         {/* Above the scene, which on a short phone reaches down behind it. */}
         <SlideIn from="bottom" delay={onbMotion.enterStagger * 3} style={{ zIndex: 2 }}>
-          <OnbCard radius={onbRadius.panel} style={{ paddingHorizontal: s.lg, paddingVertical: s.xs, marginBottom: s.xs }}>
+          <OnbCard radius={onbRadius.panel} style={{ paddingHorizontal: s.lg, paddingVertical: short ? 0 : s.xs, marginBottom: s.xs }}>
             <FeatureRow
               tone="green"
               glyph="字"
               title="Understand characters"
-              body="Learn the building blocks of Chinese."
+              body={short ? 'The building blocks of Chinese.' : 'Learn the building blocks of Chinese.'}
+              compact={short}
             />
             <RowRule />
             <FeatureRow
               tone="coral"
               icon={<Volume2 size={18} color="#ffffff" strokeWidth={2.4} />}
               title="Learn naturally"
-              body="Real pronunciations and useful examples."
+              body={short ? 'Real sounds, useful examples.' : 'Real pronunciations and useful examples.'}
+              compact={short}
             />
             <RowRule />
             <FeatureRow
               tone="gold"
               icon={<Star size={17} color="#ffffff" strokeWidth={2.4} fill="#ffffff" />}
               title="Track your progress"
-              body="Stay motivated and build real confidence."
+              body={short ? 'Build confidence as you go.' : 'Stay motivated and build real confidence.'}
+              compact={short}
             />
           </OnbCard>
         </SlideIn>
@@ -864,7 +972,8 @@ export function Onboarding() {
         }
         top={
           <OnbRise distance={0}>
-            <OnbTopBar onBack={goBack} right={<OnbSkip onPress={skipToTest} />} />
+            {/* No Skip: every learner answers every page. */}
+            <OnbTopBar onBack={goBack} />
           </OnbRise>
         }
         /*
@@ -884,7 +993,7 @@ export function Onboarding() {
                      copy — Settings → Learning preferences reads and writes the
                      same field, so the choice is already made when the learner
                      gets there. */
-                  updateSettings({ script, phoneticScript: defaultPhoneticFor(script) })
+                  commitScript()
                   goTo('goal')
                 }}
               />
@@ -894,7 +1003,7 @@ export function Onboarding() {
         }
       >
         <OnbRise index={0}>
-          <View style={{ paddingTop: s.lg }}>
+          <View style={{ paddingTop: short ? s.xs : s.lg }}>
             <OnbTitle>Which characters?</OnbTitle>
             <OnbBody style={{ marginTop: s.sm }}>
               {'Both teach the same language —\nthey’re just written differently.'}
@@ -909,22 +1018,25 @@ export function Onboarding() {
           the column turns out to have.
         */}
         <OnbRise index={1}>
-          <View className="flex-row" style={{ gap: s.md, marginTop: s.xxl }}>
-            <OnbScriptCard
-              glyph="學"
-              script="traditional"
-              label="Traditional"
-              body={'Taiwan, Hong Kong\nand Macau'}
-              selected={script === 'traditional'}
-              onPress={() => setScript('traditional')}
-            />
+          <View className="flex-row" style={{ gap: s.md, marginTop: short ? s.lg : s.xxl }}>
+            {/* Simplified first: it is the default, and what most learners want. */}
             <OnbScriptCard
               glyph="学"
+              compact={short}
               script="simplified"
               label="Simplified"
               body={'Mainland China\nand Singapore'}
               selected={script === 'simplified'}
               onPress={() => setScript('simplified')}
+            />
+            <OnbScriptCard
+              glyph="學"
+              compact={short}
+              script="traditional"
+              label="Traditional"
+              body={'Taiwan, Hong Kong\nand Macau'}
+              selected={script === 'traditional'}
+              onPress={() => setScript('traditional')}
             />
           </View>
         </OnbRise>
@@ -935,7 +1047,7 @@ export function Onboarding() {
           stall on it; one who knows it is reversible picks one and moves on.
         */}
         <OnbRise index={2}>
-          <View className="flex-row items-center justify-center" style={{ gap: s.sm, marginTop: s.lg }}>
+          <View className="flex-row items-center justify-center" style={{ gap: s.sm, marginTop: short ? s.md : s.lg }}>
             <SettingsIcon size={16} color={c.textMuted} strokeWidth={2.2} />
             <Text className="font-nunito-semibold" style={{ ...t.footnote, color: c.textMuted }}>
               You can change this any time in Settings.
@@ -948,9 +1060,11 @@ export function Onboarding() {
           `OnbRise` as well as on it: `OnbRise` renders a content-sized
           `Animated.View`, and a flexing child of one has no height to claim.
         */}
-        <View className="flex-1" style={{ minHeight: 0, marginTop: s.md }}>
+        <View className="flex-1" style={{ minHeight: 0, marginTop: short ? s.sm : s.md }}>
           <OnbRise index={3} style={{ flex: 1, minHeight: 0 }}>
-            <HeroArt piece="script-hero" fill />
+            {/* The column's full width always: short of room it gives up its
+                sky under a fade, not its width. */}
+            <HeroArt piece="script-hero" fill cropTop={SCRIPT_HERO_CROP} />
           </OnbRise>
         </View>
       </OnbShell>
@@ -1203,12 +1317,18 @@ export function Onboarding() {
                   }}
                 />
               ) : (
-                <LogInPrompt
-                  question="Already have an account?"
-                  action="Log in"
-                  style={{ marginTop: s.lg }}
-                  onPress={() => startEmail('login')}
-                />
+                <>
+                  <LogInPrompt
+                    question="Already have an account?"
+                    action="Log in"
+                    style={{ marginTop: s.lg }}
+                    onPress={() => startEmail('login')}
+                  />
+                  {/* App Review 5.1.1: an app that works without an account must not demand one. */}
+                  <View className="items-center" style={{ marginTop: s.md }}>
+                    <OnbTextButton label="Continue as guest" tone="muted" onPress={startGuest} />
+                  </View>
+                </>
               )}
             </OnbRise>
           </View>
@@ -1287,6 +1407,8 @@ export function Onboarding() {
                     : `We sent a link to ${confirmSentTo}.\nOpen it to finish creating your account —\nyou can keep going in the meantime.`
                   : viaProvider
                     ? 'Almost there — what should we\ncall you?'
+                    : authMode === 'guest'
+                      ? 'What should we call you? You can\nadd an email later in Profile.'
                     : authMode === 'login'
                       ? 'Log in with your email\nand password.'
                       : 'Tell us your name and choose\na password for your account.'}
@@ -1327,7 +1449,7 @@ export function Onboarding() {
                 </OnbRise>
               )}
 
-              {!viaProvider && (
+              {!nameOnly && (
                 <OnbRise index={2}>
                   <OnbTextField
                     label="Email"
@@ -1344,7 +1466,7 @@ export function Onboarding() {
                 </OnbRise>
               )}
 
-              {!viaProvider && (
+              {!nameOnly && (
                 <OnbRise index={3}>
                   <OnbTextField
                     label="Password"
@@ -1399,7 +1521,7 @@ export function Onboarding() {
                 </OnbRise>
               )}
 
-              {!viaProvider && captcha.widget}
+              {!nameOnly && captcha.widget}
 
               {emailError !== null && (
                 <Text
@@ -1458,14 +1580,14 @@ export function Onboarding() {
                   } else {
                     updateSettings({ notificationsEnabled: false })
                   }
-                  goTo('test')
+                  goTo('start')
                 }}
               />
               <OnbTextButton
                 label="Maybe later"
                 onPress={() => {
                   updateSettings({ notificationsEnabled: false })
-                  goTo('test')
+                  goTo('start')
                 }}
               />
             </View>
@@ -1543,11 +1665,93 @@ export function Onboarding() {
     )
   }
 
-  if (step === 'test') {
+  /*
+   * Where to start: dressed like the goal page (title, two cards, the lake
+   * scene), Continue waits until one is picked. "Start from scratch"
+   * skips the test — a learner who knows no Chinese gains nothing from
+   * eighteen "I don't know"s — and lands on the plan at HSK 1.
+   */
+  if (step === 'start') {
+    return (
+      <OnbShell
+        art={
+          <ArtLayer>
+            <OnbArtEnter>
+              <CornerBranch piece="goal-branch" side="right" />
+            </OnbArtEnter>
+            <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>
+              <PageFoot piece="goal-foot" />
+            </SlideIn>
+          </ArtLayer>
+        }
+        top={
+          <OnbRise distance={0}>
+            <OnbTopBar onBack={goBack} />
+          </OnbRise>
+        }
+        footer={
+          <OnbRise index={3}>
+            <View style={{ gap: s.lg }}>
+              <OnbButton
+                label="Continue"
+                icon={<ArrowRight size={20} color="#ffffff" strokeWidth={2.4} />}
+                disabled={startChoice === null}
+                onPress={() => {
+                  if (startChoice === 'scratch') {
+                    /* No answers: the estimate is HSK 1. */
+                    setAnswers([])
+                    setQuestionIndex(0)
+                    goTo('ready')
+                  } else if (startChoice === 'find') {
+                    goTo('test')
+                  }
+                }}
+              />
+              <OnbDots index={DOT_INDEX.start} total={DOT_TOTAL} />
+            </View>
+          </OnbRise>
+        }
+      >
+        <OnbRise index={0}>
+          <View style={{ paddingTop: s.xl }}>
+            <OnbTitle>{'Where would you\nlike to start?'}</OnbTitle>
+            <OnbBody style={{ marginTop: s.sm }}>{'You can change your level\nany time.'}</OnbBody>
+          </View>
+        </OnbRise>
+
+        {/* Inset past the page margin like the goal page, so the lake shows either side. */}
+        <View className="flex-1" style={{ gap: s.md, paddingTop: s.xxl, paddingBottom: s.xl, paddingHorizontal: s.sm }}>
+          <OnbRise index={1}>
+            <OnbChoiceCard
+              title="Start from scratch"
+              body="New to Chinese? Begin with the first, easiest words."
+              tone="gold"
+              selected={startChoice === 'scratch'}
+              onPress={() => setStartChoice('scratch')}
+              icon={<BookOpen size={26} color={toneColors('gold').solid} strokeWidth={2.2} />}
+            />
+          </OnbRise>
+          <OnbRise index={2}>
+            <OnbChoiceCard
+              title="Find my level"
+              body="Know some already? A short quiz finds where to begin."
+              tone="blue"
+              badge="About 3 min"
+              selected={startChoice === 'find'}
+              onPress={() => setStartChoice('find')}
+              icon={<Compass size={26} color={toneColors('blue').solid} strokeWidth={2.2} />}
+            />
+          </OnbRise>
+        </View>
+      </OnbShell>
+    )
+  }
+
+  if (step === 'test' && question) {
     const settled = verdict !== null
     const listening = question.kind === 'listening'
     const cloze = question.kind === 'cloze'
-    const isLastQuestion = questionIndex + 1 >= questions.length
+    const isLastQuestion = answerEndsTest
 
     return (
       <OnbShell
@@ -1587,7 +1791,7 @@ export function Onboarding() {
               sound={settled}
             />
             <Text className="text-center font-nunito-bold" style={{ ...t.footnote, color: c.textMuted }}>
-              Question {questionIndex + 1} of {questions.length}
+              Question {questionIndex + 1} of {PLACEMENT_QUESTIONS}
             </Text>
           </View>
           </OnbRise>
@@ -1654,32 +1858,24 @@ export function Onboarding() {
               </View>
             ) : cloze ? (
               /*
-               * The sentence with the word cut out of it, and its translation
-               * underneath as the clue. No pinyin: the reading would name the
-               * missing word outright, which is the whole question. The sentence
+               * The sentence with the word cut out of it. No translation and no
+               * pinyin: the English names the missing word's meaning and the
+               * reading names the word, either of which answers it. The sentence
                * comes from the bank's own examples and is never invented — see
                * `buildPlacementQuestions`.
                */
               <View style={{ marginTop: s.md }}>
                 <Text
-                  className="text-center font-hanzi-sans-bold"
+                  className={`text-center ${hanziSansBold(settings.script)}`}
                   style={{ fontSize: 26, lineHeight: 42, color: c.navy }}
                 >
                   {question.sentence}
                 </Text>
-                {question.translation && (
-                  <Text
-                    className="text-center font-nunito-bold"
-                    style={{ ...t.bodyClassic, color: c.textSecondary, marginTop: s.sm }}
-                  >
-                    {question.translation}
-                  </Text>
-                )}
               </View>
             ) : (
               <>
                 <Text
-                  className="text-center font-hanzi-sans-bold"
+                  className={`text-center ${hanziSansBold(settings.script)}`}
                   style={{ fontSize: 46, lineHeight: 60, color: c.navy, marginTop: s.md }}
                 >
                   {displayWord(question.word, settings.script)}
@@ -1742,7 +1938,7 @@ export function Onboarding() {
                         them in the same CJK face and weight — Nunito has no CJK
                         glyphs, and the fallback it fell to was a different weight. */}
                     <Text
-                      className={listening || cloze ? 'flex-1 font-hanzi-sans-bold' : 'flex-1 font-nunito-bold'}
+                      className={listening || cloze ? `flex-1 ${hanziSansBold(settings.script)}` : 'flex-1 font-nunito-bold'}
                       style={{
                         fontSize: listening || cloze ? 22 : 14,
                         lineHeight: listening || cloze ? 32 : undefined,
@@ -1870,7 +2066,7 @@ export function Onboarding() {
           kind={verdict}
           detailLabel={verdictDetailLabel(verdict)}
           onContinue={nextQuestion}
-          continueLabel={questionIndex + 1 >= questions.length ? 'See my level' : 'Continue'}
+          continueLabel={answerEndsTest ? 'See my level' : 'Continue'}
           detail={
             <Text numberOfLines={2} style={{ fontFamily: 'NunitoBold', fontSize: 15, lineHeight: 20, color: listenColors.slate }}>
               <Text className={hanziFont(settings.script, 'semibold')} style={{ fontSize: 18, color: listenColors.ink }}>
@@ -1901,53 +2097,20 @@ export function Onboarding() {
  * padding, then what stands under the button, then half its height.
  */
 const WELCOME_BUTTON_CENTER = s.md + 8 + s.lg + 20 + s.lg + 51 / 2 // dots, "Log in" line
+const WELCOME_BUTTON_CENTER_SHORT = s.md + 8 + s.md + 20 + s.md + 51 / 2 // the same, with a short phone's tighter gaps
 const SCRIPT_BUTTON_CENTER = s.md + 8 + s.lg + 51 / 2 // dots
 
-/** How much of the welcome scene stands behind the subtitle: its cleared title patch. */
-const WELCOME_SCENE_OVERHANG = 0.22
-/** On a phone short of room, how much of the scene may stand behind the title before it shrinks: its sky and mist. */
-const WELCOME_SCENE_MAX_OVERHANG = 0.4
-/** Then how much may sink behind the feature card: the paper and table edge under the 学 sheet. */
-const WELCOME_SCENE_MAX_SINK = 0.1
+/** Below this window height the welcome and script pages tighten (an iPhone SE is 667, a small Android 740). */
+const SHORT_SCREEN = 800
 
-/** The app icon, as the welcome reference draws it: a rounded green tile, 中, a sakura bloom on its corner. */
-function AppMark() {
-  return (
-    <View accessible accessibilityRole="image" accessibilityLabel="Chinese Easy">
-      <View
-        className="items-center justify-center"
-        style={{ width: 64, height: 64, borderRadius: 18, backgroundColor: c.green, ...onbShadow }}
-      >
-        <Text className="font-hanzi-sans-bold text-white" style={{ fontSize: 34, lineHeight: 44, includeFontPadding: false }}>
-          中
-        </Text>
-      </View>
-      <Bloom style={{ position: 'absolute', right: -8, bottom: -6 }} />
-    </View>
-  )
-}
-
-/** A five-petal sakura bloom, drawn rather than imported — it is 22pt wide. */
-function Bloom({ style }: { style?: object }) {
-  return (
-    <View pointerEvents="none" style={[{ width: 22, height: 22, alignItems: 'center', justifyContent: 'center' }, style]}>
-      {[0, 72, 144, 216, 288].map((angle) => (
-        <View
-          key={angle}
-          style={{
-            position: 'absolute',
-            width: 10,
-            height: 10,
-            borderRadius: 5,
-            backgroundColor: c.bloom,
-            transform: [{ rotate: `${angle}deg` }, { translateY: -5.5 }],
-          }}
-        />
-      ))}
-      <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: c.bloomHeart }} />
-    </View>
-  )
-}
+/** How much of the welcome scene's top may be cropped under a fade: sky and peaks, above Shifu's topknot. */
+const WELCOME_SCENE_CROP = 0.3
+/** Room above the welcome title, so it sits lower in the sky rather than against the top bar (the app mark used to fill it). */
+const WELCOME_TITLE_DROP = { short: 32, tall: 64 }
+/** How much may sink behind the feature card: the table edge under the 学 sheet. */
+const WELCOME_SCENE_MAX_SINK = 0.04
+/** The script scene's croppable top: sky and birds, above Shifu's topknot. */
+const SCRIPT_HERO_CROP = 0.1
 
 /** "Already have an account? Log in" — a line of text with one link in it. */
 function LogInPrompt({
@@ -2008,16 +2171,19 @@ function FeatureRow({
   icon,
   title,
   body,
+  compact = false,
 }: {
   tone: OnbTone
   glyph?: string
   icon?: React.ReactNode
   title: string
   body: string
+  /** A short phone: a smaller badge, tighter rows, and the line under the title kept to one. */
+  compact?: boolean
 }) {
   return (
-    <View className="flex-row items-center" style={{ gap: s.lg, paddingVertical: s.md }}>
-      <RingIcon tone={tone} solid>
+    <View className="flex-row items-center" style={{ gap: compact ? s.md : s.lg, paddingVertical: compact ? s.sm : s.md }}>
+      <RingIcon tone={tone} solid size={compact ? 40 : 50}>
         {glyph ? (
           <Text className="font-hanzi-sans-bold text-white" style={{ fontSize: 18, lineHeight: 24 }}>
             {glyph}
@@ -2030,7 +2196,7 @@ function FeatureRow({
         <Text className="font-nunito-bold" style={{ ...t.cardTitle, color: c.navy }}>
           {title}
         </Text>
-        <Text className="font-nunito-semibold" style={{ ...t.cardBody, color: c.textSecondary, marginTop: 2 }}>
+        <Text className="font-nunito-semibold" numberOfLines={compact ? 1 : undefined} style={{ ...t.cardBody, color: c.textSecondary, marginTop: 2 }}>
           {body}
         </Text>
       </View>
@@ -2102,6 +2268,7 @@ function AuthButton({
         fill={c.card}
         border={c.border}
         shoulder={dashShoulders.quiet}
+        pressTint={c.greenSoft}
         scaleTo={0.97}
       >
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingLeft: s.xl, paddingRight: s.lg, gap: s.lg }}>
@@ -2222,6 +2389,7 @@ function TimeChip({
       fill={selected ? c.greenSoft : c.card}
       border={selected ? c.green : c.border}
       shoulder={selected ? c.greenDark : dashShoulders.quiet}
+      pressTint={c.greenSoft}
       scaleTo={0.96}
     >
       <View style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>

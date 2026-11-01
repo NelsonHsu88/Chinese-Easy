@@ -291,6 +291,12 @@ export const WRITER_HTML = `<!doctype html>
       if (writer) writer.highlightStroke(strokeIndex);
     } else if (msg.type === 'reveal') {
       if (writer) writer.showCharacter();
+    } else if (msg.type === 'outline') {
+      // Live, so a quiz in progress keeps the strokes already written.
+      if (writer) {
+        if (msg.show) writer.showOutline();
+        else writer.hideOutline();
+      }
     } else if (msg.type === 'start' || msg.type === 'restart') {
       if (!writer) return;
       var runGen = generation;

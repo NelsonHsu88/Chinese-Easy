@@ -30,15 +30,6 @@ const REVEAL_CLOSE_MS = 130
 /** Past an animation's end, when the backstop forces its final frame. */
 const BACKSTOP_MS = 80
 
-/*
- * `overflow: hidden` would also clip the panel card's own shadow
- * (`DICT_CARD_SHADOW`: 4 down, 10 blur). So the clipping box reaches this far
- * past the card on the sides and below, and negative margins hand the space
- * straight back — the layout is the same as without it.
- */
-const SHADOW_PAD_X = 12
-const SHADOW_PAD_BOTTOM = 18
-
 const nativeDriver = Platform.OS !== 'web'
 
 type Phase = 'open' | 'closed' | 'moving'
@@ -130,20 +121,15 @@ export function FilterDrawer({ open, children }: { open: boolean; children: Reac
       importantForAccessibility={closed ? 'no-hide-descendants' : 'auto'}
       aria-hidden={closed}
       style={[
-        { overflow: 'hidden', marginHorizontal: -SHADOW_PAD_X, paddingHorizontal: SHADOW_PAD_X },
-        resting
-          ? { paddingBottom: SHADOW_PAD_BOTTOM, marginBottom: -SHADOW_PAD_BOTTOM }
-          : {
-              height: height.interpolate({ inputRange: [0, 1], outputRange: [0, measured + SHADOW_PAD_BOTTOM] }),
-              marginBottom: height.interpolate({ inputRange: [0, 1], outputRange: [0, -SHADOW_PAD_BOTTOM] }),
-            },
+        { overflow: 'hidden' },
+        resting ? null : { height: height.interpolate({ inputRange: [0, 1], outputRange: [0, measured] }) },
       ]}
     >
       {/* Absolute while animating, so it lays out at full height inside a box
           that isn't — which is also what lets it be measured while closed. */}
       <View
         onLayout={onLayout}
-        style={resting ? undefined : { position: 'absolute', top: 0, left: SHADOW_PAD_X, right: SHADOW_PAD_X }}
+        style={resting ? undefined : { position: 'absolute', top: 0, left: 0, right: 0 }}
       >
         <Animated.View
           style={{

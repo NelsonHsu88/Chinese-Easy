@@ -6,8 +6,8 @@ import type { AppSettings, SrsCard } from '../../types'
 
 /*
  * New Words serves the learner's level and one stretch level first. Once those
- * are used up it must keep going with the rest of the bank — commonest first —
- * rather than running dry.
+ * are used up it keeps going with the harder levels — commonest first — and
+ * never drops below the learner's level.
  */
 
 const settingsAt = (hskLevel: number) => ({ hskLevel, learningGoal: 'daily-life' }) as AppSettings
@@ -30,11 +30,29 @@ describe('newWordsPool', () => {
     assert.equal(pool[0].hskLevel, 3)
   })
 
-  test('at the top level, the lower levels follow once level 6 is done', () => {
+  test('never offers a word below the learner’s level', () => {
+    for (const level of [2, 4, 6]) {
+      assert.ok(newWordsPool(hskFrequency, [], settingsAt(level)).every((w) => w.hskLevel >= level))
+    }
+  })
+
+  test('at the top level, only harder words follow once level 6 is done', () => {
     const top = newWordsPool(hskFrequency, [], settingsAt(6)).filter((w) => w.hskLevel === 6)
     const pool = newWordsPool(hskFrequency, cardsFor(top.map((w) => w.id)), settingsAt(6))
     assert.ok(pool.length > 0)
-    assert.ok(pool.every((w) => w.hskLevel < 6))
+    assert.ok(pool.every((w) => w.hskLevel > 6))
+  })
+
+  test('the syllabus’s own words come before estimated ones', () => {
+    const pool = newWordsPool(hskFrequency, [], settingsAt(3))
+    const firstEstimate = pool.findIndex((w) => !w.hskOfficial)
+    assert.ok(firstEstimate > 0)
+    assert.ok(pool.slice(0, firstEstimate).every((w) => w.hskOfficial && (w.hskLevel === 3 || w.hskLevel === 4)))
+  })
+
+  test('HSK 3 never opens on HSK 1 words like 上学 or 下班', () => {
+    const forms = newWordsPool(hskFrequency, [], settingsAt(3)).map((w) => w.simplified)
+    for (const easy of ['上学', '下班', '米饭']) assert.ok(!forms.includes(easy), easy)
   })
 
   test('never offers the same word twice', () => {

@@ -372,13 +372,17 @@ export function HanziStage({
                    * that is the slow part: a native WebView, plus parsing the
                    * whole hanzi-writer engine, before anything can draw. So it
                    * holds only the character. Everything else — demo vs quiz, a
-                   * reset, a new size, the outline — goes in `initKey`, and the
-                   * writer is rebuilt inside the WebView that is already running
+                   * reset, a new size — goes in `initKey`, and the writer is
+                   * rebuilt inside the WebView that is already running
                    * (writerHtml.ts handles a repeat `init`). Flipping a flashcard
                    * to its stroke demo used to boot a fresh WebView here.
+                   *
+                   * Not the outline: the flashcard's hint turns it on mid-quiz,
+                   * and a rebuild there threw away the strokes already written
+                   * (and could leave the quiz unstarted). It's toggled live.
                    */
                   key={`${idx}-${char}`}
-                  initKey={`${mode}-${speed}-${resetKey}-${Math.round(stageSize / 4) * 4}-${showOutline}-${holdCharacterOnComplete || (mode === 'quiz' && idx < chars.length - 1)}`}
+                  initKey={`${mode}-${speed}-${resetKey}-${Math.round(stageSize / 4) * 4}-${holdCharacterOnComplete || (mode === 'quiz' && idx < chars.length - 1)}`}
                   char={char}
                   mode={mode}
                   speed={speed}
@@ -441,6 +445,8 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
   const webviewReadyRef = useRef(false)
   const initSentRef = useRef(false)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  /** Writers loaded so far, so every load (not just a status change) can start one. */
+  const [loads, setLoads] = useState(0)
   const [strokeData, setStrokeData] = useState<CharacterJson | null>(null)
 
   const padding = Math.max(8, Math.round(size * 0.06))
@@ -544,6 +550,16 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealKey])
 
+  /* The outline changes on the live writer. Before the WebView is ready there
+     is nothing to tell, and the first init carries the current value. */
+  const outlineRef = useRef(showOutline)
+  useEffect(() => {
+    if (outlineRef.current === showOutline) return
+    outlineRef.current = showOutline
+    if (webviewReadyRef.current) postToGlyph({ type: 'outline', show: showOutline })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showOutline])
+
   // Same fire-and-forget shape as hint/reveal above, but restarts this
   // glyph's own quiz in place — hanzi-writer's `.quiz()` can be called again
   // on the same writer, so this never touches the WebView itself.
@@ -566,6 +582,7 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
       sendInit()
     } else if (msg.type === 'loadSuccess') {
       setStatus('ready')
+      setLoads((n) => n + 1)
     } else if (msg.type === 'loadError') {
       setStatus('error')
     } else if (msg.type === 'correctStroke') {
@@ -628,6 +645,10 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
   // Only start animating/quizzing once this glyph has settled (loaded or errored)
   // and it's its turn. A char with no stroke data still counts as "done" so it
   // doesn't permanently block the characters after it in the same word.
+  //
+  // Keyed on `loads` as well as `status`: a rebuild goes ready → loading →
+  // ready, and when its load lands before the "loading" render, status never
+  // visibly changes — the new writer then sat unstarted, taking no strokes.
   useEffect(() => {
     if (!active || status === 'loading' || startedRef.current) return
     startedRef.current = true
@@ -639,7 +660,7 @@ function SingleGlyphStage({ initKey, char, mode, speed, showOutline, showGuides,
     }
     postToGlyph({ type: 'start' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, status])
+  }, [active, status, loads])
 
   return (
     <View

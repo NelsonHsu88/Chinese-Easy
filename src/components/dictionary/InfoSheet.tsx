@@ -5,7 +5,6 @@ import {
   Animated,
   BackHandler,
   Easing,
-  Image,
   PanResponder,
   Platform,
   Pressable,
@@ -19,7 +18,7 @@ import { ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react-native'
 import { tapHaptic } from '../../lib/haptics'
 import { useReduceMotion } from '../tour/useReduceMotion'
 import { TourTarget } from '../tour/targets'
-import { ICON_GREEN, ICON_STROKE } from './DictionaryControls'
+import { ICON_STROKE } from './DictionaryControls'
 import { sheetColors } from './sheetTokens'
 import { BackArrow } from '../BackArrow'
 
@@ -83,8 +82,6 @@ export interface SheetTab {
   icon: LucideIcon
   render: () => ReactNode
 }
-
-const MOUNTAINS = { source: require('../../assets/images/decor/mountains-wide.png'), ratio: 468 / 137 }
 
 function resist(raw: number, travel: number): number {
   if (raw < 0) return -Math.min(OVERPULL_ROOM * 0.6, -raw * 0.25)
@@ -379,7 +376,6 @@ export function InfoSheet({
 
   const webGrab = Platform.OS === 'web' ? ({ cursor: 'grab', userSelect: 'none', touchAction: 'none' } as object) : null
   const C = sheetColors
-  const washWidth = Math.min(contentMaxWidth + 60, 520)
 
   return (
     <>
@@ -443,14 +439,6 @@ export function InfoSheet({
               webGrab,
             ]}
           >
-            {/* An ink-wash range behind the word, as on the reading pages. */}
-            <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, bottom: -4, alignItems: 'center' }}>
-              <Image
-                source={MOUNTAINS.source}
-                style={{ width: washWidth, height: washWidth / MOUNTAINS.ratio, opacity: 0.3 }}
-                resizeMode="contain"
-              />
-            </View>
             <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: C.handle }} />
             <View style={{ width: '100%', maxWidth: contentMaxWidth + 40, alignSelf: 'center', paddingHorizontal: 56, marginTop: 6 }}>
               {header}
@@ -557,7 +545,7 @@ export function InfoSheet({
                         {label}
                       </Text>
                       <Animated.View style={{ transform: [{ rotate: chevron }] }}>
-                        <ChevronUp size={18} color={ICON_GREEN} strokeWidth={ICON_STROKE} />
+                        <ChevronUp size={18} color={C.chevron} strokeWidth={ICON_STROKE} />
                       </Animated.View>
                     </View>
                     {hints.length > 0 && (

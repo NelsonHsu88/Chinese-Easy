@@ -5,7 +5,7 @@ import { PressableScale, LiftedFace, DASH_LIFT, RaisedButton } from '../dashboar
 import { speak } from '../../lib/speech'
 import { playPositiveChime } from '../../lib/sound'
 import { tapHaptic, tickHaptic, successHaptic, sequence } from '../../lib/haptics'
-import { LOOKUP_HSK_LEVEL } from '../../data/lookupWords'
+import { LOOKUP_HSK_LEVEL, hskLevelLabel } from '../../data/lookupWords'
 import { DICT_BG } from './shadows'
 import type { EntryState } from '../../lib/dictionary'
 
@@ -50,8 +50,8 @@ export const ICON_STAR = '#E3A93A'
  * the graded vocabulary, which is also the useful thing for a learner deciding
  * whether to add it.
  */
-export function HskBadge({ level }: { level: number }) {
-  const graded = level < LOOKUP_HSK_LEVEL
+export function HskBadge({ word }: { word: { hskLevel: number; hskOfficial?: boolean } }) {
+  const graded = word.hskLevel < LOOKUP_HSK_LEVEL || !!word.hskOfficial
   return (
     <View className={graded ? 'rounded-full bg-dict-green-pale px-2.5 py-1' : 'rounded-full bg-dict-line px-2.5 py-1'}>
       <Text
@@ -61,7 +61,7 @@ export function HskBadge({ level }: { level: number }) {
             : 'font-nunito-bold text-[12px] leading-[15px] text-dict-muted'
         }
       >
-        {graded ? `HSK ${level}` : 'Rare'}
+        {hskLevelLabel(word)}
       </Text>
     </View>
   )

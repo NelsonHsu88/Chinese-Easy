@@ -26,7 +26,7 @@ import { isCardDue } from '../lib/srs'
 import type { SrsCard, VocabWord } from '../types'
 import { shortGloss } from '../lib/definitions'
 import { FEATURES } from '../lib/features'
-import { LOOKUP_HSK_LEVEL } from '../data/lookupWords'
+import { hskLevelLabel } from '../data/lookupWords'
 import { playTapSound } from '../lib/sound'
 import { tapHaptic, thunkHaptic, tickHaptic } from '../lib/haptics'
 import {
@@ -88,8 +88,7 @@ const FOOTER_BUTTON = 58
 
 function hskLabel(word: VocabWord): string {
   if (word.custom) return 'Custom'
-  if (word.hskLevel === LOOKUP_HSK_LEVEL) return 'Rare'
-  return `HSK ${word.hskLevel}`
+  return hskLevelLabel(word)
 }
 
 export function MyWords() {

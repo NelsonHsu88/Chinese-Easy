@@ -514,12 +514,15 @@ export function LiftedFace({
   border,
   shadow = true,
   radius,
+  pressTint,
   style,
   children,
 }: {
   height: number
   fill: string
   shoulder: string
+  /** A colour the face washes into while held (onboarding's choice cards go green), fading out as it springs back. */
+  pressTint?: string
   /** Corner radius. Defaults to a full pill; the dictionary's hero buttons are squarer. */
   radius?: number
   /** Outlined faces only — the quiet button keeps its hairline. */
@@ -604,6 +607,21 @@ export function LiftedFace({
             transform: [{ translateY: sink }],
           }}
         >
+          {pressTint ? (
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: Math.max(0, corner - (border ? 1.5 : 0)),
+                backgroundColor: pressTint,
+                opacity: press,
+              }}
+            />
+          ) : null}
           {/* Plain styles, not classes: this face is used in the dictionary's
               hero row, where NativeWind-derived layout was dropped on Android. */}
           <View style={{ height: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: s.sm }}>
@@ -640,12 +658,15 @@ export function RaisedButton({
   wrapperStyle,
   hitSlop,
   accessibilityLabel,
+  pressTint,
   children,
 }: {
   onPress?: () => void
   height: number
   fill: string
   shoulder: string
+  /** See `LiftedFace`. */
+  pressTint?: string
   border?: string
   radius?: number
   width?: number
@@ -673,6 +694,7 @@ export function RaisedButton({
         border={border}
         radius={radius}
         shadow={shadow}
+        pressTint={pressTint}
         style={width !== undefined ? { width } : undefined}
       >
         {children}

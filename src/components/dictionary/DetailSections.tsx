@@ -7,6 +7,7 @@ import { DICT_BG } from './shadows'
 import { hanziFont } from '../../lib/hanzi'
 import { useApp } from '../../context/AppContext'
 import { spacedReading } from '../SpacedReading'
+import { MultipleMeaningsTag } from '../MultipleMeaningsTag'
 
 /** The hero card's two action buttons' face height — see the comment above their row for why nothing there is a class. */
 const HERO_BUTTON_HEIGHT = 50
@@ -21,6 +22,8 @@ export interface HeroFact {
 /** Room the hero needs besides the glyph: reading, meaning, facts, buttons, Add/Star. */
 const HERO_FIXED = 236
 const HERO_SAVE_ROW = 58
+/** The "Multiple meanings" tag under the meaning, with its gap. */
+const HERO_TAG_ROW = 27
 
 /**
  * The focused top of a detail page: the glyph, how to say it, what it means,
@@ -37,6 +40,7 @@ export function DetailHero({
   glyph,
   reading,
   meaning,
+  multipleMeanings = false,
   facts,
   availableHeight,
   onWatch,
@@ -46,6 +50,8 @@ export function DetailHero({
   glyph: string
   reading: string
   meaning?: string
+  /** Shows the "Multiple meanings" tag under the meaning. */
+  multipleMeanings?: boolean
   facts: HeroFact[]
   availableHeight: number
   onWatch: () => void
@@ -59,7 +65,8 @@ export function DetailHero({
   const column = Math.min(windowWidth, 430) - 40
   const cap = length === 1 ? 112 : length === 2 ? 96 : length === 3 ? 80 : 64
   const byWidth = (column / length) * 0.9
-  const byHeight = (availableHeight - HERO_FIXED - (save ? HERO_SAVE_ROW : 0)) / 1.2
+  const showTag = multipleMeanings && !!meaning
+  const byHeight = (availableHeight - HERO_FIXED - (save ? HERO_SAVE_ROW : 0) - (showTag ? HERO_TAG_ROW : 0)) / 1.2
   const size = Math.round(Math.max(40, Math.min(cap, byWidth, byHeight)))
 
   return (
@@ -90,6 +97,8 @@ export function DetailHero({
           {meaning}
         </Text>
       ) : null}
+
+      {showTag ? <MultipleMeaningsTag style={{ marginTop: 8, alignSelf: 'center' }} /> : null}
 
       {facts.length > 0 && (
         <View style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>

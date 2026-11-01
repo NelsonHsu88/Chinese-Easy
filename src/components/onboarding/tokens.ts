@@ -44,9 +44,6 @@ export const onbColors = {
   card: '#FFFDFC',
   border: '#E7E5DE',
 
-  /** The sakura bloom on the welcome page's app mark. */
-  bloom: '#F6B8B0',
-  bloomHeart: '#EE9A92',
 
   /** Divider rules and the inactive page dots — lighter than `border`. */
   hairline: '#EDEAE2',

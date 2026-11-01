@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { View, Text } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useApp } from '../context/AppContext'
-import { LOOKUP_HSK_LEVEL } from '../data/lookupWords'
+import { LOOKUP_HSK_LEVEL, hskLevelLabel } from '../data/lookupWords'
 import { displayPinyin, displayWord } from '../lib/hanzi'
 import {
   DetailShell,
@@ -37,7 +37,7 @@ import {
   wordsWith,
 } from '../lib/dictionary'
 import { tapHaptic } from '../lib/haptics'
-import { allSenses, shortGloss } from '../lib/definitions'
+import { allSenses, hasMultipleMeanings, shortGloss } from '../lib/definitions'
 import type { VocabWord } from '../types'
 
 /**
@@ -203,7 +203,7 @@ export function WordDetail() {
     ...(characters.length > 1 ? [{ text: `${characters.length} characters` }] : []),
     ...(strokeTotal !== null ? [{ text: `${strokeTotal} strokes` }] : []),
     // Tier-2 words carry a sentinel level rather than a graded one — see HskBadge.
-    word.hskLevel < LOOKUP_HSK_LEVEL ? { text: `HSK ${word.hskLevel}`, green: true } : { text: 'Rare' },
+    word.hskLevel < LOOKUP_HSK_LEVEL || word.hskOfficial ? { text: hskLevelLabel(word), green: true } : { text: 'Rare' },
   ]
 
   const openCharacter = (character: string) => {
@@ -253,7 +253,7 @@ export function WordDetail() {
       ...(single && ownRadical
         ? [{ label: 'Kangxi radical', value: `${ownRadical.radical.number} (${ownRadical.radical.character} · ${ownRadical.radical.meaning})` }]
         : []),
-      { label: 'HSK level', value: word.hskLevel < LOOKUP_HSK_LEVEL ? `HSK ${word.hskLevel}` : 'Rare' },
+      { label: 'HSK level', value: hskLevelLabel(word) },
       ...(rank !== null ? [{ label: 'Frequency', value: frequencyLabel(rank) }] : []),
     ],
     isAdded: (id) => isInDeck(id, deckIndex),
@@ -297,7 +297,7 @@ export function WordDetail() {
       meanings={senses.slice(0, 3)}
       facts={[
         ...(strokeTotal !== null ? [`${strokeTotal} strokes`] : []),
-        word.hskLevel < LOOKUP_HSK_LEVEL ? `HSK ${word.hskLevel}` : 'Rare',
+        hskLevelLabel(word),
       ]}
     />
   )
@@ -316,6 +316,7 @@ export function WordDetail() {
             glyph={form}
             reading={displayPinyin(word, settings.phoneticScript)}
             meaning={shortGloss(word)}
+            multipleMeanings={hasMultipleMeanings(word)}
             facts={facts}
             availableHeight={availableHeight}
             onWatch={() => {

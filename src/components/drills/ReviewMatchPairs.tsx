@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { View, Text, Pressable, Animated, Easing, Platform } from 'react-native'
+import { View, Text, Animated, Easing, Platform } from 'react-native'
 import { Check } from 'lucide-react-native'
 import { useApp } from '../../context/AppContext'
 import { displayWord, hanziFont } from '../../lib/hanzi'
@@ -44,6 +44,7 @@ const MATCH_DONE_VOLUME = 0.75
 export function ReviewMatchPairs({
   words,
   onComplete,
+  onDontKnow,
   onClose,
   step,
   total,
@@ -51,6 +52,8 @@ export function ReviewMatchPairs({
 }: {
   words: VocabWord[]
   onComplete: (firstTry: number, pairs: number) => void
+  /** "I don't know": the words still unmatched, so the session can count them as missed. */
+  onDontKnow?: (unmatchedIds: string[]) => void
   onClose: () => void
   step: number
   total: number
@@ -125,6 +128,7 @@ export function ReviewMatchPairs({
     tickHaptic()
     setSelected(null)
     setRevealed(true)
+    onDontKnow?.(words.filter((w) => !matched.has(w.id)).map((w) => w.id))
     // Line every meaning up against its own word, so each row reads as a pair.
     setGlossOrder(hanziOrder)
   }
@@ -165,7 +169,7 @@ export function ReviewMatchPairs({
       buttons={
         <View style={{ flex: 1, alignItems: 'center', gap: 12 }}>
           {allMatched && !revealed ? (
-            /* The board's verdict takes the "I don't know" slot, which has nothing left to offer. */
+            /* The board's verdict, above Continue. */
             <View style={{ alignSelf: 'stretch' }}>
               <VerdictCard kind="correct" label={firstTry === words.length ? 'All correct!' : 'All matched!'}>
                 <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, color: c.slate }}>
@@ -173,45 +177,33 @@ export function ReviewMatchPairs({
                 </Text>
               </VerdictCard>
             </View>
-          ) : (
-            /* Held in place once used, so the button doesn't jump. */
-            <Pressable
-              onPress={giveUp}
-              disabled={done}
-              accessibilityRole="button"
-              accessibilityLabel="I don't know — show the pairs"
-              hitSlop={10}
-              style={{ opacity: done ? 0 : 1 }}
+          ) : null}
+          {/* "I don't know" and Continue side by side, as in the other drills; once the board is done, Continue alone. */}
+          <View style={{ alignSelf: 'stretch', flexDirection: 'row', gap: 12 }}>
+            {!done && (
+              <PressableScale onPress={giveUp} scaleTo={1} haptic={false} wrapperStyle={{ flex: 1 }} accessibilityLabel="I don't know — show the pairs">
+                <LiftedFace height={drillSize.button} fill={c.card} shoulder={drillShoulders.quiet} border={c.outline} shadow={false}>
+                  <Text style={{ fontFamily: 'NunitoBold', ...t.button, color: c.slate }}>I don’t know</Text>
+                </LiftedFace>
+              </PressableScale>
+            )}
+            <PressableScale
+              onPress={() => done && onComplete(firstTry, words.length)}
+              scaleTo={1}
+              haptic={false}
+              wrapperStyle={{ flex: 1.15 }}
+              accessibilityLabel={done ? 'Continue' : 'Continue — match every pair first'}
             >
-              <Text
-                style={{
-                  fontFamily: 'NunitoSemiBold',
-                  fontSize: 16,
-                  color: c.slate,
-                  textDecorationLine: 'underline',
-                  textDecorationColor: c.outline,
-                }}
+              <LiftedFace
+                height={drillSize.button}
+                fill={done ? c.green : c.disabled}
+                shoulder={done ? drillShoulders.primary : c.disabledShoulder}
+                shadow={done}
               >
-                I don’t know
-              </Text>
-            </Pressable>
-          )}
-          <PressableScale
-            onPress={() => done && onComplete(firstTry, words.length)}
-            scaleTo={1}
-            haptic={false}
-            wrapperStyle={{ alignSelf: 'stretch' }}
-            accessibilityLabel={done ? 'Continue' : 'Continue — match every pair first'}
-          >
-            <LiftedFace
-              height={drillSize.button}
-              fill={done ? c.green : c.disabled}
-              shoulder={done ? drillShoulders.primary : c.disabledShoulder}
-              shadow={done}
-            >
-              <Text style={{ fontFamily: 'NunitoBold', ...t.button, color: '#FFFFFF' }}>Continue</Text>
-            </LiftedFace>
-          </PressableScale>
+                <Text style={{ fontFamily: 'NunitoBold', ...t.button, color: '#FFFFFF' }}>Continue</Text>
+              </LiftedFace>
+            </PressableScale>
+          </View>
         </View>
       }
     >

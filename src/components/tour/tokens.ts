@@ -83,7 +83,7 @@ export const tourCard = {
   shifuWelcome: 84,
   /** The sakura in the top-right corner. */
   sakura: 74,
-  buttonHeight: 40,
+  buttonHeight: 38,
 } as const
 
 /** Type — compact on purpose. Families by name: RN cannot synthesise weights. */

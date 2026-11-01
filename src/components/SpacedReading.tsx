@@ -19,7 +19,7 @@ import { Text } from 'react-native'
  */
 
 /** The gap, as a share of the reading's font size (matches `SyllableText`). */
-const GAP = 0.2
+const GAP = 0.05
 
 /** A trailing tone mark, or a leading neutral dot, and the symbol beside it. */
 const BESIDE_MARK = /([^\s˙ˊˇˋ⁠])(⁠?[ˊˇˋ])|(˙)(⁠?)(?=[^\s])/g
@@ -30,7 +30,7 @@ const BESIDE_MARK = /([^\s˙ˊˇˋ⁠])(⁠?[ˊˇˋ])|(˙)(⁠?)(?=[^\s])/g
  */
 export function spacedReading(text: string, fontSize: number): ReactNode {
   if (!/[˙ˊˇˋ]/.test(text)) return text
-  const gap = { letterSpacing: Math.max(1.5, fontSize * GAP) }
+  const gap = { letterSpacing: Math.max(0.75, fontSize * GAP) }
   const parts: ReactNode[] = []
   let at = 0
   let key = 0

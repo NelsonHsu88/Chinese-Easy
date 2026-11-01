@@ -244,15 +244,11 @@ export function HskLevelBar({
  * shared by the Dictionary and Books so both panels are the same object.
  */
 export function FilterPanelCard({ open, children }: { open: boolean; children: ReactNode }) {
-  const shadow = useRevealedShadow(DICT_CARD_SHADOW)
+  // A hairline card, no shadow: a shadow inside the unfolding, fading drawer
+  // was clipped as the box grew and, on Android, showed before the card.
   return (
-    // Split in two: the shadow rides an `Animated.View` (`useRevealedShadow`),
-    // and NativeWind drops `className` on an `Animated.View`, so the fill,
-    // border and padding stay on a plain `View` inside it.
     <FilterDrawer open={open}>
-      <Animated.View style={[shadow, { marginTop: 12, borderRadius: 18, backgroundColor: DICT_BG.card }]}>
-        <View className="rounded-[18px] border border-dict-border bg-dict-card p-4">{children}</View>
-      </Animated.View>
+      <View className="mt-3 rounded-[18px] border border-dict-border bg-dict-card p-4">{children}</View>
     </FilterDrawer>
   )
 }

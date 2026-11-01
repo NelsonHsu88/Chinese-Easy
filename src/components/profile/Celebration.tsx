@@ -8,6 +8,7 @@ import { achievementById, achievementTier, MAX_PINNED } from '../../lib/progress
 import { profileRewardById } from '../../lib/progression/profileRewards'
 import { gardenItemById } from '../../lib/progression/gardenItems'
 import { PROTECTED_ROUTES } from '../subscription/useSubscribePrompt'
+import { screenTourFor } from '../../lib/screenTours'
 import { playPositiveChime } from '../../lib/sound'
 import { celebrateHaptic } from '../../lib/haptics'
 import { Medal, ProfileButton } from './parts'
@@ -43,23 +44,57 @@ const EXIT_SINK = 10
 /** Past an animation's end, when its backstop forces the final frame. */
 const BACKSTOP_MS = 120
 const USE_NATIVE_DRIVER = Platform.OS !== 'web'
+/** The pause between the tour (or a held screen) clearing and a queued celebration arriving. */
+const AFTER_BUSY_MS = 450
 
 /** The bounce value, for the medal or level number inside the card. */
 const BounceContext = createContext<Animated.Value | null>(null)
 
 export function ProgressionCelebration() {
-  const { celebrations, dismissCelebration, equipProfileReward, pinAchievement, progression, tour } = useApp()
+  const {
+    celebrations,
+    dismissCelebration,
+    equipProfileReward,
+    pinAchievement,
+    progression,
+    tour,
+    onboardingComplete,
+    seenScreenTours,
+  } = useApp()
   const pathname = usePathname()
   /*
    * Held through Shifu's tour as well. Saving a word mid-tour earns "First
    * Word", and this is a `Modal` — it draws above the tour's layer, so it landed
    * on the spotlight, buried the tour's toast, and its backdrop swallowed the
-   * tap on "Got it". Queued, it plays the moment the tour ends instead.
+   * tap on "Got it". Queued, it plays once the tour is over instead.
+   *
+   * "Over" includes before it starts: fresh from onboarding the Dashboard is
+   * about to offer the tour (`TourOverlay`'s welcome), so anything earned in
+   * onboarding waits for that answer and the tour itself. Same for a screen
+   * guide that is about to play or playing on this screen.
    */
+  const welcomePending = tour.status === 'not_started' && onboardingComplete && pathname === '/'
+  const guide = screenTourFor(pathname)
+  const guidePending = onboardingComplete && guide !== null && !seenScreenTours.includes(guide.id)
   const busy =
     tour.status === 'in_progress' ||
+    welcomePending ||
+    guidePending ||
     PROTECTED_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))
-  const current = busy ? undefined : celebrations[0]
+  /* A beat after the tour's last card goes, so the two never share a frame. */
+  const [clear, setClear] = useState(!busy)
+  useEffect(() => {
+    if (busy) {
+      setClear(false)
+      return
+    }
+    const timer = setTimeout(() => setClear(true), AFTER_BUSY_MS)
+    return () => clearTimeout(timer)
+  }, [busy])
+  const shownId = useRef<string | null>(null)
+  const head = celebrations[0]
+  /* One already on screen stays put; only a new one waits. */
+  const current = head && (clear || shownId.current === head.id) ? head : undefined
 
   const reduceMotion = useReduceMotion()
   /* 0 → 1 on the way in; on the way out `leave` runs 0 → 1 over the top. */
@@ -67,7 +102,6 @@ export function ProgressionCelebration() {
   const card = useRef(new Animated.Value(0)).current
   const leave = useRef(new Animated.Value(0)).current
   const bounce = useRef(new Animated.Value(1)).current
-  const shownId = useRef<string | null>(null)
   const leaving = useRef(false)
   const timers = useRef<ReturnType<typeof setTimeout>[]>([])
   const [run, setRun] = useState(0)

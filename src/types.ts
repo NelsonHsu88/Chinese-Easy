@@ -9,6 +9,8 @@ export interface ExampleSentence {
   traditional: string
   pinyin: string
   translation: string
+  /** Written for the app rather than taken from the Tatoeba corpus (`scripts/data/authoredExamples.json`). */
+  authored?: boolean
 }
 
 export interface VocabWord {
@@ -18,6 +20,11 @@ export interface VocabWord {
   pinyin: string
   definition: string
   hskLevel: number
+  /**
+   * The level is the official HSK 3.0 syllabus's (7 = the 7–9 band). Absent,
+   * it's an estimate for a word not on the syllabus (see applyHskLevels.mjs).
+   */
+  hskOfficial?: boolean
   category: WordCategory
   /** Not every bulk-imported word has a verified example sentence. */
   example?: ExampleSentence

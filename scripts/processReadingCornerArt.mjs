@@ -67,6 +67,16 @@ const COVERS = {
   'hsk6-idiom-yugongyishan': 'The Old Man Moves Mountains-7.png',
   'hsk6-idiom-saiwengshima': 'The old man and the wandering horse-8.png',
   'hsk6-tale-mulan': 'Mulan rides toward dawn-10.png',
+  'hsk1-hard-saturday': '11_Saturday.png',
+  'hsk1-tale-hongmao': '12_Little_Red_Riding_Hood.png',
+  'hsk1-tale-sanzhuzhu': '13_Three_Little_Pigs.png',
+  'hsk1-tale-guitu': '14_Tortoise_and_Hare.png',
+  'hsk1-tale-kongrong': '15_Kong_Rong_Pears.png',
+  'hsk4-idiom-kezhouqiujian': '42_Carving_Boat_to_Find_Sword.png',
+  'hsk4-legend-nianshou': '43_Legend_of_the_Nian_Beast.png',
+  'hsk4-legend-menshen': '44_Legend_of_the_Door_Gods.png',
+  'hsk4-legend-yasuiqian': '45_Origin_of_Lucky_Money.png',
+  'hsk4-legend-yuanxiao': '46_Legend_of_Lantern_Festival.png',
 }
 
 /** The chip icons, in mockup pixels, with a spot of chip fill beside each to key against. */
@@ -83,7 +93,8 @@ async function main() {
   for (const [id, file] of Object.entries(COVERS)) {
     const src = path.join(COVER_DIR, file)
     const meta = await sharp(src).metadata()
-    if (meta.width !== COVER_SRC.width || meta.height !== COVER_SRC.height) {
+    // ±2px: one export came out 1087×1447; it's resized to fill anyway.
+    if (Math.abs(meta.width - COVER_SRC.width) > 2 || Math.abs(meta.height - COVER_SRC.height) > 2) {
       throw new Error(`${file}: expected ${COVER_SRC.width}×${COVER_SRC.height}, got ${meta.width}×${meta.height}`)
     }
     const out = path.join(OUT, 'covers', `${id}.jpg`)

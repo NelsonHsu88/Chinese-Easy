@@ -24,6 +24,8 @@ export const sheetColors = {
   greenButton: '#5C9A55',
   pill: '#EFECE5',
   handle: '#D9D1C2',
+  /** The "Explore this word" chevron: the app's back-arrow grey (dashColors.backArrow). */
+  chevron: '#7A8494',
   /** Stroke tiles: strokes not yet written, and the newest one. */
   strokeGhost: '#E6E2DA',
   strokeDone: '#18263A',

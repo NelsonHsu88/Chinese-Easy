@@ -119,23 +119,23 @@ export const TourTooltip = forwardRef<TextInstance, TooltipProps>(function TourT
             style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, gap: ROW_GAP }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: ROW_GAP, flexShrink: 0 }}>
-              {/* Raised like the CTA, quietly: white on a grey shoulder. */}
+              {/* A quiet text link, not a second raised button: it leaves the
+                  row room for the action beside Shifu on narrow phones. The
+                  vertical padding keeps a full-height touch target. */}
               <View onLayout={line.onSkip} style={{ flexShrink: 0 }}>
                 <PressableScale
                   onPress={onSecondary}
-                  scaleTo={1}
+                  scaleTo={0.96}
                   haptic={false}
+                  accessibilityRole="button"
                   accessibilityLabel={secondaryLabel}
                   accessibilityHint={secondaryHint}
                 >
-                  <LiftedFace height={k.buttonHeight} fill={c.quietFace} border={c.quietBorder} shoulder={c.quietShoulder} shadow={false}>
-                    <Text
-                      numberOfLines={1}
-                      style={{ ...t.quiet, fontSize: t.quiet.fontSize * line.fit, color: c.textMuted, paddingHorizontal: 12 * line.fit }}
-                    >
+                  <View style={{ height: k.buttonHeight, justifyContent: 'center', paddingRight: 2 }}>
+                    <Text numberOfLines={1} style={{ ...t.quiet, fontSize: t.quiet.fontSize * line.fit, color: c.textMuted }}>
                       {secondaryLabel}
                     </Text>
-                  </LiftedFace>
+                  </View>
                 </PressableScale>
               </View>
 
@@ -150,7 +150,7 @@ export const TourTooltip = forwardRef<TextInstance, TooltipProps>(function TourT
               <View onLayout={line.onCta} style={{ flexShrink: 0 }}>
                 <PressableScale onPress={onPrimary} scaleTo={1} haptic={false} accessibilityLabel={primaryLabel}>
                   <LiftedFace height={k.buttonHeight} fill={c.cta} shoulder={c.ctaShoulder}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 * line.fit, paddingHorizontal: 14 * line.fit }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 * line.fit, paddingHorizontal: 13 * line.fit }}>
                       <Text numberOfLines={1} style={{ ...t.button, fontSize: t.button.fontSize * line.fit, color: c.onCta }}>
                         {primaryLabel}
                       </Text>
@@ -170,7 +170,7 @@ export const TourTooltip = forwardRef<TextInstance, TooltipProps>(function TourT
 /** Space between the skip button, the dots and the action. */
 const ROW_GAP = 8
 /** The smallest the buttons' type and padding may shrink to, as a share of full size. */
-const MIN_FIT = 0.72
+const MIN_FIT = 0.62
 
 /**
  * Keeps the action row on one line. Each piece reports its width; when they

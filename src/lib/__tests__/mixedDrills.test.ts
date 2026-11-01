@@ -9,6 +9,8 @@ import {
   pickMatchWords,
   isListeningPaused,
   withoutListening,
+  withoutSpeaking,
+  MAX_SPEAKING,
   requeueMissed,
   sessionProgress,
   RETRY_MIN_GAP,
@@ -85,6 +87,41 @@ describe('match the pairs', () => {
         assert.equal(new Set(words.map((w) => displayWord(w, script))).size, words.length)
       }
     }
+  })
+})
+
+describe('speaking', () => {
+  const build = (due: VocabWord[], speaking: boolean, seed = 4) =>
+    buildMixedSteps({ dueWords: due, deckWords: deck, wordBank: hskFrequency, script: 'simplified', matchedAt: {}, speaking, random: seeded(seed) })
+
+  test('is left out unless asked for (the level test has none)', () => {
+    assert.ok(build(deck, false).every((s) => s.kind !== 'speaking'))
+  })
+
+  test('follows the first question, on that question’s word', () => {
+    const steps = build(deck.slice(0, 2), true)
+    assert.equal(steps[1].kind, 'speaking')
+    assert.equal((steps[1] as { wordId: string }).wordId, (steps[0] as { wordId: string }).wordId)
+  })
+
+  test(`never comes twice in a row, and at most ${MAX_SPEAKING} times`, () => {
+    const steps = build(deck, true)
+    const spoken = steps.filter((s) => s.kind === 'speaking').length
+    assert.ok(spoken > 0 && spoken <= MAX_SPEAKING)
+    steps.forEach((s, i) => assert.ok(!(s.kind === 'speaking' && steps[i + 1]?.kind === 'speaking')))
+  })
+
+  test('adds no graded questions: the same words are asked with or without it', () => {
+    const asked = (steps: DrillStep[]) => steps.filter((s) => s.kind === 'listening' || s.kind === 'fillGap').length
+    assert.equal(asked(build(deck, true, 9)), asked(build(deck, false, 9)))
+  })
+
+  test("I can't speak now drops every speaking step from here on, and nothing before", () => {
+    const steps = build(deck, true)
+    const at = steps.findIndex((s) => s.kind === 'speaking')
+    const next = withoutSpeaking(steps, at + 1)
+    assert.equal(next[at].kind, 'speaking')
+    assert.ok(next.slice(at + 1).every((s) => s.kind !== 'speaking'))
   })
 })
 

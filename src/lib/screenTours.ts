@@ -21,7 +21,7 @@ import type { TourShifu, TourTargetId } from './tour'
  *   discover on a day there is none, its Explore grid while a search is open).
  */
 
-export type ScreenTourId = 'learn' | 'dictionary' | 'word' | 'settings' | 'review'
+export type ScreenTourId = 'learn' | 'dictionary' | 'word' | 'settings' | 'review' | 'profile'
 
 export interface ScreenTourStep {
   targetId: TourTargetId
@@ -82,7 +82,7 @@ export const SCREEN_TOURS: readonly ScreenTour[] = [
       {
         targetId: 'dictionary-search',
         title: 'Look anything up',
-        body: 'Type Chinese, pinyin or English. Pinyin works without tone marks.',
+        body: 'Type English or Chinese. Switch to Pinyin to search by sound — no tone marks needed.',
         shifu: 'point',
       },
       {
@@ -156,6 +156,37 @@ export const SCREEN_TOURS: readonly ScreenTour[] = [
         title: 'Or let me choose',
         body: 'A full session runs flashcards then drills. Short on time? Try the 5-minute review. My Words shows everything you’ve saved.',
         shifu: 'celebrate',
+      },
+    ],
+  },
+  {
+    id: 'profile',
+    pathname: '/profile-tab',
+    steps: [
+      {
+        targetId: 'profile-garden',
+        title: 'Your Scholar’s Garden',
+        body: 'Decorations unlock as you level up. Tap the garden to choose where each one goes.',
+        shifu: 'welcome',
+      },
+      {
+        targetId: 'profile-journey',
+        title: 'Your HSK journey',
+        body: 'How far you are through your level. Tap it for your full progress.',
+        shifu: 'point',
+      },
+      /* Not drawn at HSK 6, where there is no test — the step is passed over. */
+      {
+        targetId: 'profile-level-test',
+        title: 'Ready to move up?',
+        body: 'Pass a short test on the next level’s words to jump up a level. Take it whenever you like.',
+        shifu: 'celebrate',
+      },
+      {
+        targetId: 'profile-achievements',
+        title: 'Earn medals',
+        body: 'For words learned, reviews, reading, writing, listening and streaks. Pin your three favourites to the top of your profile.',
+        shifu: 'thinking',
       },
     ],
   },
