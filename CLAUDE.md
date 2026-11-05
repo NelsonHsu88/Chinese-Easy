@@ -27,7 +27,7 @@ A type-check is not a compile: NativeWind/Babel errors and bad `require` paths o
 
 ## Architecture
 
-React Native + Expo (iOS, Android, web): Duolingo-style Chinese app. **Both scripts supported everywhere** via `settings.script`; stories stored traditional, converted for display only. Feature flags in `src/lib/features.ts`: `lessons` and `myTown` are **false** (screens compile but are unreachable; grep the flag to re-enable).
+React Native + Expo (iOS, Android, web): Duolingo-style Chinese app. **Both scripts supported everywhere** via `settings.script`; stories stored traditional, converted for display only. Feature flags in `src/lib/features.ts`: `lessons` and `myTown` are **false** (screens compile but are unreachable; grep the flag to re-enable); `interstitialAds` is **false** (no pop-up ads shown or fetched; banners unaffected).
 
 ### Routing (Expo Router, `src/app/`)
 

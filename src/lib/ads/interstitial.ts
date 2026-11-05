@@ -5,6 +5,7 @@ import { INTERSTITIAL_TRIGGERS, TIMING, type InterstitialTrigger } from './adCon
 import { mayShowInterstitial, noteInterstitialShown, noteSuppressed } from './frequency'
 import { trackAd } from './adEvents'
 import { devNow } from '../devClock'
+import { FEATURES } from '../features'
 
 /*
  * Interstitials, behind one gate.
@@ -52,6 +53,7 @@ function teardown(): void {
  * already cached, already loading, or cannot be requested at all.
  */
 export function preloadInterstitial(): void {
+  if (!FEATURES.interstitialAds) return
   const sdk = nativeAds()
   if (!sdk || loading || (cached && !isStale())) return
   if (!canRequestAds()) return
@@ -100,6 +102,7 @@ export function preloadInterstitial(): void {
 
 /** Warm the cache a while after the app settles. Called once, by the provider. */
 export function scheduleInterstitialPreload(): () => void {
+  if (!FEATURES.interstitialAds) return () => {}
   const timer = setTimeout(() => {
     void startAds().then((runtime) => {
       if (runtime.ready) preloadInterstitial()
@@ -115,7 +118,7 @@ export function scheduleInterstitialPreload(): () => void {
  * the result as information, never as something to branch their navigation on.
  */
 export async function maybeShowInterstitial(trigger: InterstitialTrigger): Promise<boolean> {
-  if (!INTERSTITIAL_TRIGGERS[trigger]?.enabled) return false
+  if (!FEATURES.interstitialAds || !INTERSTITIAL_TRIGGERS[trigger]?.enabled) return false
 
   const sdk = nativeAds()
   if (!sdk) return false

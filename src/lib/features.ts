@@ -53,6 +53,14 @@ export const FEATURES = {
    *     for the stopgap and why it is one.
    */
   cloudSync: false,
+
+  /**
+   * Full-screen pop-up ads (interstitials) after a review session or a story:
+   * `lib/ads/interstitial.ts`. Off: none is shown and none is even fetched.
+   * Banners and the opt-in rewarded ad are unaffected. Triggers and frequency
+   * caps live in `lib/ads/adConfig.ts`, ready for when this is turned back on.
+   */
+  interstitialAds: false,
 } as const
 
 export type FeatureKey = keyof typeof FEATURES
