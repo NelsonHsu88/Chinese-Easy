@@ -854,7 +854,8 @@ export function Onboarding() {
           <ArtLayer>
             {/* The branch enters from the side it grows from. */}
             <SlideIn from="left" fill delay={onbMotion.enterStagger}>
-              <CornerBranch piece="welcome-branch" side="left" scale={short ? 0.78 : 1} />
+              {/* Smaller than the reference's on every phone: the title sits where the app mark was, inside the branch's reach. */}
+              <CornerBranch piece="welcome-branch" side="left" scale={short ? 0.72 : 0.78} />
             </SlideIn>
             {/* The flowers along the foot, as the reference runs its painting to the bottom edge. */}
             <SlideIn from="bottom" fill distance={onbMotion.artSlide} duration={onbMotion.art}>

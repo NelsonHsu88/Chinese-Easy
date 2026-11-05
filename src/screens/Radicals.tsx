@@ -1,60 +1,104 @@
 import { useMemo, useState } from 'react'
-import { View, Text, TextInput, Image, useWindowDimensions } from 'react-native'
-import { Search } from 'lucide-react-native'
-import { DetailShell } from '../components/dictionary/DetailShell'
-import { PressScale } from '../components/dictionary/PressScale'
-import { ICON_GREEN, ICON_MUTED, ICON_STROKE } from '../components/dictionary/DictionaryControls'
-import { DICT_BG, DICT_CARD_SHADOW } from '../components/dictionary/shadows'
-import { useRevealedShadow } from '../components/shadowReveal'
+import { View, Text, TextInput, Image, Pressable, ScrollView, Animated, useWindowDimensions } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import { router } from 'expo-router'
+import { Search, X } from 'lucide-react-native'
+import { BackArrow } from '../components/BackArrow'
+import { PressableScale } from '../components/dashboard/parts'
+import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { RadicalDetailModal } from '../components/RadicalDetailModal'
 import { RADICALS } from '../data/radicals'
 import type { Radical } from '../types'
-import { playTints, playHueAt, type PlayTint } from '../components/dashboard/tokens'
+import {
+  radColors as c,
+  radSpacing as sp,
+  radType as t,
+  radRadius,
+  strokeTint,
+  RAD_BONSAI_RATIO,
+  RAD_CONTENT_MAX,
+  RAD_FOOT_RATIO,
+} from '../components/radicals/tokens'
 
-/** The bonsai the Dictionary's Radicals tile wears, so this screen is visibly where that tile leads. */
-const INTRO_ART = { source: require('../assets/images/dashboard/bonsai.png'), ratio: 290 / 197 }
+/*
+ * Radicals, in the house style of My Words and Challenges: back arrow, big
+ * title and subtitle over a corner painting (the bonsai the Dictionary's
+ * Radicals tile wears, so this is visibly where that tile leads), a pill
+ * search field, then the radicals grouped by stroke count on cream tiles.
+ */
+
+const bonsaiArt = require('../assets/images/dashboard/bonsai.png')
+const footArt = require('../assets/images/new-words/foot-scenery.png')
 
 interface Group {
   strokeCount: number
   radicals: Radical[]
 }
 
-/** Tiles per row, and the fixed gap between them — see `Radicals` for how a tile's own width is derived from these. */
+/** Tiles per row, and the fixed gap between them. A tile's width is derived, not a percentage, so a short row's tiles stay the same size. */
 const GRID_COLUMNS = 3
 const GRID_GAP = 10
-/** Matches `DetailShell`'s own `ScrollView` padding. */
-const SHELL_PADDING = 16
-/** Same design cap every other full-screen layout in the app centres against. */
-const CONTENT_MAX = 430
 
-/**
- * One radical tile — a Kangxi reference glyph, always in the teaching table's
- * own traditional form regardless of `settings.script` (see `hanziFont`'s
- * comment on the Kangxi exception in CLAUDE.md: these come from a fixed
- * reference table, not a bank entry with two forms).
- *
- * `width` is a measured pixel value, not a Tailwind percentage — a dynamic
- * `w-[Npx]` class is invisible to NativeWind's static scan (see `hanziFont`'s
- * own comment on the same trap), and a percentage width can't account for the
- * fixed gap between columns, which is what left a short group's row (say, one
- * lone radical at 1 stroke) looking like a different, wider tile rather than
- * the same size sitting flush left.
- */
-function RadicalTile({ radical, width, tint, onPress }: { radical: Radical; width: number; tint: PlayTint; onPress: () => void }) {
-  const shadow = useRevealedShadow(DICT_CARD_SHADOW)
+/** The page arriving: header, search, then the grid, one beat apart (the Books entrance). */
+const ENTER = { for: 520, rise: 20, step: 80 } as const
+
+function RadicalTile({ radical, width, onPress }: { radical: Radical; width: number; onPress: () => void }) {
+  const tint = strokeTint(radical.strokeCount)
   return (
-    <PressScale
+    <PressableScale
       onPress={onPress}
       scaleTo={0.96}
-      style={[shadow, { width, borderRadius: 16, backgroundColor: tint.fill, borderWidth: 1, borderColor: tint.border }]}
-      className="items-center justify-center gap-1 py-3.5"
       accessibilityLabel={`${radical.character}, ${radical.pinyin}, ${radical.meaning}`}
+      wrapperStyle={{ width }}
     >
-      <Text className="font-hanzi-tc-regular text-[26px] leading-[32px] text-dict-heading">{radical.character}</Text>
-      <Text numberOfLines={1} className="font-sans text-[11.5px] leading-[15px] text-dict-soft">
-        {radical.pinyin}
+      <View
+        style={{
+          alignItems: 'center',
+          paddingVertical: sp.md,
+          paddingHorizontal: sp.sm,
+          borderRadius: radRadius.tile,
+          borderWidth: 1,
+          borderColor: c.tileBorder,
+          backgroundColor: c.tile,
+        }}
+      >
+        {/* Kangxi reference glyphs: always the table's traditional form, whatever `settings.script`. */}
+        <Text className="font-hanzi-tc-regular" style={{ ...t.hanzi, color: c.navy }}>
+          {radical.character}
+        </Text>
+        <Text numberOfLines={1} style={{ ...t.pinyin, fontFamily: 'NunitoBold', color: tint.ink, marginTop: 2 }}>
+          {radical.pinyin}
+        </Text>
+        <Text numberOfLines={1} style={{ ...t.meaning, fontFamily: 'Nunito', color: c.slate, marginTop: 1 }}>
+          {radical.meaning}
+        </Text>
+      </View>
+    </PressableScale>
+  )
+}
+
+function SectionHeading({ strokeCount, count }: { strokeCount: number; count: number }) {
+  const tint = strokeTint(strokeCount)
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: sp.sm, marginBottom: sp.md }}>
+      <View
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 13,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: tint.soft,
+        }}
+      >
+        <Text style={{ ...t.count, fontFamily: 'NunitoExtraBold', color: tint.text }}>{strokeCount}</Text>
+      </View>
+      <Text accessibilityRole="header" style={{ ...t.section, fontFamily: 'NunitoExtraBold', color: c.navy }}>
+        {strokeCount === 1 ? 'stroke' : 'strokes'}
       </Text>
-    </PressScale>
+      <View style={{ flex: 1, height: 1, backgroundColor: c.rule, marginHorizontal: sp.xs }} />
+      <Text style={{ ...t.count, fontFamily: 'NunitoBold', color: c.muted }}>{count}</Text>
+    </View>
   )
 }
 
@@ -64,12 +108,15 @@ export function Radicals() {
   const [focused, setFocused] = useState(false)
 
   const { width: windowWidth } = useWindowDimensions()
-  /* The same column the rest of the dictionary centres its content in, minus
-     `DetailShell`'s own padding — derived rather than measured with
-     `onLayout`, which doesn't fire for every view on this project's web
-     target (see CLAUDE.md's note on `budgetForArea` and friends). */
-  const contentWidth = Math.min(windowWidth, CONTENT_MAX) - SHELL_PADDING * 2
-  const tileWidth = (contentWidth - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
+  const column = Math.min(windowWidth, RAD_CONTENT_MAX)
+  const tileWidth = (column - sp.screen * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
+  const bonsaiWidth = column * 0.4
+
+  const run = useEntranceRun()
+  const enter = (i: number) => ({ from: 'bottom' as const, at: i * ENTER.step, duration: ENTER.for, distance: ENTER.rise, run })
+  const enterHeader = useReveal(enter(0))
+  const enterSearch = useReveal(enter(1))
+  const enterGrid = useReveal(enter(2))
 
   const groups = useMemo<Group[]>(() => {
     const q = query.trim().toLowerCase()
@@ -89,78 +136,111 @@ export function Radicals() {
   }, [query])
 
   return (
-    <DetailShell title="Radicals">
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          padding: 14,
-          borderRadius: 18,
-          backgroundColor: playTints.lilac.fill,
-          borderWidth: 1,
-          borderColor: playTints.lilac.border,
-        }}
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: c.background }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1, alignItems: 'center' }}
       >
-        <Image source={INTRO_ART.source} resizeMode="contain" style={{ width: 72, height: 72 / INTRO_ART.ratio }} />
-        <Text className="flex-1 font-sans text-[14px] leading-[20px] text-dict-body">
-          The building blocks characters are made of — {RADICALS.length} of the most common ones. These aren't full
-          words, so they won't be added to My Words.
-        </Text>
-      </View>
+        <View style={{ width: column, flexGrow: 1, paddingHorizontal: sp.screen }}>
+          <Animated.View style={enterHeader}>
+            {/* Behind the title, against the top right. `Image` takes no pointerEvents, so the wrapper carries it. */}
+            <View pointerEvents="none" style={{ position: 'absolute', top: 6, right: -sp.xs }}>
+              <Image source={bonsaiArt} resizeMode="contain" style={{ width: bonsaiWidth, height: bonsaiWidth / RAD_BONSAI_RATIO }} />
+            </View>
 
-      <View
-        className={`flex-row items-center rounded-[16px] border bg-dict-card px-4 ${
-          focused ? 'border-dict-green/60' : 'border-dict-border'
-        }`}
-        style={{ height: 50, gap: 10 }}
-      >
-        <Search size={18} color={focused ? ICON_GREEN : ICON_MUTED} strokeWidth={ICON_STROKE} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder="Search radicals, characters, pinyin"
-          placeholderTextColor={ICON_MUTED}
-          autoCorrect={false}
-          autoCapitalize="none"
-          keyboardType="ascii-capable"
-          accessibilityLabel="Search radicals"
-          className="flex-1 font-sans text-[15px] text-dict-heading"
-        />
-      </View>
+            <View style={{ height: 44, justifyContent: 'center' }}>
+              <BackArrow
+                onPress={() => (router.canGoBack() ? router.back() : router.replace('/dictionary-tab'))}
+                style={{ marginLeft: -8, alignSelf: 'flex-start' }}
+              />
+            </View>
 
-      {groups.length === 0 && (
-        <Text className="py-12 text-center font-sans text-[15px] text-dict-soft">
-          No radicals match this search.
-        </Text>
-      )}
+            <Text accessibilityRole="header" style={{ ...t.title, fontFamily: 'NunitoExtraBold', color: c.navy, marginTop: -sp.xs }}>
+              Radicals
+            </Text>
+            <Text style={{ ...t.subtitle, fontFamily: 'NunitoSemiBold', color: c.slate, marginTop: 4, maxWidth: '60%' }}>
+              The building blocks of Chinese characters.
+            </Text>
+          </Animated.View>
 
-      {groups.map((group) => {
-        /* Each stroke count wears one hue, by its own number rather than its
-           position, so a search never recolours the groups it leaves. */
-        const tint = playTints[playHueAt(group.strokeCount - 1)]
-        return (
-          <View key={group.strokeCount} className="gap-2.5">
-            <View className="flex-row items-center" style={{ gap: 8 }}>
-              <View style={{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, backgroundColor: tint.soft }}>
-                <Text className="font-nunito-bold" style={{ fontSize: 12.5, lineHeight: 17, color: tint.text }}>
-                  {group.strokeCount} stroke{group.strokeCount === 1 ? '' : 's'}
-                </Text>
+          <Animated.View style={enterSearch}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                marginTop: sp.xl,
+                height: 52,
+                borderRadius: radRadius.pill,
+                borderWidth: 1,
+                borderColor: focused ? c.fieldFocus : c.fieldBorder,
+                backgroundColor: c.field,
+                paddingLeft: sp.lg,
+                paddingRight: sp.sm,
+                gap: sp.md,
+              }}
+            >
+              <Search size={21} color={c.slate} strokeWidth={2} />
+              <TextInput
+                value={query}
+                onChangeText={setQuery}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
+                placeholder="Search by character, pinyin or meaning"
+                placeholderTextColor={c.placeholder}
+                autoCorrect={false}
+                autoCapitalize="none"
+                returnKeyType="search"
+                accessibilityLabel="Search radicals"
+                style={{ flex: 1, ...t.search, fontFamily: 'Nunito', color: c.navy, paddingVertical: 0 }}
+              />
+              {query.length > 0 && (
+                <Pressable
+                  onPress={() => setQuery('')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  hitSlop={10}
+                  style={{ padding: sp.xs }}
+                >
+                  <X size={18} color={c.slate} strokeWidth={2} />
+                </Pressable>
+              )}
+            </View>
+          </Animated.View>
+
+          <Animated.View style={[{ marginTop: sp.xxl }, enterGrid]}>
+            {groups.length === 0 && (
+              <Text style={{ ...t.note, fontFamily: 'Nunito', color: c.slate, textAlign: 'center', paddingVertical: 40 }}>
+                No radicals match this search.
+              </Text>
+            )}
+
+            {groups.map((group) => (
+              <View key={group.strokeCount} style={{ marginBottom: sp.xxl }}>
+                <SectionHeading strokeCount={group.strokeCount} count={group.radicals.length} />
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP }}>
+                  {group.radicals.map((r) => (
+                    <RadicalTile key={r.id} radical={r} width={tileWidth} onPress={() => setSelected(r)} />
+                  ))}
+                </View>
               </View>
-              <View style={{ flex: 1, height: 1, backgroundColor: tint.border }} />
-            </View>
-            <View className="flex-row flex-wrap" style={{ gap: GRID_GAP }}>
-              {group.radicals.map((r) => (
-                <RadicalTile key={r.id} radical={r} width={tileWidth} tint={tint} onPress={() => setSelected(r)} />
-              ))}
-            </View>
-          </View>
-        )
-      })}
+            ))}
+
+            {groups.length > 0 && (
+              <Text style={{ ...t.note, fontFamily: 'Nunito', color: c.muted, textAlign: 'center', paddingHorizontal: sp.lg }}>
+                {RADICALS.length} of the most common radicals. They aren't full words, so they aren't added to My Words.
+              </Text>
+            )}
+          </Animated.View>
+        </View>
+
+        {/* The bamboo and mist along the foot, closing the list as New Words closes its page. */}
+        <View pointerEvents="none" style={{ width: column, marginTop: sp.lg }}>
+          <Image source={footArt} resizeMode="cover" style={{ width: column, height: column / RAD_FOOT_RATIO }} />
+        </View>
+      </ScrollView>
 
       {selected && <RadicalDetailModal radical={selected} onClose={() => setSelected(null)} />}
-    </DetailShell>
+    </SafeAreaView>
   )
 }

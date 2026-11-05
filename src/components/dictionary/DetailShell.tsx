@@ -203,11 +203,6 @@ export function DetailSheetShell({
           hints={sheetHints}
           header={sheetHeader}
           tabs={tabs}
-          onBack={() => {
-            tapHaptic()
-            if (router.canGoBack()) router.back()
-            else router.replace(inTab ? '/dictionary-tab' : '/my-words')
-          }}
           contentMaxWidth={DETAIL_CONTENT_MAX}
         />
       </View>

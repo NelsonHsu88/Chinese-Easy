@@ -1,5 +1,3 @@
-import { DICT_BG } from './shadows'
-import { RaisedButton } from '../dashboard/parts'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Animated,
@@ -14,13 +12,12 @@ import {
   type PanResponderGestureState,
 } from 'react-native'
 import { useFocusEffect } from 'expo-router'
-import { ChevronDown, ChevronUp, type LucideIcon } from 'lucide-react-native'
+import { ChevronUp, type LucideIcon } from 'lucide-react-native'
 import { tapHaptic } from '../../lib/haptics'
 import { useReduceMotion } from '../tour/useReduceMotion'
 import { TourTarget } from '../tour/targets'
 import { ICON_STROKE } from './DictionaryControls'
 import { sheetColors } from './sheetTokens'
-import { BackArrow } from '../BackArrow'
 
 /*
  * The draggable "Explore this word" sheet on the dictionary detail pages.
@@ -96,7 +93,6 @@ export function InfoSheet({
   hints,
   header,
   tabs,
-  onBack,
   contentMaxWidth,
 }: {
   /** Sheet height when open, measured from the bottom of the detail body. */
@@ -110,8 +106,6 @@ export function InfoSheet({
   header: ReactNode
   /** The open sheet's tabs; only the active one is rendered. */
   tabs: SheetTab[]
-  /** Leaves the page (the open sheet covers the nav bar's back arrow). */
-  onBack: () => void
   contentMaxWidth: number
 }) {
   const [activeTab, setActiveTab] = useState(tabs[0]?.key ?? '')
@@ -439,24 +433,22 @@ export function InfoSheet({
               webGrab,
             ]}
           >
-            <View style={{ alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: C.handle }} />
-            <View style={{ width: '100%', maxWidth: contentMaxWidth + 40, alignSelf: 'center', paddingHorizontal: 56, marginTop: 6 }}>
+            {/*
+              No buttons up here (removed by request): the sheet closes by a
+              swipe down, Escape on web or Android's Back. The handle also
+              closes it on a tap, for a mouse or a screen reader.
+            */}
+            <Pressable
+              onPress={toggle}
+              accessibilityRole="button"
+              accessibilityLabel="Close details"
+              hitSlop={{ top: 10, bottom: 10, left: 40, right: 40 }}
+              style={{ alignSelf: 'center', paddingVertical: 4 }}
+            >
+              <View style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: C.handle }} />
+            </Pressable>
+            <View style={{ width: '100%', maxWidth: contentMaxWidth + 40, alignSelf: 'center', paddingHorizontal: 20, marginTop: 2 }}>
               {header}
-              <BackArrow onPress={onBack} style={{ position: 'absolute', left: 8, top: 2 }} />
-              <RaisedButton
-                onPress={() => settle(false)}
-                accessibilityLabel="Close details"
-                wrapperStyle={{ position: 'absolute', right: 8, top: 4 }}
-                height={40}
-                width={40}
-                radius={20}
-                fill={C.card}
-                border={DICT_BG.pillBorder}
-                shoulder={DICT_BG.pillShoulder}
-                scaleTo={0.9}
-              >
-                <ChevronDown size={22} color={C.heading} strokeWidth={ICON_STROKE} />
-              </RaisedButton>
             </View>
           </View>
 

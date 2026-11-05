@@ -21,7 +21,8 @@ import { newWordsPool, NEW_WORDS_SESSION_SEED } from '../lib/selectors'
 import { displayWord, displayExample, displayPinyin } from '../lib/hanzi'
 import { ReadingSentence } from '../components/dictionary/ReadingSentence'
 import { FlexGap } from '../components/FlexGap'
-import { revealedShadow, SHADOW_EASING, shadowDuration } from '../components/shadowReveal'
+import { revealedShadow, SHADOW_EASING, shadowDuration, ShadowRevealProvider, useShadowReveal } from '../components/shadowReveal'
+import { useEntranceRun, useReveal } from '../components/dashboard/entrance'
 import { WritingPracticeModal } from '../components/WritingPracticeModal'
 import { dashColors as c, dashShadow, dashShadowLifted, DASH_CONTENT_MAX, dashShoulders } from '../components/dashboard/tokens'
 import { PressableScale, LiftedFace, usePressClaim, RaisedButton } from '../components/dashboard/parts'
@@ -156,6 +157,13 @@ function PressFace({
 const SWAP = { distance: 56, leave: 170, arrive: 230, rise: 10 } as const
 
 /**
+ * Opening the screen: the header, then the card, then the buttons rise into
+ * place one beat apart (the Books entrance). On web the stack has no
+ * transition of its own, so without this the page simply appeared.
+ */
+const ENTER = { for: 520, rise: 22, step: 80 } as const
+
+/**
  * The swipe. `commit` is the share of the card's width a release has to pass,
  * `flick` the release speed (px/ms) that commits a shorter drag, so long as it
  * has travelled `flickMin`;
@@ -265,6 +273,30 @@ export function NewWords() {
   const shadeSettle = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** How long the pending arrival takes — a swipe's is shorter than a button's. */
   const arriveMs = useRef<number>(SWAP.arrive)
+
+  /* The page's entrance (see `ENTER`). */
+  const run = useEntranceRun()
+  const enter = (i: number) => ({ from: 'bottom' as const, at: i * ENTER.step, duration: ENTER.for, distance: ENTER.rise, run })
+  const enterHeader = useReveal(enter(0))
+  const enterCard = useReveal(enter(1))
+  const enterButtons = useReveal(enter(2))
+  /* The buttons' shoulders settle their shadows in behind them (`LiftedFace`). */
+  const shadowArrival = useShadowReveal({ at: 0, duration: ENTER.for + ENTER.step * 2, run })
+  /* The card's shadow follows it in rather than standing there first. */
+  useEffect(() => {
+    if (reduceMotion) return
+    shade.setValue(0)
+    const ms = shadowDuration(ENTER.for)
+    const fade = Animated.timing(shade, { toValue: 1, delay: ENTER.step, duration: ms, easing: SHADOW_EASING, useNativeDriver: false })
+    fade.start()
+    /* In `shadeSettle`, so a Skip during the entrance cancels it (`swapCard`). */
+    shadeSettle.current = setTimeout(() => shade.setValue(1), ENTER.step + ms + 150)
+    return () => {
+      fade.stop()
+      if (shadeSettle.current) clearTimeout(shadeSettle.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run])
 
   /*
    * The arrival starts only once the next word has committed (the effect
@@ -638,7 +670,7 @@ export function NewWords() {
       >
         <View style={{ width: columnWidth, flexGrow: 1, paddingHorizontal: GUTTER, paddingBottom: 12 }}>
           {/* Header: back, the centred title, Recent. */}
-          <View style={{ height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Animated.View style={[{ height: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, enterHeader]}>
             <BackArrow
               onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
               style={{ marginLeft: -8 }}
@@ -678,7 +710,7 @@ export function NewWords() {
               <History size={20} color={c.greenDark} strokeWidth={2.2} />
               <Text style={{ fontFamily: 'NunitoSemiBold', fontSize: 15, lineHeight: 20, color: c.textSecondary }}>Recent</Text>
             </Pressable>
-          </View>
+          </Animated.View>
 
           {/*
             Floats over the top of the card, so its fade moves nothing. There is
@@ -741,7 +773,7 @@ export function NewWords() {
                   `FlexGap`) plus its share of the spare height. Sized by its
                   content, a long example made that card taller and the buttons
                   jumped down for that one word. */}
-              <View style={{ marginTop: 14, flexGrow: 3, flexShrink: 0, flexBasis: CARD_MIN, minHeight: CARD_MIN }}>
+              <Animated.View style={[{ marginTop: 14, flexGrow: 3, flexShrink: 0, flexBasis: CARD_MIN, minHeight: CARD_MIN }, enterCard]}>
                 {/* Behind the cards, so a drag uncovers them: Skip on the
                     right as the card goes left, Back on the left as it goes
                     right (only when there is a word to go back to). */}
@@ -815,92 +847,101 @@ export function NewWords() {
                     </View>
                   )
                 })}
-              </View>
+              </Animated.View>
 
               {/*
                 One set of three, all the same height and fully round: Skip
                 (warm white, grey hairline) beside Add (the one filled green
                 face), then Practice as a full-width mint pill beneath them.
               */}
-              <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
-                {/* The quiet one of the pair: like the Dashboard's Not now, its
-                    shoulder casts no shadow. */}
-                <PressableScale
-                  onPress={() => {
-                    tickHaptic()
-                    forward('skip')
-                  }}
-                  haptic={false}
-                  wrapperStyle={{ flex: 1 }}
-                  accessibilityLabel={back > 0 ? 'Next word' : 'Skip this word'}
-                >
-                  <LiftedFace height={BUTTON_HEIGHT} fill={SKIP.fill} shoulder={SKIP.shoulder} border={SKIP.border} shadow={false}>
-                    {/* Looking back through words already dealt with, there is
-                        nothing to skip — this just moves on. */}
-                    <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: c.textSecondary }}>
-                      {back > 0 ? 'Next' : 'Skip'}
-                    </Text>
-                  </LiftedFace>
-                </PressableScale>
+              <ShadowRevealProvider value={shadowArrival}>
+                <Animated.View style={enterButtons}>
+                  <View style={{ flexDirection: 'row', gap: 12, marginTop: 18 }}>
+                    {/* The quiet one of the pair: like the Dashboard's Not now, its
+                        shoulder casts no shadow. */}
+                    <PressableScale
+                      onPress={() => {
+                        tickHaptic()
+                        forward('skip')
+                      }}
+                      haptic={false}
+                      wrapperStyle={{ flex: 1 }}
+                      accessibilityLabel={back > 0 ? 'Next word' : 'Skip this word'}
+                    >
+                      <LiftedFace height={BUTTON_HEIGHT} fill={SKIP.fill} shoulder={SKIP.shoulder} border={SKIP.border} shadow={false}>
+                        {/* Looking back through words already dealt with, there is
+                            nothing to skip — this just moves on. */}
+                        <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: c.textSecondary }}>
+                          {back > 0 ? 'Next' : 'Skip'}
+                        </Text>
+                      </LiftedFace>
+                    </PressableScale>
 
-                {/* The tour's "Save what matters" spotlight lands here. The
-                    wrapper is the flex child now, so it carries the share. */}
-                <TourTarget
-                  id="new-words-add"
-                  radius={BUTTON_HEIGHT / 2}
-                  style={{ flex: 1.4 }}
-                  onActivate={() => {
-                    tapHaptic()
-                    forward('add')
-                  }}
-                >
+                    {/* The tour's "Save what matters" spotlight lands here. The
+                        wrapper is the flex child now, so it carries the share. */}
+                    <TourTarget
+                      id="new-words-add"
+                      radius={BUTTON_HEIGHT / 2}
+                      style={{ flex: 1.4 }}
+                      onActivate={() => {
+                        tapHaptic()
+                        forward('add')
+                      }}
+                    >
+                      <PressableScale
+                        onPress={() => {
+                          tapHaptic()
+                          forward('add')
+                        }}
+                        haptic={false}
+                        accessibilityLabel={shownInDeck ? 'Already in my words — next word' : 'Add to my words'}
+                      >
+                        <LiftedFace height={BUTTON_HEIGHT} fill={ADD_GRADIENT[1]} shoulder={ADD_SHOULDER}>
+                          {/* Out of flow, under the label: the face is the solid
+                              colour, and this paints the reference's light over it. */}
+                          <LinearGradient
+                            colors={ADD_GRADIENT}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: BUTTON_HEIGHT / 2 }}
+                          />
+                          {/* In a View: on web a bare svg paints under the absolute
+                              gradient, so the icon vanished while keeping its room
+                              and the label sat off-centre. */}
+                          <View>
+                            {shownInDeck ? (
+                              <Check size={22} color="#ffffff" strokeWidth={2.4} />
+                            ) : (
+                              <CirclePlus size={22} color="#ffffff" strokeWidth={2} />
+                            )}
+                          </View>
+                          <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: '#ffffff' }}>
+                            {shownInDeck ? 'In my words' : 'Add to my words'}
+                          </Text>
+                        </LiftedFace>
+                      </PressableScale>
+                    </TourTarget>
+                  </View>
+
+                  {/* Kept from the old screen: the full-width mint pill under the pair. */}
                   <PressableScale
                     onPress={() => {
                       tapHaptic()
-                      forward('add')
+                      setShowPractice(true)
                     }}
                     haptic={false}
-                    accessibilityLabel={shownInDeck ? 'Already in my words — next word' : 'Add to my words'}
+                    wrapperStyle={{ marginTop: 12 }}
+                    accessibilityLabel="Practice writing this word"
                   >
-                    <LiftedFace height={BUTTON_HEIGHT} fill={ADD_GRADIENT[1]} shoulder={ADD_SHOULDER}>
-                      {/* Out of flow, under the label: the face is the solid
-                          colour, and this paints the reference's light over it. */}
-                      <LinearGradient
-                        colors={ADD_GRADIENT}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: BUTTON_HEIGHT / 2 }}
-                      />
-                      {shownInDeck ? (
-                        <Check size={22} color="#ffffff" strokeWidth={2.4} />
-                      ) : (
-                        <CirclePlus size={22} color="#ffffff" strokeWidth={2} />
-                      )}
-                      <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: '#ffffff' }}>
-                        {shownInDeck ? 'In my words' : 'Add to my words'}
+                    <LiftedFace height={BUTTON_HEIGHT} fill={PRACTICE.fill} shoulder={PRACTICE.shoulder} border={PRACTICE.border} shadow={false}>
+                      <PenLine size={20} color={PRACTICE.ink} strokeWidth={2} />
+                      <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: PRACTICE.ink }}>
+                        Practice writing this word
                       </Text>
                     </LiftedFace>
                   </PressableScale>
-                </TourTarget>
-              </View>
-
-              {/* Kept from the old screen: the full-width mint pill under the pair. */}
-              <PressableScale
-                onPress={() => {
-                  tapHaptic()
-                  setShowPractice(true)
-                }}
-                haptic={false}
-                wrapperStyle={{ marginTop: 12 }}
-                accessibilityLabel="Practice writing this word"
-              >
-                <LiftedFace height={BUTTON_HEIGHT} fill={PRACTICE.fill} shoulder={PRACTICE.shoulder} border={PRACTICE.border} shadow={false}>
-                  <PenLine size={20} color={PRACTICE.ink} strokeWidth={2} />
-                  <Text style={{ fontFamily: 'NunitoBold', fontSize: 17, lineHeight: 22, color: PRACTICE.ink }}>
-                    Practice writing this word
-                  </Text>
-                </LiftedFace>
-              </PressableScale>
+                </Animated.View>
+              </ShadowRevealProvider>
 
               {/* The card takes three parts of any spare height and this one,
                   so the buttons ride down the page without landing on the bamboo. */}
