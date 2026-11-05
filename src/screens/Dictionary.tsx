@@ -471,7 +471,17 @@ export function Dictionary() {
                  * rather than on the field being non-empty, so "pengyou" doesn't
                  * get rendered in a Chinese serif.
                  */
-                style={{ fontFamily: HAS_HANZI.test(query) ? 'NotoSerifTC' : 'Nunito', height: '100%' }}
+                style={{
+                  fontFamily: HAS_HANZI.test(query) ? 'NotoSerifTC' : 'Nunito',
+                  height: '100%',
+                  // A web <input> won't shrink below its default ~20-character
+                  // width, which pushed the toggle and clear button out of the
+                  // field and squeezed out the search icon.
+                  minWidth: 0,
+                  // The field's own border turns jade on focus; drop the
+                  // browser's black focus ring.
+                  ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
+                }}
               />
               {/* English is the default; Pinyin is one tap away, before or after typing. */}
               <SearchModeToggle field={field} onField={setField} />
@@ -774,7 +784,7 @@ function SearchModeToggle({ field, onField }: { field: SearchField; onField: (fi
     )
   }
   return (
-    <View className="flex-row items-center rounded-full border border-dict-border p-0.5">
+    <View className="flex-row items-center rounded-full border border-dict-border p-0.5" style={{ flexShrink: 0 }}>
       {option('english', 'English')}
       {option('pinyin', 'Pinyin')}
     </View>
