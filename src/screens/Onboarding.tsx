@@ -75,7 +75,7 @@ import { newPlacementSeed, placementSplit } from '../data/placementTest'
 import { buildPlacementQuestion } from '../lib/placementQuiz'
 import { estimatePlacement, planPlacement, PLACEMENT_QUESTIONS } from '../lib/placement'
 import { displayWord, displayPinyin, defaultPhoneticFor, hanziFont, hanziSansBold } from '../lib/hanzi'
-import { speak } from '../lib/speech'
+import { speak, stopSpeaking } from '../lib/speech'
 import { todayISO } from '../lib/date'
 import { playCorrectSound, playPositiveChime, playRetryTone, playFanfare, playTapSound } from '../lib/sound'
 import { shortGloss } from '../lib/definitions'
@@ -86,7 +86,7 @@ import type { LearningGoal, PlacementAnswer, ScriptMode } from '../types'
 import { ShadowSurface } from '../components/shadowReveal'
 import { FlexGap } from '../components/FlexGap'
 import { AnswerShimmer, AnswerSparks } from '../components/motion/answerFeedback'
-import { AnswerReactionView, QuestionContent, QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
+import { AnswerReactionView, QUESTION_MOTION, QuestionContent, QuestionMotionProvider, useQuestionTransition } from '../components/motion/questionMotion'
 import { spacedReading } from '../components/SpacedReading'
 
 /*
@@ -752,13 +752,20 @@ export function Onboarding() {
   // --- Placement -------------------------------------------------------------
 
   /*
-   * Listening questions play themselves on arrival. The learner should not have
-   * to discover a button before the question has said anything, and a replay
-   * control is right there for the second hearing.
+   * Listening questions play themselves on arrival (`SpeakOnArrival`, mounted
+   * inside each question card). The learner should not have to discover a
+   * button before the question has said anything, and a replay control is
+   * right there for the second hearing.
+   *
+   * Whether a card is the first one since the test page arrived: that card
+   * waits for the whole page to rise in, later ones only for their own card.
    */
+  const testCardShown = useRef(false)
   useEffect(() => {
-    if (step === 'test' && question?.kind === 'listening') speak(displayWord(question.word, settings.script))
-  }, [step, question, settings.script])
+    if (step !== 'test') testCardShown.current = false
+  }, [step])
+  /** Cancels a pending auto-play, so a replay tapped before it isn't cut off by it. */
+  const cancelAutoPlay = useRef<(() => void) | null>(null)
 
   /** Choosing is not answering — it only arms the Confirm button. */
   const pick = (index: number) => {
@@ -842,9 +849,9 @@ export function Onboarding() {
    * element into place after everything else has moved, which is exactly what
    * this replaced.
    *
-   * The two halves are strictly sequential, so the placement test's effects
-   * (which speak the word aloud) still fire once, on arrival, and never for a
-   * page nobody is looking at.
+   * The placement test's auto-play lives inside the question card rather than
+   * in an effect up here, so it counts from when the card actually mounts and
+   * waits out the page's entrance (see `SpeakOnArrival`).
    */
   const renderPage = () => {
   if (step === 'welcome') {
@@ -1812,6 +1819,14 @@ export function Onboarding() {
         <View className="flex-1 justify-center" style={{ paddingVertical: s.xl }}>
           <OnbRise index={1}>
           <QuestionContent key={questionIndex}>
+          <SpeakOnArrival
+            text={listening ? displayWord(question.word, settings.script) : null}
+            firstOnPage={!testCardShown.current}
+            onMounted={() => {
+              testCardShown.current = true
+            }}
+            cancelRef={cancelAutoPlay}
+          />
           <View
             style={{
               backgroundColor: c.page,
@@ -1837,6 +1852,7 @@ export function Onboarding() {
                 <RaisedButton
                   onPress={() => {
                     playTapSound()
+                    cancelAutoPlay.current?.()
                     speak(displayWord(question.word, settings.script))
                   }}
                   accessibilityLabel="Play the word again"
@@ -2137,6 +2153,52 @@ function LogInPrompt({
       </Pressable>
     </View>
   )
+}
+
+/**
+ * Plays a listening question's word once its card is on screen and settled.
+ *
+ * Mounted inside the question card (keyed per question), so the wait counts
+ * from when the card really mounts, not from the state change that asked for
+ * it. The first card after the test page arrives waits for the page's rise
+ * (the old page has slid off well before then); a later card only waits for
+ * its own short entrance. Unmounting stops the voice, so Back, the next
+ * question or leaving the test never leaves a word talking.
+ *
+ * Runs once per mount: the question object is rebuilt when an answer is
+ * recorded, while the card is still on screen, and replaying on that used to
+ * say the word a second time as the card left.
+ */
+function SpeakOnArrival({
+  text,
+  firstOnPage,
+  onMounted,
+  cancelRef,
+}: {
+  text: string | null
+  firstOnPage: boolean
+  onMounted: () => void
+  cancelRef: { current: (() => void) | null }
+}) {
+  const delay = useRef(firstOnPage ? onbMotion.rise + 80 : QUESTION_MOTION.inMs + 60).current
+  const mounted = useRef(onMounted)
+  mounted.current = onMounted
+  useEffect(() => {
+    mounted.current()
+    if (!text) return
+    const timer = setTimeout(() => {
+      cancelRef.current = null
+      speak(text)
+    }, delay)
+    const cancel = () => clearTimeout(timer)
+    cancelRef.current = cancel
+    return () => {
+      cancel()
+      if (cancelRef.current === cancel) cancelRef.current = null
+      stopSpeaking()
+    }
+  }, [text, delay, cancelRef])
+  return null
 }
 
 function RowRule({ tint = c.hairline }: { tint?: string }) {
